@@ -1,0 +1,11 @@
+[package]
+name = "starprint"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Driver library for Star Micronics receipt printers: Star Line Mode (thermal) and the Star impact (SP700) command set, over Ethernet."
+license = "MIT OR Apache-2.0"
+keywords = ["star", "receipt", "printer", "pos", "starline"]
+categories = ["hardware-support"]
+
+[dependencies]
