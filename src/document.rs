@@ -16,9 +16,9 @@
 //! Features that only exist on one protocol are only *available* on that
 //! protocol: e.g. [`Builder::qr_code`] exists for `Builder<StarLine>` but
 //! not for `Builder<Impact>`, so an unsupported command is a compile
-//! error, not a runtime surprise. Where both protocols expose the same
-//! feature through different commands (e.g. [`Builder::magnify`]), the
-//! builder emits the right encoding for its protocol.
+//! error, not a runtime surprise. Where the protocols share a command but
+//! differ in what it accepts (e.g. [`Builder::wide`]), the builder bounds
+//! parameters to its protocol's range.
 
 use std::marker::PhantomData;
 
@@ -41,15 +41,10 @@ mod sealed {
 /// This trait is sealed; the two implementations are [`StarLine`] and
 /// [`Impact`].
 pub trait Protocol: sealed::Sealed + 'static {
-    /// Largest character magnification per axis: 6 on Star Line Mode
-    /// (`ESC i` accepts ×1–×6), 2 on impact Star Mode (double-wide /
-    /// double-tall only).
+    /// Largest character size multiplier per axis: `ESC W` / `ESC h`
+    /// accept ×1–×6 on Star Line Mode but only ×1–×2 (double-wide /
+    /// double-tall) on impact Star Mode.
     const MAX_MAGNIFICATION: u8;
-
-    /// Emits the protocol's character-magnification command.
-    /// `width`/`height` are already clamped to `1..=MAX_MAGNIFICATION`.
-    #[doc(hidden)]
-    fn write_magnify(buf: &mut Vec<u8>, width: u8, height: u8);
 }
 
 /// Marker for **Star Line Mode** — thermal receipt printers.
@@ -60,11 +55,6 @@ pub enum StarLine {}
 
 impl Protocol for StarLine {
     const MAX_MAGNIFICATION: u8 = 6;
-
-    fn write_magnify(buf: &mut Vec<u8>, width: u8, height: u8) {
-        // ESC i n1 n2 — n1: height multiplier - 1, n2: width multiplier - 1.
-        buf.extend_from_slice(&[ESC, b'i', height - 1, width - 1]);
-    }
 }
 
 /// Marker for **Star Mode on dot impact printers** — the SP700 series of
@@ -76,12 +66,6 @@ pub enum Impact {}
 
 impl Protocol for Impact {
     const MAX_MAGNIFICATION: u8 = 2;
-
-    fn write_magnify(buf: &mut Vec<u8>, width: u8, height: u8) {
-        // Impact Star Mode has no ESC i; double-wide is ESC W n and
-        // double-tall is ESC h n (n: 0 cancel, 1 set).
-        buf.extend_from_slice(&[ESC, b'W', width - 1, ESC, b'h', height - 1]);
-    }
 }
 
 /// A fully rendered command stream, ready to send to a printer.
@@ -133,9 +117,11 @@ impl From<Document> for Vec<u8> {
 ///
 /// let doc = starprint::starline()
 ///     .align(Alignment::Center)
-///     .magnify(2, 2)
+///     .wide(2)
+///     .tall(2)
 ///     .line("ACME STORE")
-///     .magnify(1, 1)
+///     .wide(1)
+///     .tall(1)
 ///     .align(Alignment::Left)
 ///     .line("1x Coffee            3.50")
 ///     .feed(2)
@@ -248,20 +234,26 @@ impl<P: Protocol> Builder<P> {
         self.raw([ESC, b'_', on as u8])
     }
 
-    /// Sets character magnification.
+    /// Sets the character width multiplier (`ESC W n`).
     ///
-    /// `width` and `height` are per-axis multipliers starting at 1
-    /// (normal size), clamped to the protocol's supported range: ×1–×6 on
-    /// [`StarLine`] (`ESC i n1 n2`), ×1–×2 on [`Impact`]
-    /// (`ESC W n` + `ESC h n`).
+    /// `multiplier` starts at 1 (normal width) and is clamped to the
+    /// protocol's supported range: ×1–×6 on [`StarLine`], ×1–×2 on
+    /// [`Impact`]. Width and height are independent — combine with
+    /// [`tall`](Self::tall) for proportionally bigger characters.
     #[must_use]
-    pub fn magnify(mut self, width: u8, height: u8) -> Self {
-        P::write_magnify(
-            &mut self.buf,
-            width.clamp(1, P::MAX_MAGNIFICATION),
-            height.clamp(1, P::MAX_MAGNIFICATION),
-        );
-        self
+    pub fn wide(self, multiplier: u8) -> Self {
+        self.raw([ESC, b'W', multiplier.clamp(1, P::MAX_MAGNIFICATION) - 1])
+    }
+
+    /// Sets the character height multiplier (`ESC h n`).
+    ///
+    /// `multiplier` starts at 1 (normal height) and is clamped to the
+    /// protocol's supported range: ×1–×6 on [`StarLine`], ×1–×2 on
+    /// [`Impact`]. Width and height are independent — combine with
+    /// [`wide`](Self::wide) for proportionally bigger characters.
+    #[must_use]
+    pub fn tall(self, multiplier: u8) -> Self {
+        self.raw([ESC, b'h', multiplier.clamp(1, P::MAX_MAGNIFICATION) - 1])
     }
 
     /// Selects an international character-set variant (`ESC R n`).
@@ -482,21 +474,20 @@ mod tests {
     }
 
     #[test]
-    fn magnification_per_protocol() {
-        // StarLine: ESC i n1 n2 with n1 = height - 1, n2 = width - 1.
+    fn character_size_per_protocol() {
+        // ESC W n / ESC h n carry multiplier - 1.
         assert_eq!(
-            bytes(Builder::<StarLine>::empty().magnify(2, 3)),
-            [0x1B, 0x69, 2, 1]
+            bytes(Builder::<StarLine>::empty().wide(2).tall(3)),
+            [0x1B, 0x57, 1, 0x1B, 0x68, 2]
         );
-        // Clamped to x6, and 0 is promoted to normal size.
+        // StarLine clamps to x6, and 0 is promoted to normal size.
         assert_eq!(
-            bytes(Builder::<StarLine>::empty().magnify(9, 0)),
-            [0x1B, 0x69, 0, 5]
+            bytes(Builder::<StarLine>::empty().wide(9).tall(0)),
+            [0x1B, 0x57, 5, 0x1B, 0x68, 0]
         );
-        // Impact has no ESC i: double-wide/tall via ESC W and ESC h,
-        // clamped to x2.
+        // Impact clamps to x2 (double-wide / double-tall only).
         assert_eq!(
-            bytes(Builder::<Impact>::empty().magnify(4, 1)),
+            bytes(Builder::<Impact>::empty().wide(4).tall(1)),
             [0x1B, 0x57, 1, 0x1B, 0x68, 0]
         );
     }

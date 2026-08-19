@@ -24,9 +24,9 @@ Capabilities are enforced by the type system: `qr_code`, `barcode`,
 `invert` and thermal fonts exist only on `Builder<StarLine>`; red/black
 two-colour printing and the impact fonts exist only on `Builder<Impact>`.
 Sending an unsupported command is a compile error, not a mangled receipt.
-Where both protocols share a feature through different commands (e.g.
-character magnification is `ESC i` on thermal but `ESC W`/`ESC h` on
-impact), the builder emits the right encoding for its protocol.
+Where the protocols share a command but accept different ranges (e.g.
+`wide()`/`tall()` character sizing goes up to ×6 on thermal but only ×2
+on impact), the builder bounds parameters to its protocol's range.
 
 ## Quick start
 
@@ -37,9 +37,11 @@ use starprint::transport::{TcpTransport, TransportExt};
 
 let receipt = starprint::starline()
     .align(Alignment::Center)
-    .magnify(2, 2)
+    .wide(2)
+    .tall(2)
     .line("ACME STORE")
-    .magnify(1, 1)
+    .wide(1)
+    .tall(1)
     .feed(1)
     .align(Alignment::Left)
     .line("1x Flat white           4.20")
@@ -66,9 +68,11 @@ use starprint::{Alignment, Color, Cut};
 let ticket = starprint::impact()
     .two_color(true) // requires a black/red ribbon
     .align(Alignment::Center)
-    .magnify(2, 2)
+    .wide(2)
+    .tall(2)
     .line("TABLE 7")
-    .magnify(1, 1)
+    .wide(1)
+    .tall(1)
     .align(Alignment::Left)
     .line("2x Carbonara")
     .line("1x Margherita")
@@ -89,9 +93,10 @@ cargo run --example impact_kitchen_ticket -- 192.168.1.61
 ## Feature overview
 
 Shared by both protocols: text (CP437-encoded), alignment, bold,
-underline, overline, magnification, line feeds, paper cut, cash-drawer
-pulses, international character sets, code-page selection, and a `raw`
-escape hatch for anything the builder does not model.
+underline, overline, character sizing (`wide`/`tall`), line feeds, paper
+cut, cash-drawer pulses, international character sets, code-page
+selection, and a `raw` escape hatch for anything the builder does not
+model.
 
 Star Line Mode (thermal) additionally: 1D barcodes (UPC-A/E, EAN-8/13,
 Code 39/93/128, ITF, NW-7) with payload validation at construction time,

@@ -24,9 +24,11 @@
 //!
 //! let receipt = starprint::starline()
 //!     .align(Alignment::Center)
-//!     .magnify(2, 2)
+//!     .wide(2)
+//!     .tall(2)
 //!     .line("ACME STORE")
-//!     .magnify(1, 1)
+//!     .wide(1)
+//!     .tall(1)
 //!     .feed(1)
 //!     .align(Alignment::Left)
 //!     .line("1x Flat white           4.20")
