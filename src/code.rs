@@ -88,7 +88,7 @@ impl Symbology {
 /// symbology's character set), then adjust the optional settings:
 ///
 /// ```
-/// use starprint::code::{Barcode, Symbology};
+/// use starprint::{Barcode, Symbology};
 ///
 /// let code = Barcode::new(Symbology::Code128, "No.123456")?
 ///     .height(80)
@@ -190,7 +190,7 @@ pub enum QrErrorCorrection {
 /// A QR code, printed with the `ESC GS y` 2D-code command family.
 ///
 /// ```
-/// use starprint::code::{QrCode, QrErrorCorrection};
+/// use starprint::{QrCode, QrErrorCorrection};
 ///
 /// let code = QrCode::new("https://example.com/receipt/42")?
 ///     .error_correction(QrErrorCorrection::H)

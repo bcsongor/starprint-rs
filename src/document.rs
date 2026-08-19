@@ -16,16 +16,18 @@
 //! Features that only exist on one protocol are only *available* on that
 //! protocol: e.g. [`Builder::qr_code`] exists for `Builder<StarLine>` but
 //! not for `Builder<Impact>`, so an unsupported command is a compile
-//! error, not a runtime surprise. Where the protocols share a command but
-//! differ in what it accepts (e.g. [`Builder::wide`]), the builder bounds
-//! parameters to its protocol's range.
+//! error, not a runtime surprise. Where capabilities differ in shape, so
+//! does the API: thermal printers scale characters ×1–×6
+//! ([`Builder::wide`] / [`Builder::tall`]), while impact printers only
+//! toggle double size (`double_wide` / `double_tall`).
 
 use std::marker::PhantomData;
 
 use crate::code::{Barcode, QrCode, QrErrorCorrection, QrModel};
 use crate::cp437;
+use crate::graphics::{self, BitImage, Density};
 use crate::types::{
-    Alignment, CodePage, Color, Cut, Drawer, Font, ImpactFont, International, LineSpacing,
+    Alignment, CodePage, Color, Cut, Drawer, ImpactFont, International, LineSpacing, ThermalFont,
 };
 
 const ESC: u8 = 0x1B;
@@ -40,12 +42,7 @@ mod sealed {
 ///
 /// This trait is sealed; the two implementations are [`StarLine`] and
 /// [`Impact`].
-pub trait Protocol: sealed::Sealed + 'static {
-    /// Largest character size multiplier per axis: `ESC W` / `ESC h`
-    /// accept ×1–×6 on Star Line Mode but only ×1–×2 (double-wide /
-    /// double-tall) on impact Star Mode.
-    const MAX_MAGNIFICATION: u8;
-}
+pub trait Protocol: sealed::Sealed + 'static {}
 
 /// Marker for **Star Line Mode** — thermal receipt printers.
 ///
@@ -53,9 +50,7 @@ pub trait Protocol: sealed::Sealed + 'static {
 #[derive(Debug)]
 pub enum StarLine {}
 
-impl Protocol for StarLine {
-    const MAX_MAGNIFICATION: u8 = 6;
-}
+impl Protocol for StarLine {}
 
 /// Marker for **Star Mode on dot impact printers** — the SP700 series of
 /// two-colour dot-matrix kitchen printers.
@@ -64,9 +59,7 @@ impl Protocol for StarLine {
 #[derive(Debug)]
 pub enum Impact {}
 
-impl Protocol for Impact {
-    const MAX_MAGNIFICATION: u8 = 2;
-}
+impl Protocol for Impact {}
 
 /// A fully rendered command stream, ready to send to a printer.
 ///
@@ -234,28 +227,6 @@ impl<P: Protocol> Builder<P> {
         self.raw([ESC, b'_', on as u8])
     }
 
-    /// Sets the character width multiplier (`ESC W n`).
-    ///
-    /// `multiplier` starts at 1 (normal width) and is clamped to the
-    /// protocol's supported range: ×1–×6 on [`StarLine`], ×1–×2 on
-    /// [`Impact`]. Width and height are independent — combine with
-    /// [`tall`](Self::tall) for proportionally bigger characters.
-    #[must_use]
-    pub fn wide(self, multiplier: u8) -> Self {
-        self.raw([ESC, b'W', multiplier.clamp(1, P::MAX_MAGNIFICATION) - 1])
-    }
-
-    /// Sets the character height multiplier (`ESC h n`).
-    ///
-    /// `multiplier` starts at 1 (normal height) and is clamped to the
-    /// protocol's supported range: ×1–×6 on [`StarLine`], ×1–×2 on
-    /// [`Impact`]. Width and height are independent — combine with
-    /// [`wide`](Self::wide) for proportionally bigger characters.
-    #[must_use]
-    pub fn tall(self, multiplier: u8) -> Self {
-        self.raw([ESC, b'h', multiplier.clamp(1, P::MAX_MAGNIFICATION) - 1])
-    }
-
     /// Selects an international character-set variant (`ESC R n`).
     #[must_use]
     pub fn international(self, set: International) -> Self {
@@ -315,6 +286,26 @@ impl<P: Protocol> Builder<P> {
 }
 
 impl Builder<StarLine> {
+    /// Sets the character width multiplier (`ESC W n`): ×1 (normal) to
+    /// ×6, clamped.
+    ///
+    /// Width and height are independent — combine with
+    /// [`tall`](Self::tall) for proportionally bigger characters.
+    #[must_use]
+    pub fn wide(self, multiplier: u8) -> Self {
+        self.raw([ESC, b'W', multiplier.clamp(1, 6) - 1])
+    }
+
+    /// Sets the character height multiplier (`ESC h n`): ×1 (normal) to
+    /// ×6, clamped.
+    ///
+    /// Width and height are independent — combine with
+    /// [`wide`](Self::wide) for proportionally bigger characters.
+    #[must_use]
+    pub fn tall(self, multiplier: u8) -> Self {
+        self.raw([ESC, b'h', multiplier.clamp(1, 6) - 1])
+    }
+
     /// Switches white-on-black (inverted) printing on or off
     /// (`ESC 4` / `ESC 5`).
     ///
@@ -328,7 +319,7 @@ impl Builder<StarLine> {
 
     /// Selects the base character font (`ESC RS F n`).
     #[must_use]
-    pub fn font(self, font: Font) -> Self {
+    pub fn font(self, font: ThermalFont) -> Self {
         self.raw([ESC, 0x1E, b'F', font.code()])
     }
 
@@ -401,6 +392,24 @@ impl Builder<StarLine> {
 }
 
 impl Builder<Impact> {
+    /// Switches double-wide characters on or off (`ESC W n`).
+    ///
+    /// Impact printers only scale ×1/×2 per axis; combine with
+    /// [`double_tall`](Self::double_tall) for double-size characters.
+    #[must_use]
+    pub fn double_wide(self, on: bool) -> Self {
+        self.raw([ESC, b'W', on as u8])
+    }
+
+    /// Switches double-tall characters on or off (`ESC h n`).
+    ///
+    /// Impact printers only scale ×1/×2 per axis; combine with
+    /// [`double_wide`](Self::double_wide) for double-size characters.
+    #[must_use]
+    pub fn double_tall(self, on: bool) -> Self {
+        self.raw([ESC, b'h', on as u8])
+    }
+
     /// Selects or cancels two-colour printing mode (`ESC RS C n`).
     ///
     /// The power-on default comes from the printer's DIP switches, and
@@ -421,6 +430,46 @@ impl Builder<Impact> {
     #[must_use]
     pub fn color(self, color: Color) -> Self {
         self.raw([ESC, if color == Color::Red { b'4' } else { b'5' }])
+    }
+
+    /// Prints a 9-dot bit image (`ESC ^ n n1 n2 d…`).
+    ///
+    /// The image is emitted in stripes of 9 dot rows. Line spacing is
+    /// temporarily set to exactly one stripe (`ESC 3` with 27/216″, i.e.
+    /// 9 rows at 1/72″) so consecutive stripes tile seamlessly, and is
+    /// restored to the printer default afterwards (`ESC 2`).
+    ///
+    /// The [`BitImage`] was validated against the head width at
+    /// construction, so this cannot fail. Build one from a picture with
+    /// the `pipeline` module (`image` feature), or directly via
+    /// [`Bitmap`](crate::graphics::Bitmap) /
+    /// [`Grayscale`](crate::dither::Grayscale).
+    #[must_use]
+    pub fn bit_image(mut self, image: &BitImage) -> Self {
+        let bitmap = &image.bitmap;
+        let density = match image.density {
+            Density::Single => 0,
+            Density::Double => 1,
+        };
+        let [n1, n2] = (bitmap.width() as u16).to_le_bytes();
+
+        self.buf.extend_from_slice(&[
+            ESC,
+            b'3',
+            graphics::STRIPE_HEIGHT as u8 * graphics::LINE_FEED_UNITS_PER_DOT,
+        ]);
+        let mut top = 0;
+        while top < bitmap.height() {
+            self.buf.extend_from_slice(&[ESC, b'^', density, n1, n2]);
+            self.buf
+                .extend_from_slice(&graphics::pack_stripe(bitmap, top));
+            top += graphics::STRIPE_HEIGHT;
+            if top < bitmap.height() {
+                self.buf.push(b'\n');
+            }
+        }
+        self.buf.extend_from_slice(&[ESC, b'2']);
+        self
     }
 
     /// Selects the ANK character font (`ESC M` / `ESC P` / `ESC :`).
@@ -475,7 +524,7 @@ mod tests {
 
     #[test]
     fn character_size_per_protocol() {
-        // ESC W n / ESC h n carry multiplier - 1.
+        // ESC W n / ESC h n carry multiplier - 1 on thermal printers.
         assert_eq!(
             bytes(Builder::<StarLine>::empty().wide(2).tall(3)),
             [0x1B, 0x57, 1, 0x1B, 0x68, 2]
@@ -485,9 +534,13 @@ mod tests {
             bytes(Builder::<StarLine>::empty().wide(9).tall(0)),
             [0x1B, 0x57, 5, 0x1B, 0x68, 0]
         );
-        // Impact clamps to x2 (double-wide / double-tall only).
+        // Impact only toggles double size.
         assert_eq!(
-            bytes(Builder::<Impact>::empty().wide(4).tall(1)),
+            bytes(
+                Builder::<Impact>::empty()
+                    .double_wide(true)
+                    .double_tall(false)
+            ),
             [0x1B, 0x57, 1, 0x1B, 0x68, 0]
         );
     }

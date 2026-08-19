@@ -2,9 +2,8 @@
 //!
 //! Usage: cargo run --example thermal_receipt -- <printer-host-or-ip>
 
-use starprint::code::{Barcode, QrCode, Symbology};
-use starprint::transport::{TcpTransport, TransportExt};
-use starprint::{Alignment, Cut};
+use starprint::transport::TcpTransport;
+use starprint::{Alignment, Barcode, Cut, QrCode, Symbology};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = std::env::args()

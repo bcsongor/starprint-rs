@@ -2,7 +2,7 @@
 //!
 //! Usage: cargo run --example impact_kitchen_ticket -- <printer-host-or-ip>
 
-use starprint::transport::{TcpTransport, TransportExt};
+use starprint::transport::TcpTransport;
 use starprint::{Alignment, Color, Cut};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,11 +13,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ticket = starprint::impact()
         .two_color(true) // needed for red; requires a black/red ribbon
         .align(Alignment::Center)
-        .wide(2)
-        .tall(2)
+        .double_wide(true)
+        .double_tall(true)
         .line("TABLE 7")
-        .wide(1)
-        .tall(1)
+        .double_wide(false)
+        .double_tall(false)
         .line("Order #42 - 19:05")
         .feed(1)
         .align(Alignment::Left)
@@ -25,9 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .line("1x Margherita")
         .line("   + extra basil")
         .color(Color::Red)
-        .tall(2)
+        .double_tall(true)
         .line("** ALLERGY: NUTS **")
-        .tall(1)
+        .double_tall(false)
         .color(Color::Black)
         .feed(2)
         .cut(Cut::FeedThenPartial)

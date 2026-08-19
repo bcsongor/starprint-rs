@@ -197,7 +197,7 @@ impl CodePage {
 
 /// Base character font on thermal printers, selected with `ESC RS F n`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum Font {
+pub enum ThermalFont {
     /// Font A, 12×24 dots (printer default).
     #[default]
     A,
@@ -208,7 +208,7 @@ pub enum Font {
     OcrB,
 }
 
-impl Font {
+impl ThermalFont {
     pub(crate) fn code(self) -> u8 {
         match self {
             Self::A => 0,

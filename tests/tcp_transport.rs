@@ -5,7 +5,7 @@ use std::io::Read;
 use std::net::TcpListener;
 use std::thread;
 
-use starprint::transport::{TcpTransport, TransportExt};
+use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut};
 
 #[test]

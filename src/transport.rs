@@ -24,6 +24,12 @@ pub trait Transport {
     /// Sends `bytes` to the printer, blocking until the transport has
     /// accepted all of them.
     fn send(&mut self, bytes: &[u8]) -> Result<()>;
+
+    /// Sends a rendered [`Document`]; equivalent to
+    /// [`send`](Self::send) with [`Document::as_bytes`].
+    fn print(&mut self, document: &Document) -> Result<()> {
+        self.send(document.as_bytes())
+    }
 }
 
 /// An Ethernet transport using raw-socket ("port 9100") printing.
@@ -109,6 +115,14 @@ impl TcpTransport {
         self.stream.set_write_timeout(timeout)?;
         Ok(())
     }
+
+    /// Sends a rendered [`Document`] to the printer.
+    ///
+    /// Inherent mirror of [`Transport::print`], so the common case needs
+    /// no trait import.
+    pub fn print(&mut self, document: &Document) -> Result<()> {
+        Transport::print(self, document)
+    }
 }
 
 impl Transport for TcpTransport {
@@ -118,14 +132,3 @@ impl Transport for TcpTransport {
         Ok(())
     }
 }
-
-/// Blanket convenience: any transport can print a [`Document`] directly.
-pub trait TransportExt: Transport {
-    /// Renders nothing — simply sends the document's bytes over this
-    /// transport.
-    fn print(&mut self, document: &Document) -> Result<()> {
-        self.send(document.as_bytes())
-    }
-}
-
-impl<T: Transport + ?Sized> TransportExt for T {}
