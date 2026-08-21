@@ -3,7 +3,7 @@
 //! Usage: cargo run --example impact_image --features image -- <printer-host> <image-path> [single|double]
 
 use starprint::graphics::Density;
-use starprint::pipeline::ImagePipeline;
+use starprint::graphics::ImagePipeline;
 use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut};
 

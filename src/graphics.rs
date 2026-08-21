@@ -1,11 +1,23 @@
 //! Bit-image graphics for impact printers.
 //!
-//! This module is the dependency-free core of image printing: a 1-bit
-//! [`Bitmap`], the [`BitImage`] wrapper that validates it against a
-//! printer's head width, and the column packing for the SP700's 9-dot
-//! bit-image command (`ESC ^`). Producing a bitmap from a real picture
-//! (decode, tone mapping, dithering) lives in [`crate::dither`] and —
-//! behind the `image` feature — `crate::pipeline`.
+//! Everything needed to put a picture on paper:
+//!
+//! * [`Bitmap`] (1-bit) and [`BitImage`] (a bitmap validated against the
+//!   head width, ready for [`bit_image`](crate::Builder::bit_image));
+//! * [`Grayscale`] (8-bit) and [`Dithering`] to reduce it to 1 bit;
+//! * with the `image` cargo feature, `ImagePipeline` — decode, tone
+//!   mapping and resizing tuned on real hardware, producing a
+//!   `PreparedImage`.
+//!
+//! Only `ImagePipeline` pulls in a dependency; the rest is plain Rust.
+
+mod dither;
+#[cfg(feature = "image")]
+mod pipeline;
+
+pub use dither::{Dithering, Grayscale};
+#[cfg(feature = "image")]
+pub use pipeline::{ImagePipeline, PreparedImage};
 
 use crate::error::{Error, Result};
 
@@ -21,7 +33,7 @@ pub(crate) const LINE_FEED_UNITS_PER_DOT: u8 = 3;
 ///
 /// Double density prints twice as many columns across the same physical
 /// width; the dots physically overlap, which darkens the output (the
-/// `pipeline` module compensates by brightening).
+/// image pipeline compensates by brightening).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Density {
     /// One dot per single-density column (210 dots across 63 mm on the
@@ -65,7 +77,7 @@ impl DeviceProfile {
 
     /// The maximum printable width in dots at the given density.
     #[must_use]
-    pub fn width_dots(&self, density: Density) -> u32 {
+    pub fn max_width(&self, density: Density) -> u32 {
         match density {
             Density::Single => self.width_dots_single,
             Density::Double => self.width_dots_double,
@@ -74,7 +86,7 @@ impl DeviceProfile {
 
     /// The effective horizontal DPI at the given density.
     #[must_use]
-    pub fn horizontal_dpi(&self, density: Density) -> f64 {
+    pub fn horizontal_dpi_at(&self, density: Density) -> f64 {
         match density {
             Density::Single => self.horizontal_dpi,
             Density::Double => {
@@ -173,7 +185,7 @@ impl BitImage {
                 reason: "bit image must not be empty".into(),
             });
         }
-        let max = profile.width_dots(density);
+        let max = profile.max_width(density);
         if bitmap.width > max {
             return Err(Error::DataTooLong {
                 max: max as usize,

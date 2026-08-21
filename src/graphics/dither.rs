@@ -2,7 +2,7 @@
 //!
 //! Impact printers put ink down or they don't — there are no gray dots —
 //! so continuous-tone images must be reduced to 1 bit per pixel. This
-//! module holds the 8-bit [`Grayscale`] buffer and the [`Dither`]
+//! module holds the 8-bit [`Grayscale`] buffer and the [`Dithering`]
 //! algorithms that perform that reduction, ported byte-for-byte from the
 //! reference implementation that was tuned on real SP700 hardware.
 //!
@@ -84,7 +84,7 @@ impl Grayscale {
 /// black (128 in the hardware-tuned reference); [`Bayer8x8`](Self::Bayer8x8)
 /// uses its own matrix instead of a threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Dither {
+pub enum Dithering {
     /// Plain thresholding — crisp for text and line art, poor for photos.
     Threshold {
         /// Gray level below which a pixel becomes black.
@@ -107,7 +107,7 @@ pub enum Dither {
     Bayer8x8,
 }
 
-impl Default for Dither {
+impl Default for Dithering {
     /// Floyd–Steinberg at the reference threshold of 128.
     fn default() -> Self {
         Self::FloydSteinberg { threshold: 128 }
@@ -148,7 +148,7 @@ const BAYER_8X8: [[u8; 8]; 8] = [
     [63, 31, 55, 23, 61, 29, 53, 21],
 ];
 
-impl Dither {
+impl Dithering {
     /// Applies the algorithm, producing an image whose pixels are all
     /// exactly `0` or `255`.
     #[must_use]
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn threshold_splits_at_the_given_level() {
         let img = gray(4, 1, &[0, 127, 128, 255]);
-        let out = Dither::Threshold { threshold: 128 }.apply(&img);
+        let out = Dithering::Threshold { threshold: 128 }.apply(&img);
         assert_eq!(out.pixels(), [0, 0, 255, 255]);
     }
 
@@ -242,7 +242,7 @@ mod tests {
         // onto the next pixel: 160 - 27.6 = 132.4 → white; then error
         // -122.6, pushing -53.6 onto 160 → 106.4 → black.
         let img = gray(3, 1, &[192, 160, 160]);
-        let out = Dither::FloydSteinberg { threshold: 128 }.apply(&img);
+        let out = Dithering::FloydSteinberg { threshold: 128 }.apply(&img);
         assert_eq!(out.pixels(), [255, 255, 0]);
     }
 
@@ -250,10 +250,10 @@ mod tests {
     fn output_is_strictly_binary() {
         let img = gray(8, 8, &(0..64).map(|i| (i * 4) as u8).collect::<Vec<_>>());
         for dither in [
-            Dither::Threshold { threshold: 128 },
-            Dither::FloydSteinberg { threshold: 128 },
-            Dither::Atkinson { threshold: 128 },
-            Dither::Bayer8x8,
+            Dithering::Threshold { threshold: 128 },
+            Dithering::FloydSteinberg { threshold: 128 },
+            Dithering::Atkinson { threshold: 128 },
+            Dithering::Bayer8x8,
         ] {
             let out = dither.apply(&img);
             assert!(

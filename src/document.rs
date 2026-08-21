@@ -27,7 +27,8 @@ use crate::code::{Barcode, QrCode, QrErrorCorrection, QrModel};
 use crate::cp437;
 use crate::graphics::{self, BitImage, Density};
 use crate::types::{
-    Alignment, CodePage, Color, Cut, Drawer, ImpactFont, International, LineSpacing, ThermalFont,
+    Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
+    ThermalFont,
 };
 
 const ESC: u8 = 0x1B;
@@ -145,7 +146,9 @@ impl<P: Protocol> Builder<P> {
     /// two-colour mode survive it.
     #[must_use]
     pub fn new() -> Self {
-        Self::empty().raw([ESC, b'@']).code_page(CodePage::CP437)
+        Self::without_init()
+            .raw([ESC, b'@'])
+            .code_page(CodePage::CP437)
     }
 
     /// Starts a document *without* the leading reset, inheriting whatever
@@ -154,7 +157,7 @@ impl<P: Protocol> Builder<P> {
     /// Use this to continue a print job whose styling was set up by an
     /// earlier document.
     #[must_use]
-    pub fn empty() -> Self {
+    pub fn without_init() -> Self {
         Self {
             buf: Vec::with_capacity(256),
             _protocol: PhantomData,
@@ -229,7 +232,7 @@ impl<P: Protocol> Builder<P> {
 
     /// Selects an international character-set variant (`ESC R n`).
     #[must_use]
-    pub fn international(self, set: International) -> Self {
+    pub fn international(self, set: InternationalCharset) -> Self {
         self.raw([ESC, b'R', set.code()])
     }
 
@@ -441,9 +444,9 @@ impl Builder<Impact> {
     ///
     /// The [`BitImage`] was validated against the head width at
     /// construction, so this cannot fail. Build one from a picture with
-    /// the `pipeline` module (`image` feature), or directly via
+    /// `ImagePipeline` (`image` feature), or directly via
     /// [`Bitmap`](crate::graphics::Bitmap) /
-    /// [`Grayscale`](crate::dither::Grayscale).
+    /// [`Grayscale`](crate::graphics::Grayscale).
     #[must_use]
     pub fn bit_image(mut self, image: &BitImage) -> Self {
         let bitmap = &image.bitmap;
@@ -478,7 +481,7 @@ impl Builder<Impact> {
         let cmd = match font {
             ImpactFont::SevenByNine => b'M',
             ImpactFont::FiveByNine => b'P',
-            ImpactFont::FiveByNineLarge => b':',
+            ImpactFont::FiveByNineWide => b':',
         };
         self.raw([ESC, cmd])
     }
@@ -499,13 +502,13 @@ mod tests {
         let expected = [0x1B, b'@', 0x1B, 0x1D, b't', 1];
         assert_eq!(bytes(Builder::<StarLine>::new()), expected);
         assert_eq!(bytes(Builder::<Impact>::new()), expected);
-        assert_eq!(bytes(Builder::<StarLine>::empty()), []);
+        assert_eq!(bytes(Builder::<StarLine>::without_init()), []);
     }
 
     #[test]
     fn styling_commands() {
         let doc = bytes(
-            Builder::<StarLine>::empty()
+            Builder::<StarLine>::without_init()
                 .align(Alignment::Center)
                 .bold(true)
                 .underline(true)
@@ -526,18 +529,18 @@ mod tests {
     fn character_size_per_protocol() {
         // ESC W n / ESC h n carry multiplier - 1 on thermal printers.
         assert_eq!(
-            bytes(Builder::<StarLine>::empty().wide(2).tall(3)),
+            bytes(Builder::<StarLine>::without_init().wide(2).tall(3)),
             [0x1B, 0x57, 1, 0x1B, 0x68, 2]
         );
         // StarLine clamps to x6, and 0 is promoted to normal size.
         assert_eq!(
-            bytes(Builder::<StarLine>::empty().wide(9).tall(0)),
+            bytes(Builder::<StarLine>::without_init().wide(9).tall(0)),
             [0x1B, 0x57, 5, 0x1B, 0x68, 0]
         );
         // Impact only toggles double size.
         assert_eq!(
             bytes(
-                Builder::<Impact>::empty()
+                Builder::<Impact>::without_init()
                     .double_wide(true)
                     .double_tall(false)
             ),
@@ -548,7 +551,7 @@ mod tests {
     #[test]
     fn text_feed_cut_drawer() {
         let doc = bytes(
-            Builder::<StarLine>::empty()
+            Builder::<StarLine>::without_init()
                 .line("Café")
                 .feed(3)
                 .cut(Cut::FeedThenPartial)
@@ -567,17 +570,22 @@ mod tests {
 
     #[test]
     fn feed_is_clamped_to_command_range() {
-        assert_eq!(bytes(Builder::<StarLine>::empty().feed(0)), [0x1B, 0x61, 1]);
         assert_eq!(
-            bytes(Builder::<Impact>::empty().feed(200)),
+            bytes(Builder::<StarLine>::without_init().feed(0)),
+            [0x1B, 0x61, 1]
+        );
+        assert_eq!(
+            bytes(Builder::<Impact>::without_init().feed(200)),
             [0x1B, 0x61, 127]
         );
     }
 
     #[test]
     fn barcode_command() {
-        let code = Barcode::new(Symbology::Code128, "R-42").unwrap().hri(true);
-        let doc = bytes(Builder::<StarLine>::empty().barcode(&code));
+        let code = Barcode::new(Symbology::Code128, "R-42")
+            .unwrap()
+            .human_readable(true);
+        let doc = bytes(Builder::<StarLine>::without_init().barcode(&code));
         #[rustfmt::skip]
         assert_eq!(doc, [
             0x1B, b'b',
@@ -593,7 +601,7 @@ mod tests {
     #[test]
     fn qr_command() {
         let qr = QrCode::new("AB").unwrap();
-        let doc = bytes(Builder::<StarLine>::empty().qr_code(&qr));
+        let doc = bytes(Builder::<StarLine>::without_init().qr_code(&qr));
         #[rustfmt::skip]
         assert_eq!(doc, [
             0x1B, 0x1D, b'y', b'S', b'0', 2,        // model 2
@@ -608,7 +616,7 @@ mod tests {
     #[test]
     fn impact_two_color() {
         let doc = bytes(
-            Builder::<Impact>::empty()
+            Builder::<Impact>::without_init()
                 .two_color(true)
                 .color(Color::Red)
                 .color(Color::Black),

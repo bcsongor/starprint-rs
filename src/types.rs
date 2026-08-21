@@ -73,7 +73,7 @@ pub enum Drawer {
 /// region-specific glyphs, following the classic ISO 646 national variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
-pub enum International {
+pub enum InternationalCharset {
     /// USA (printer default).
     #[default]
     Usa,
@@ -109,7 +109,7 @@ pub enum International {
     Legal,
 }
 
-impl International {
+impl InternationalCharset {
     pub(crate) fn code(self) -> u8 {
         match self {
             Self::Usa => 0,
@@ -238,7 +238,7 @@ pub enum ImpactFont {
     /// 5×9 font (2P-1 pitch) — 35 columns.
     FiveByNine,
     /// 5×9 font (3P-1 pitch) — 23 wide columns.
-    FiveByNineLarge,
+    FiveByNineWide,
 }
 
 /// Print colour on two-colour (black/red ribbon) impact printers.

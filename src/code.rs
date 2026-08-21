@@ -92,7 +92,7 @@ impl Symbology {
 ///
 /// let code = Barcode::new(Symbology::Code128, "No.123456")?
 ///     .height(80)
-///     .hri(true);
+///     .human_readable(true);
 /// # Ok::<(), starprint::Error>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,7 +135,7 @@ impl Barcode {
 
     /// Prints the human-readable interpretation under the bars.
     #[must_use]
-    pub fn hri(mut self, on: bool) -> Self {
+    pub fn human_readable(mut self, on: bool) -> Self {
         self.hri = on;
         self
     }
@@ -148,7 +148,7 @@ impl Barcode {
     /// narrow:wide ratio. Out-of-range values are clamped — the printer
     /// would otherwise discard the whole command.
     #[must_use]
-    pub fn module(mut self, mode: u8) -> Self {
+    pub fn module_width(mut self, mode: u8) -> Self {
         self.module = mode.clamp(1, self.symbology.max_module());
         self
     }

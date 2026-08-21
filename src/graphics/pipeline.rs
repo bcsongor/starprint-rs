@@ -25,7 +25,7 @@
 //!
 //! ```no_run
 //! use starprint::graphics::Density;
-//! use starprint::pipeline::ImagePipeline;
+//! use starprint::graphics::ImagePipeline;
 //!
 //! let photo = std::fs::read("photo.jpg").unwrap();
 //! let prepared = ImagePipeline::new()
@@ -38,9 +38,9 @@
 use image::DynamicImage;
 use image::imageops::FilterType;
 
-use crate::dither::{Dither, Grayscale};
+use super::{BitImage, Density, DeviceProfile};
+use super::{Dithering, Grayscale};
 use crate::error::{Error, Result};
-use crate::graphics::{BitImage, Density, DeviceProfile};
 
 /// Gamma applied after auto-contrast; > 1 darkens midtones so they
 /// survive dithering on paper.
@@ -64,7 +64,7 @@ const DOUBLE_DENSITY_BRIGHTNESS: f64 = 1.2;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImagePipeline {
     density: Density,
-    dither: Dither,
+    dither: Dithering,
     brightness: f64,
     contrast: f64,
     profile: DeviceProfile,
@@ -82,7 +82,7 @@ impl ImagePipeline {
     pub fn new() -> Self {
         Self {
             density: Density::Single,
-            dither: Dither::default(),
+            dither: Dithering::default(),
             brightness: 1.0,
             contrast: 1.0,
             profile: DeviceProfile::SP700,
@@ -99,7 +99,7 @@ impl ImagePipeline {
     /// Sets the dithering algorithm (default: Floyd–Steinberg at
     /// threshold 128).
     #[must_use]
-    pub fn dither(mut self, dither: Dither) -> Self {
+    pub fn dither(mut self, dither: Dithering) -> Self {
         self.dither = dither;
         self
     }
@@ -183,8 +183,8 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
         contrast(&mut gray, options.contrast);
     }
 
-    let width = options.profile.width_dots(options.density);
-    let h_dpi = options.profile.horizontal_dpi(options.density);
+    let width = options.profile.max_width(options.density);
+    let h_dpi = options.profile.horizontal_dpi_at(options.density);
 
     // Print data: aspect-preserving width fit, then vertical compensation
     // for the anisotropic dot pitch.
@@ -438,16 +438,16 @@ mod tests {
     }
 
     fn src() -> Grayscale {
-        fixture(include_bytes!("../tests/fixtures/src.bin"))
+        fixture(include_bytes!("../../tests/fixtures/src.bin"))
     }
 
     #[test]
     fn autocontrast_matches_reference() {
-        let mut gray = fixture(include_bytes!("../tests/fixtures/src_low.bin"));
+        let mut gray = fixture(include_bytes!("../../tests/fixtures/src_low.bin"));
         autocontrast(&mut gray);
         assert_eq!(
             gray.pixels(),
-            include_bytes!("../tests/fixtures/autocontrast.bin")
+            include_bytes!("../../tests/fixtures/autocontrast.bin")
         );
     }
 
@@ -457,7 +457,7 @@ mod tests {
         apply_lut(&mut gray, &gamma_lut(1.8));
         assert_eq!(
             gray.pixels(),
-            include_bytes!("../tests/fixtures/gamma_1_8.bin")
+            include_bytes!("../../tests/fixtures/gamma_1_8.bin")
         );
     }
 
@@ -467,7 +467,7 @@ mod tests {
         equalize(&mut gray);
         assert_eq!(
             gray.pixels(),
-            include_bytes!("../tests/fixtures/equalize.bin")
+            include_bytes!("../../tests/fixtures/equalize.bin")
         );
     }
 
@@ -477,13 +477,13 @@ mod tests {
         brightness(&mut lifted, 1.2);
         assert_eq!(
             lifted.pixels(),
-            include_bytes!("../tests/fixtures/brightness_1_2.bin")
+            include_bytes!("../../tests/fixtures/brightness_1_2.bin")
         );
         let mut dimmed = src();
         brightness(&mut dimmed, 0.8);
         assert_eq!(
             dimmed.pixels(),
-            include_bytes!("../tests/fixtures/brightness_0_8.bin")
+            include_bytes!("../../tests/fixtures/brightness_0_8.bin")
         );
     }
 
@@ -493,7 +493,7 @@ mod tests {
         contrast(&mut gray, 1.3);
         assert_eq!(
             gray.pixels(),
-            include_bytes!("../tests/fixtures/contrast_1_3.bin")
+            include_bytes!("../../tests/fixtures/contrast_1_3.bin")
         );
     }
 

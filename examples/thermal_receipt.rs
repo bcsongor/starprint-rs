@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .bold(false)
         .feed(1)
         .align(Alignment::Center)
-        .barcode(&Barcode::new(Symbology::Code128, "R-000042")?.hri(true))
+        .barcode(&Barcode::new(Symbology::Code128, "R-000042")?.human_readable(true))
         .feed(1)
         .qr_code(&QrCode::new("https://example.com/receipt/42")?)
         .feed(1)

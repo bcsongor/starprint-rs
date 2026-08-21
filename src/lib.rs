@@ -16,11 +16,11 @@
 //! printing on TCP port 9100) ships in the box as
 //! [`TcpTransport`](transport::TcpTransport).
 //!
-//! Impact printers can also print pictures: the dependency-free
-//! [`graphics`] and [`dither`] modules cover 1-bit rasters and dithering,
-//! and the optional `image` cargo feature adds the `pipeline` module — a
-//! hardware-tuned decode/tone-map/resize pipeline that turns a photo into
-//! a print-ready [`BitImage`](graphics::BitImage).
+//! Impact printers can also print pictures: the [`graphics`] module covers
+//! 1-bit rasters and dithering without dependencies, and the optional
+//! `image` cargo feature adds `graphics::ImagePipeline` — a
+//! hardware-tuned decode/tone-map/resize pipeline that turns a photo
+//! into a print-ready [`BitImage`](graphics::BitImage).
 //!
 //! # Quick start
 //!
@@ -61,17 +61,15 @@ mod document;
 mod error;
 mod types;
 
-pub mod dither;
 pub mod graphics;
-#[cfg(feature = "image")]
-pub mod pipeline;
 pub mod transport;
 
 pub use code::{Barcode, QrCode, QrErrorCorrection, QrModel, Symbology};
 pub use document::{Builder, Document, Impact, Protocol, StarLine};
 pub use error::{Error, Result};
 pub use types::{
-    Alignment, CodePage, Color, Cut, Drawer, ImpactFont, International, LineSpacing, ThermalFont,
+    Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
+    ThermalFont,
 };
 
 /// Starts a document for a **Star Line Mode** (thermal) printer.
