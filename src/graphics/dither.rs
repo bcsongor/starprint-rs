@@ -59,6 +59,12 @@ impl Grayscale {
         &self.pixels
     }
 
+    /// Consumes the image, returning the row-major pixel data.
+    #[must_use]
+    pub fn into_pixels(self) -> Vec<u8> {
+        self.pixels
+    }
+
     /// Mutable access for in-place pipeline stages.
     #[cfg(feature = "image")]
     pub(crate) fn pixels_mut(&mut self) -> &mut [u8] {

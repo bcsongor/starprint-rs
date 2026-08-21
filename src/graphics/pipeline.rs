@@ -196,14 +196,18 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
             reason: "image is too wide and short to print at this width".into(),
         });
     }
-    let print_gray = options.dither.apply(&resize(&gray, width, compensated_h));
+    // Hand the tone-mapped pixels to the `image` crate once (no copy) and
+    // resample from it for both the print data and the preview.
+    let full = image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
+        .expect("buffer sized from dimensions");
+    let print_gray = options.dither.apply(&resize(&full, width, compensated_h));
     let image = BitImage::with_profile(print_gray.to_bitmap(), options.density, &options.profile)?;
 
     // Preview: dither at print width and display height (square pixels),
     // then simulate double-density dot overlap by min-pooling pairs.
     let display_w = options.profile.width_dots_single;
     let display_h = ratio_round(src_h, display_w, src_w).max(1);
-    let preview_gray = options.dither.apply(&resize(&gray, width, display_h));
+    let preview_gray = options.dither.apply(&resize(&full, width, display_h));
     let preview = if width == display_w {
         preview_gray
     } else {
@@ -220,19 +224,44 @@ fn ratio_round(a: u32, b: u32, c: u32) -> u32 {
 
 /// Flattens transparency onto white and converts to grayscale with
 /// Pillow's "L" formula (rounded ITU-R 601-2 luma).
+///
+/// The common 8-bit layouts are read in place; anything else goes
+/// through an RGBA8 conversion first. All paths produce identical bytes.
 fn to_grayscale_on_white(source: &DynamicImage) -> Grayscale {
-    let rgba = source.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    let pixels = rgba
-        .pixels()
-        .map(|px| {
-            let [r, g, b, a] = px.0;
-            let over_white =
-                |c: u8| (u32::from(c) * u32::from(a) + 255 * (255 - u32::from(a)) + 127) / 255;
-            let (r, g, b) = (over_white(r), over_white(g), over_white(b));
-            ((r * 19595 + g * 38470 + b * 7471 + 0x8000) >> 16) as u8
-        })
-        .collect();
+    fn over_white(c: u8, a: u8) -> u32 {
+        (u32::from(c) * u32::from(a) + 255 * (255 - u32::from(a)) + 127) / 255
+    }
+    fn luma(r: u32, g: u32, b: u32) -> u8 {
+        ((r * 19595 + g * 38470 + b * 7471 + 0x8000) >> 16) as u8
+    }
+    fn rgba_to_luma(raw: &[u8]) -> Vec<u8> {
+        raw.chunks_exact(4)
+            .map(|p| {
+                luma(
+                    over_white(p[0], p[3]),
+                    over_white(p[1], p[3]),
+                    over_white(p[2], p[3]),
+                )
+            })
+            .collect()
+    }
+
+    let (width, height) = (source.width(), source.height());
+    let pixels = match source {
+        DynamicImage::ImageLuma8(img) => img.as_raw().clone(),
+        DynamicImage::ImageLumaA8(img) => img
+            .as_raw()
+            .chunks_exact(2)
+            .map(|p| over_white(p[0], p[1]) as u8)
+            .collect(),
+        DynamicImage::ImageRgb8(img) => img
+            .as_raw()
+            .chunks_exact(3)
+            .map(|p| luma(u32::from(p[0]), u32::from(p[1]), u32::from(p[2])))
+            .collect(),
+        DynamicImage::ImageRgba8(img) => rgba_to_luma(img.as_raw()),
+        other => rgba_to_luma(other.to_rgba8().as_raw()),
+    };
     Grayscale::new(width, height, pixels).expect("buffer sized from dimensions")
 }
 
@@ -361,40 +390,60 @@ fn unsharp_mask(gray: &Grayscale, radius: f64, percent: i32, threshold: i32) -> 
 }
 
 /// Separable Gaussian blur with `sigma = radius` and clamped edges.
+///
+/// Both passes run row by row over contiguous memory (the horizontal pass
+/// over an edge-padded copy of each row, the vertical pass by accumulating
+/// whole source rows into the output row), which keeps the inner loops
+/// cache-friendly and auto-vectorisable.
 fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
-    let taps = std::cmp::max(1, (sigma * 3.0).ceil() as i64);
-    let mut kernel: Vec<f64> = (-taps..=taps)
-        .map(|i| (-((i * i) as f64) / (2.0 * sigma * sigma)).exp())
-        .collect();
-    let sum: f64 = kernel.iter().sum();
-    for k in &mut kernel {
-        *k /= sum;
-    }
+    let taps = std::cmp::max(1, (sigma * 3.0).ceil() as usize);
+    let kernel: Vec<f32> = {
+        let raw: Vec<f64> = (0..=2 * taps)
+            .map(|i| {
+                let d = i as f64 - taps as f64;
+                (-(d * d) / (2.0 * sigma * sigma)).exp()
+            })
+            .collect();
+        let sum: f64 = raw.iter().sum();
+        raw.iter().map(|k| (k / sum) as f32).collect()
+    };
 
-    let (w, h) = (i64::from(gray.width()), i64::from(gray.height()));
+    let (w, h) = (gray.width() as usize, gray.height() as usize);
     let src = gray.pixels();
 
-    // Horizontal pass into f64, vertical pass back to u8 (rounded).
-    let mut mid = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut acc = 0.0;
-            for (k, weight) in kernel.iter().enumerate() {
-                let sx = (x + k as i64 - taps).clamp(0, w - 1);
-                acc += weight * f64::from(src[(y * w + sx) as usize]);
-            }
-            mid[(y * w + x) as usize] = acc;
+    // Horizontal pass: each row is edge-padded by `taps` so every output
+    // pixel is a plain dot product with the kernel.
+    let mut mid = vec![0f32; w * h];
+    let mut padded = vec![0f32; w + 2 * taps];
+    for (row, out_row) in src.chunks_exact(w).zip(mid.chunks_exact_mut(w)) {
+        padded[..taps].fill(f32::from(row[0]));
+        padded[taps + w..].fill(f32::from(row[w - 1]));
+        for (dst, &p) in padded[taps..taps + w].iter_mut().zip(row) {
+            *dst = f32::from(p);
+        }
+        for (x, out) in out_row.iter_mut().enumerate() {
+            *out = padded[x..x + kernel.len()]
+                .iter()
+                .zip(&kernel)
+                .map(|(v, k)| v * k)
+                .sum();
         }
     }
-    let mut out = vec![0u8; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut acc = 0.0;
-            for (k, weight) in kernel.iter().enumerate() {
-                let sy = (y + k as i64 - taps).clamp(0, h - 1);
-                acc += weight * mid[(sy * w + x) as usize];
+
+    // Vertical pass: accumulate weighted (edge-clamped) source rows.
+    let mut out = vec![0u8; w * h];
+    let mut acc = vec![0f32; w];
+    for (y, out_row) in out.chunks_exact_mut(w).enumerate() {
+        acc.fill(0.0);
+        for (k, &weight) in kernel.iter().enumerate() {
+            let sy = (y + k).saturating_sub(taps).min(h - 1);
+            let row = &mid[sy * w..(sy + 1) * w];
+            for (a, &v) in acc.iter_mut().zip(row) {
+                *a += weight * v;
             }
-            out[(y * w + x) as usize] = acc.round().clamp(0.0, 255.0) as u8;
+        }
+        for (o, &a) in out_row.iter_mut().zip(&acc) {
+            *o = a.round().clamp(0.0, 255.0) as u8;
         }
     }
     Grayscale::new(gray.width(), gray.height(), out).expect("same dimensions")
@@ -402,10 +451,8 @@ fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
 
 /// Lanczos3 resize via the `image` crate (the counterpart of Pillow's
 /// `LANCZOS` resampling).
-fn resize(gray: &Grayscale, width: u32, height: u32) -> Grayscale {
-    let buffer = image::GrayImage::from_raw(gray.width(), gray.height(), gray.pixels().to_vec())
-        .expect("buffer sized from dimensions");
-    let resized = image::imageops::resize(&buffer, width, height, FilterType::Lanczos3);
+fn resize(source: &image::GrayImage, width: u32, height: u32) -> Grayscale {
+    let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
     Grayscale::new(width, height, resized.into_raw()).expect("buffer sized from dimensions")
 }
 
