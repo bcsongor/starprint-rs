@@ -1,9 +1,11 @@
-//! Bit-image graphics for impact printers.
+//! Bit-image and raster graphics.
 //!
 //! Everything needed to put a picture on paper:
 //!
 //! * [`Bitmap`] (1-bit) and [`BitImage`] (a bitmap validated against the
-//!   head width, ready for [`bit_image`](crate::Builder::bit_image));
+//!   head width). Impact printers print either via
+//!   [`bit_image`](crate::Builder::bit_image); thermal printers via
+//!   [`raster`](crate::Builder::raster);
 //! * [`Grayscale`] (8-bit) and [`Dithering`] to reduce it to 1 bit;
 //! * with the `image` cargo feature, `ImagePipeline` — decode, tone
 //!   mapping and resizing tuned on real hardware, producing a
@@ -48,8 +50,9 @@ pub enum Density {
 /// Physical characteristics of a printer's head and paper, used to size
 /// and proportion images.
 ///
-/// The values were measured on real hardware; [`DeviceProfile::SP700`]
-/// covers the SP700 series (and most Star dot-impact printers).
+/// [`DeviceProfile::SP700`] was measured on real hardware and covers the
+/// SP700 series (and most Star dot-impact printers); the thermal profiles
+/// follow the printers' published 8 dots/mm geometry.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceProfile {
     /// Human-readable name of the device or family.
@@ -73,6 +76,39 @@ impl DeviceProfile {
         horizontal_dpi: (210.0 * 25.4) / 63.0,
         width_dots_single: 210,
         width_dots_double: 420,
+    };
+
+    /// 80 mm Star Line Mode thermal printers (TSP650II, TSP700II, TSP100 in
+    /// Line Mode, TSP800II on 80 mm paper): a 72 mm print width at 8 dots/mm
+    /// = 576 dots, isotropic 203.2 DPI. Thermal heads have no horizontal
+    /// double-density mode, so [`Density`] makes no difference here.
+    pub const THERMAL_80MM: Self = Self {
+        name: "Star 80 mm thermal",
+        vertical_dpi: 203.2,
+        horizontal_dpi: 203.2,
+        width_dots_single: 576,
+        width_dots_double: 576,
+    };
+
+    /// TSP800II on 112 mm paper: a 104 mm print width = 832 dots.
+    pub const THERMAL_112MM: Self = Self {
+        name: "Star TSP800II 112 mm",
+        vertical_dpi: 203.2,
+        horizontal_dpi: 203.2,
+        width_dots_single: 832,
+        width_dots_double: 832,
+    };
+
+    /// TSP700II in double-resolution print mode
+    /// ([`PrintMode::DoubleResolution`](crate::PrintMode::DoubleResolution)):
+    /// still 576 dots wide, but the paper is fed at half pitch, so images
+    /// need twice the rows (406.4 DPI vertically).
+    pub const TSP700II_DOUBLE_RESOLUTION: Self = Self {
+        name: "Star TSP700II (double resolution)",
+        vertical_dpi: 406.4,
+        horizontal_dpi: 203.2,
+        width_dots_single: 576,
+        width_dots_double: 576,
     };
 
     /// The maximum printable width in dots at the given density.
@@ -194,6 +230,43 @@ impl BitImage {
         }
         Ok(Self { bitmap, density })
     }
+
+    /// The underlying 1-bit raster.
+    #[must_use]
+    pub fn bitmap(&self) -> &Bitmap {
+        &self.bitmap
+    }
+
+    /// The density this image was validated for.
+    #[must_use]
+    pub fn density(&self) -> Density {
+        self.density
+    }
+}
+
+impl AsRef<Bitmap> for Bitmap {
+    fn as_ref(&self) -> &Bitmap {
+        self
+    }
+}
+
+impl AsRef<Bitmap> for BitImage {
+    fn as_ref(&self) -> &Bitmap {
+        &self.bitmap
+    }
+}
+
+/// Packs one dot row for raster commands: each byte holds 8 horizontal
+/// dots, most significant bit leftmost, `1` = ink; the last byte is padded
+/// with blank dots.
+pub(crate) fn pack_row(bitmap: &Bitmap, y: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (bitmap.width as usize).div_ceil(8)];
+    for x in 0..bitmap.width {
+        if bitmap.get(x, y) {
+            out[(x / 8) as usize] |= 0x80 >> (x % 8);
+        }
+    }
+    out
 }
 
 /// Packs one 9-row stripe starting at row `top` into `ESC ^` column data:
@@ -234,6 +307,15 @@ mod tests {
         assert!(BitImage::new(too_wide, Density::Double).is_ok());
         let empty = Bitmap::from_fn(0, 5, |_, _| true);
         assert!(BitImage::new(empty, Density::Single).is_err());
+    }
+
+    #[test]
+    fn row_packing_is_msb_first_and_padded() {
+        // 10 dots wide: ink at x = 0, 7, 8 → 0b1000_0001, 0b1000_0000.
+        let bmp = Bitmap::from_fn(10, 1, |x, _| matches!(x, 0 | 7 | 8));
+        assert_eq!(pack_row(&bmp, 0), [0b1000_0001, 0b1000_0000]);
+        // Out-of-range rows are blank.
+        assert_eq!(pack_row(&bmp, 5), [0, 0]);
     }
 
     #[test]

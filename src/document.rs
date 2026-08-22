@@ -25,10 +25,10 @@ use std::marker::PhantomData;
 
 use crate::code::{Barcode, QrCode, QrErrorCorrection, QrModel};
 use crate::cp437;
-use crate::graphics::{self, BitImage, Density};
+use crate::graphics::{self, BitImage, Bitmap, Density};
 use crate::types::{
     Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
-    ThermalFont,
+    PrintMode, RasterQuality, ThermalFont,
 };
 
 const ESC: u8 = 0x1B;
@@ -337,6 +337,71 @@ impl Builder<StarLine> {
         self.raw([ESC, b'z', n])
     }
 
+    /// Selects the printer-wide print mode (`ESC RS C n`): single colour,
+    /// two-colour paper, low power, or the TSP700II's double-resolution
+    /// mode.
+    ///
+    /// The setting is applied after the current print job and **survives
+    /// `ESC @`**, so switch back to [`PrintMode::SingleColor`] at the end of
+    /// a document that changed it.
+    #[must_use]
+    pub fn print_mode(self, mode: PrintMode) -> Self {
+        self.raw([ESC, 0x1E, b'C', mode.code()])
+    }
+
+    /// Sets print density (`ESC RS d n`): `0` is darkest (+3), `3` is the
+    /// printer's standard, `6` is lightest (−3). Values above 6 are clamped.
+    ///
+    /// Heavier density darkens dithered graphics; lighter density can tame
+    /// heat-related banding in dense areas.
+    #[must_use]
+    pub fn print_density(self, level: u8) -> Self {
+        self.raw([ESC, 0x1E, b'd', level.min(6)])
+    }
+
+    /// Prints a bitmap through Star Line Mode's raster mode — the
+    /// banding-free path for graphics, one contiguous dot row per command
+    /// rather than fixed-height stripes.
+    ///
+    /// Emits `ESC * r A` (enter raster mode), continuous page length,
+    /// an end-of-transmission mode that only prints (no automatic cut), the
+    /// requested [`RasterQuality`], one `b n1 n2 …` command per dot row,
+    /// and `ESC * r B` to print any remaining rows and return to line mode
+    /// at the top of a fresh line. Rows wider than the printer's print area
+    /// are cropped by the printer.
+    ///
+    /// Accepts a [`Bitmap`] or a [`BitImage`] (e.g. from `ImagePipeline`
+    /// with a thermal [`DeviceProfile`](crate::graphics::DeviceProfile)).
+    /// For the
+    /// TSP700II's double-resolution mode, prepare the image with
+    /// [`DeviceProfile::TSP700II_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::TSP700II_DOUBLE_RESOLUTION)
+    /// and select [`PrintMode::DoubleResolution`] first.
+    #[must_use]
+    pub fn raster(mut self, image: impl AsRef<Bitmap>, quality: RasterQuality) -> Self {
+        let bitmap = image.as_ref();
+        if bitmap.width() == 0 || bitmap.height() == 0 {
+            return self;
+        }
+        // Raster settings are reset on entry, so they must follow ESC * r A.
+        // Numeric parameters are ASCII decimal digits terminated by NUL.
+        self.buf.extend_from_slice(&[ESC, b'*', b'r', b'A']);
+        self.buf
+            .extend_from_slice(&[ESC, b'*', b'r', b'P', b'0', 0]); // continuous length
+        self.buf
+            .extend_from_slice(&[ESC, b'*', b'r', b'E', b'1', 0]); // EOT: print only
+        self.buf
+            .extend_from_slice(&[ESC, b'*', b'r', b'Q', quality.code(), 0]);
+
+        let bytes_per_row = bitmap.width().div_ceil(8);
+        let [n1, n2] = (bytes_per_row as u16).to_le_bytes();
+        for y in 0..bitmap.height() {
+            self.buf.extend_from_slice(&[b'b', n1, n2]);
+            self.buf.extend_from_slice(&graphics::pack_row(bitmap, y));
+        }
+        self.buf.extend_from_slice(&[ESC, b'*', b'r', b'B']);
+        self
+    }
+
     /// Prints a one-dimensional barcode (`ESC b n1 n2 n3 n4 … RS`).
     ///
     /// The payload was validated when the [`Barcode`] was constructed, so
@@ -610,6 +675,47 @@ mod tests {
             0x1B, 0x1D, b'y', b'D', b'1', 0, 2, 0,  // store 2 bytes, auto mode
             b'A', b'B',
             0x1B, 0x1D, b'y', b'P',                 // print
+        ]);
+    }
+
+    #[test]
+    fn thermal_raster_command_stream() {
+        // 10 x 2 dots: row 0 inks x = 0 and x = 9, row 1 inks x = 3.
+        let bmp = Bitmap::from_fn(10, 2, |x, y| {
+            (y == 0 && (x == 0 || x == 9)) || (y == 1 && x == 3)
+        });
+        let doc = bytes(Builder::<StarLine>::without_init().raster(&bmp, RasterQuality::High));
+        #[rustfmt::skip]
+        assert_eq!(doc, [
+            0x1B, b'*', b'r', b'A',             // enter raster mode
+            0x1B, b'*', b'r', b'P', b'0', 0,    // continuous page length
+            0x1B, b'*', b'r', b'E', b'1', 0,    // EOT mode: print, no cut
+            0x1B, b'*', b'r', b'Q', b'2', 0,    // high quality
+            b'b', 2, 0, 0b1000_0000, 0b0100_0000,
+            b'b', 2, 0, 0b0001_0000, 0b0000_0000,
+            0x1B, b'*', b'r', b'B',             // quit raster mode
+        ]);
+        // A BitImage is accepted as a bitmap too, and empty images emit nothing.
+        let empty = Bitmap::from_fn(0, 0, |_, _| false);
+        assert_eq!(
+            bytes(Builder::<StarLine>::without_init().raster(&empty, RasterQuality::Normal)),
+            []
+        );
+    }
+
+    #[test]
+    fn thermal_print_mode_and_density() {
+        let doc = bytes(
+            Builder::<StarLine>::without_init()
+                .print_mode(PrintMode::DoubleResolution)
+                .print_density(9)
+                .print_mode(PrintMode::SingleColor),
+        );
+        #[rustfmt::skip]
+        assert_eq!(doc, [
+            0x1B, 0x1E, b'C', 32,
+            0x1B, 0x1E, b'd', 6,   // clamped
+            0x1B, 0x1E, b'C', 0,
         ]);
     }
 

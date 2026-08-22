@@ -218,6 +218,63 @@ impl ThermalFont {
     }
 }
 
+/// Printer-wide print mode on thermal printers, selected with `ESC RS C n`.
+///
+/// The setting persists across `ESC @`, so switch back to
+/// [`SingleColor`](Self::SingleColor) explicitly when done. Not every model
+/// implements every mode — see the printer's own specification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum PrintMode {
+    /// Normal single-colour printing (printer default).
+    #[default]
+    SingleColor,
+    /// Two-colour printing on red/black or blue/black thermal paper
+    /// (TSP700II, TSP800II).
+    TwoColor,
+    /// Low peak-current mode for weak power supplies; print speed is fixed.
+    LowPower,
+    /// Double-resolution mode (TSP700II): the paper is fed at half pitch,
+    /// giving 16 dot rows per millimetre vertically instead of 8. Prepare
+    /// images with
+    /// [`DeviceProfile::TSP700II_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::TSP700II_DOUBLE_RESOLUTION).
+    DoubleResolution,
+}
+
+impl PrintMode {
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::SingleColor => 0,
+            Self::TwoColor => 1,
+            Self::LowPower => 16,
+            Self::DoubleResolution => 32,
+        }
+    }
+}
+
+/// Speed/quality trade-off for raster graphics, set with `ESC * r Q n`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RasterQuality {
+    /// Fastest printing.
+    HighSpeed,
+    /// The printer's normal quality (raster-mode default).
+    #[default]
+    Normal,
+    /// Slowest, highest quality — the setting for photographs.
+    High,
+}
+
+impl RasterQuality {
+    /// The ASCII digit the command expects.
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::HighSpeed => b'0',
+            Self::Normal => b'1',
+            Self::High => b'2',
+        }
+    }
+}
+
 /// Line-feed pitch on thermal printers, selected with `ESC z n`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LineSpacing {

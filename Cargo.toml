@@ -23,3 +23,7 @@ image = ["dep:image"]
 [[example]]
 name = "impact_image"
 required-features = ["image"]
+
+[[example]]
+name = "thermal_image"
+required-features = ["image"]

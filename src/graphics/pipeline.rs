@@ -1,7 +1,9 @@
 //! Image preparation pipeline (requires the `image` cargo feature).
 //!
 //! Turns an ordinary picture into a print-ready [`BitImage`] using the
-//! tone-mapping pipeline that was dialled in on real SP700 hardware:
+//! tone-mapping pipeline that was dialled in on real SP700 hardware (the
+//! thermal [`DeviceProfile`]s reuse the same tuning; only the geometry
+//! differs):
 //!
 //! 1. flatten transparency onto white and convert to 8-bit grayscale,
 //! 2. auto-contrast (linear histogram stretch),
@@ -558,6 +560,25 @@ mod tests {
         // Preview keeps square pixels at display width.
         assert_eq!(prepared.preview.width(), 210);
         assert_eq!(prepared.preview.height(), 158);
+    }
+
+    #[test]
+    fn thermal_double_resolution_doubles_the_rows() {
+        // 400x300 at 576 dots wide: aspect height round(300 * 576 / 400) = 432;
+        // at 406.4 DPI vertical vs 203.2 horizontal that becomes 864 rows.
+        let source = DynamicImage::new_luma8(400, 300);
+        let prepared = ImagePipeline::new()
+            .profile(DeviceProfile::TSP700II_DOUBLE_RESOLUTION)
+            .prepare(&source)
+            .unwrap();
+        assert_eq!(prepared.image.bitmap().width(), 576);
+        assert_eq!(prepared.image.bitmap().height(), 864);
+        // Single resolution keeps the aspect ratio as-is.
+        let prepared = ImagePipeline::new()
+            .profile(DeviceProfile::THERMAL_80MM)
+            .prepare(&source)
+            .unwrap();
+        assert_eq!(prepared.image.bitmap().height(), 432);
     }
 
     #[test]
