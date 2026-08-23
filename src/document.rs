@@ -374,7 +374,7 @@ impl Builder<StarLine> {
     /// with a thermal [`DeviceProfile`](crate::graphics::DeviceProfile)).
     /// For the
     /// TSP700II's double-resolution mode, prepare the image with
-    /// [`DeviceProfile::TSP700II_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::TSP700II_DOUBLE_RESOLUTION)
+    /// [`DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
     /// and select [`PrintMode::DoubleResolution`] first.
     #[must_use]
     pub fn raster(mut self, image: impl AsRef<Bitmap>, quality: RasterQuality) -> Self {

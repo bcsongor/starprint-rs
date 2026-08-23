@@ -99,16 +99,27 @@ impl DeviceProfile {
         width_dots_double: 832,
     };
 
-    /// TSP700II in double-resolution print mode
-    /// ([`PrintMode::DoubleResolution`](crate::PrintMode::DoubleResolution)):
-    /// still 576 dots wide, but the paper is fed at half pitch, so images
-    /// need twice the rows (406.4 DPI vertically).
-    pub const TSP700II_DOUBLE_RESOLUTION: Self = Self {
-        name: "Star TSP700II (double resolution)",
+    /// 80 mm paper in double-resolution print mode
+    /// ([`PrintMode::DoubleResolution`](crate::PrintMode::DoubleResolution),
+    /// available on the TSP700II and TSP800II): still 576 dots wide, but
+    /// the paper is fed at half pitch, so images need twice the rows
+    /// (406.4 DPI vertically).
+    pub const THERMAL_80MM_DOUBLE_RESOLUTION: Self = Self {
+        name: "Star 80 mm thermal (double resolution)",
         vertical_dpi: 406.4,
         horizontal_dpi: 203.2,
         width_dots_single: 576,
         width_dots_double: 576,
+    };
+
+    /// 112 mm paper (TSP800II) in double-resolution print mode: 832 dots
+    /// wide, 406.4 DPI vertically.
+    pub const THERMAL_112MM_DOUBLE_RESOLUTION: Self = Self {
+        name: "Star 112 mm thermal (double resolution)",
+        vertical_dpi: 406.4,
+        horizontal_dpi: 203.2,
+        width_dots_single: 832,
+        width_dots_double: 832,
     };
 
     /// The maximum printable width in dots at the given density.

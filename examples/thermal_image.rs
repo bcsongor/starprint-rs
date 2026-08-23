@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let profile = if double {
-        DeviceProfile::TSP700II_DOUBLE_RESOLUTION
+        DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION
     } else {
         DeviceProfile::THERMAL_80MM
     };

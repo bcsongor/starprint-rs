@@ -53,7 +53,7 @@ histogram equalisation, a brightness lift at impact double density
 horizontal/vertical resolution, then dithering (Floyd–Steinberg by
 default; Atkinson, Bayer 8×8 and plain threshold are available). A
 `DeviceProfile` describes the target head: `SP700`, `THERMAL_80MM`,
-`THERMAL_112MM`, `TSP700II_DOUBLE_RESOLUTION`.
+`THERMAL_112MM`, `THERMAL_80MM_DOUBLE_RESOLUTION`.
 
 Impact printers take the result through the SP700's 9-dot bit-image mode:
 
@@ -77,7 +77,7 @@ use starprint::graphics::{DeviceProfile, ImagePipeline};
 use starprint::{PrintMode, RasterQuality};
 
 let prepared = ImagePipeline::new()
-    .profile(DeviceProfile::TSP700II_DOUBLE_RESOLUTION)
+    .profile(DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
     .prepare_bytes(&std::fs::read("photo.jpg")?)?;
 
 let doc = starprint::starline()

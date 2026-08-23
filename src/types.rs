@@ -234,10 +234,10 @@ pub enum PrintMode {
     TwoColor,
     /// Low peak-current mode for weak power supplies; print speed is fixed.
     LowPower,
-    /// Double-resolution mode (TSP700II): the paper is fed at half pitch,
+    /// Double-resolution mode (TSP700II, TSP800II): the paper is fed at half pitch,
     /// giving 16 dot rows per millimetre vertically instead of 8. Prepare
     /// images with
-    /// [`DeviceProfile::TSP700II_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::TSP700II_DOUBLE_RESOLUTION).
+    /// [`DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION).
     DoubleResolution,
 }
 

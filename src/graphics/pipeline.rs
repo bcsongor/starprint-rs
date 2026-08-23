@@ -568,7 +568,7 @@ mod tests {
         // at 406.4 DPI vertical vs 203.2 horizontal that becomes 864 rows.
         let source = DynamicImage::new_luma8(400, 300);
         let prepared = ImagePipeline::new()
-            .profile(DeviceProfile::TSP700II_DOUBLE_RESOLUTION)
+            .profile(DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
             .prepare(&source)
             .unwrap();
         assert_eq!(prepared.image.bitmap().width(), 576);
