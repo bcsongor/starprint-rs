@@ -28,7 +28,7 @@ use crate::cp437;
 use crate::graphics::{self, BitImage, Bitmap, Density};
 use crate::types::{
     Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
-    PrintMode, RasterQuality, ThermalFont,
+    PrintMode, PrintSpeed, RasterQuality, ThermalFont,
 };
 
 const ESC: u8 = 0x1B;
@@ -347,6 +347,16 @@ impl Builder<StarLine> {
     #[must_use]
     pub fn print_mode(self, mode: PrintMode) -> Self {
         self.raw([ESC, 0x1E, b'C', mode.code()])
+    }
+
+    /// Sets the line-mode print speed (`ESC RS r n`).
+    ///
+    /// The printer finishes whatever it is printing before the new speed
+    /// takes effect. Ignored in double-resolution, two-colour and low-power
+    /// modes; use [`RasterQuality`] to slow raster graphics down instead.
+    #[must_use]
+    pub fn print_speed(self, speed: PrintSpeed) -> Self {
+        self.raw([ESC, 0x1E, b'r', speed.code()])
     }
 
     /// Sets print density (`ESC RS d n`): `0` is darkest (+3), `3` is the
@@ -704,16 +714,18 @@ mod tests {
     }
 
     #[test]
-    fn thermal_print_mode_and_density() {
+    fn thermal_print_mode_speed_and_density() {
         let doc = bytes(
             Builder::<StarLine>::without_init()
                 .print_mode(PrintMode::DoubleResolution)
+                .print_speed(PrintSpeed::Slow)
                 .print_density(9)
                 .print_mode(PrintMode::SingleColor),
         );
         #[rustfmt::skip]
         assert_eq!(doc, [
             0x1B, 0x1E, b'C', 32,
+            0x1B, 0x1E, b'r', 2,
             0x1B, 0x1E, b'd', 6,   // clamped
             0x1B, 0x1E, b'C', 0,
         ]);

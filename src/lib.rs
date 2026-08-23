@@ -70,7 +70,7 @@ pub use document::{Builder, Document, Impact, Protocol, StarLine};
 pub use error::{Error, Result};
 pub use types::{
     Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
-    PrintMode, RasterQuality, ThermalFont,
+    PrintMode, PrintSpeed, RasterQuality, ThermalFont,
 };
 
 /// Starts a document for a **Star Line Mode** (thermal) printer.

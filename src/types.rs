@@ -252,6 +252,41 @@ impl PrintMode {
     }
 }
 
+/// Line-mode print speed on thermal printers, set with `ESC RS r n`.
+///
+/// Slower printing gives the head more time to heat each row, which
+/// darkens and evens out dense output and reduces heat-related banding;
+/// it is the setting to reach for on photos and heavy logos printed in
+/// line mode, and the gentle setting for an older head.
+///
+/// Values follow the "Spec. A" table used by the TSP700II, TSP800II,
+/// TSP650II and FVP10. (The TUP500 and TSP650IISK read `0` as "standard"
+/// and have a separate "high" — see their manuals.) The command is
+/// ignored while [`PrintMode::DoubleResolution`], [`PrintMode::TwoColor`]
+/// or [`PrintMode::LowPower`] is active: those modes print at one fixed
+/// speed. For raster graphics the equivalent control is
+/// [`RasterQuality`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PrintSpeed {
+    /// Full speed (printer default on most models).
+    #[default]
+    High,
+    /// Mid speed.
+    Medium,
+    /// Slow speed — best quality in line mode.
+    Slow,
+}
+
+impl PrintSpeed {
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::High => 0,
+            Self::Medium => 1,
+            Self::Slow => 2,
+        }
+    }
+}
+
 /// Speed/quality trade-off for raster graphics, set with `ESC * r Q n`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum RasterQuality {
