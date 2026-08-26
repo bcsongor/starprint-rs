@@ -1,61 +1,77 @@
+<div align="center">
+
 # starprint
 
-Rust library for Star Micronics receipt printers over Ethernet.
+**Rust driver for Star Micronics receipt printers over Ethernet**
 
-Two command sets are implemented:
+Build a receipt, ticket or photo with a typed builder and send it to the printer on port 9100.
 
-| Command set | Printers | Entry point |
-|---|---|---|
-| Star Line Mode | Thermal: TSP100 (Line Mode), TSP650II, TSP700II, TSP800II | `starprint::starline()` |
-| Star Mode, dot impact | SP700 series: SP712, SP742, SP717, SP747 | `starprint::impact()` |
+</div>
 
-The core has no dependencies. A `Builder` renders a `Document` (plain
-bytes); a `Transport` sends it. `TcpTransport` speaks raw-socket printing
-on port 9100, which every networked Star printer accepts. Other links can
-be added by implementing the one-method `Transport` trait.
+## Install
 
-Each builder only has the methods its printer understands: `qr_code`
-exists on the thermal builder, red/black `color` on the impact builder,
-and calling the wrong one is a compile error. Command bytes follow Star's
-published manuals (*Star Line Mode Command Specifications*; *Dot Impact
-Printer STAR Command Specifications*).
+```toml
+[dependencies]
+starprint = { git = "https://github.com/bcsongor/starprint-rs" }
+```
 
-## Example
+Add `features = ["image"]` to print photos.
+
+## Quickstart
 
 ```rust
 use starprint::{Alignment, Cut, QrCode};
 use starprint::transport::TcpTransport;
 
-let receipt = starprint::starline()
-    .align(Alignment::Center)
-    .wide(2).tall(2)
-    .line("ACME STORE")
-    .wide(1).tall(1)
-    .align(Alignment::Left)
-    .line("1x Flat white           4.20")
-    .qr_code(&QrCode::new("https://example.com/r/42")?)
-    .cut(Cut::FeedThenPartial)
-    .build();
+fn main() -> Result<(), starprint::Error> {
+    let receipt = starprint::starline()
+        .align(Alignment::Center)
+        .wide(2).tall(2)
+        .line("ACME STORE")
+        .wide(1).tall(1)
+        .align(Alignment::Left)
+        .line("1x Flat white           4.20")
+        .qr_code(&QrCode::new("https://example.com/r/42")?)
+        .cut(Cut::FeedThenPartial)
+        .build();
 
-TcpTransport::connect("192.168.1.60")?.print(&receipt)?;
+    TcpTransport::connect("192.168.1.60")?.print(&receipt)
+}
 ```
 
-A red/black kitchen ticket for an SP700 is in
-`examples/impact_kitchen_ticket.rs`. Run any example with
-`cargo run --example <name> -- <printer-ip>`.
+A thermal printer prints the header in double size, the line item, a QR code, then feeds and cuts.
+
+## Supported printers
+
+| Command set | Printers | Builder |
+|---|---|---|
+| Star Line Mode | Thermal: TSP100 (Line Mode), TSP650II, TSP700II, TSP800II | `starprint::starline()` |
+| Star Mode, dot impact | SP700 series: SP712, SP742, SP717, SP747 | `starprint::impact()` |
+
+Each builder exposes only the commands its printer understands. `qr_code` exists on the thermal builder and red/black `color` on the impact builder; calling the wrong one is a compile error. Byte sequences come from Star's published command specifications in `manuals/`.
 
 ## Printing images
 
-The `image` cargo feature adds a preparation pipeline ported from an
-implementation tuned on real hardware: auto-contrast, gamma, unsharp mask,
-histogram equalisation, a brightness lift at impact double density
-(overlapping dots print darker), resize with compensation for the head's
-horizontal/vertical resolution, then dithering (Floyd–Steinberg by
-default; Atkinson, Bayer 8×8 and plain threshold are available). A
-`DeviceProfile` describes the target head: `SP700`, `THERMAL_80MM`,
-`THERMAL_112MM`, `THERMAL_80MM_DOUBLE_RESOLUTION`.
+The `image` feature adds a pipeline tuned on real hardware: auto-contrast, tone curve, unsharp mask, resize for the head's dot geometry, then dithering (Floyd-Steinberg by default; Atkinson, Bayer 8x8 and threshold available). A `DeviceProfile` chooses the geometry and tone curve for the head.
 
-Impact printers take the result through the SP700's 9-dot bit-image mode:
+Photo on a thermal printer, with the settings that printed best on a TSP800II:
+
+```rust
+use starprint::graphics::{DeviceProfile, ImagePipeline};
+use starprint::{PrintSpeed, RasterQuality};
+
+let prepared = ImagePipeline::new()
+    .profile(DeviceProfile::THERMAL_80MM)
+    .prepare_bytes(&std::fs::read("photo.jpg")?)?;
+
+let doc = starprint::starline()
+    .print_speed(PrintSpeed::Slow)
+    .print_density(3)
+    .raster(&prepared.image, RasterQuality::High)
+    .build();
+```
+
+Photo on an SP700 impact printer:
 
 ```rust
 use starprint::graphics::{Density, ImagePipeline};
@@ -67,46 +83,24 @@ let prepared = ImagePipeline::new()
 let doc = starprint::impact().bit_image(&prepared.image).build();
 ```
 
-Thermal printers use Star Line Mode's raster mode, which sends one
-contiguous dot row per command and so avoids the seams that fixed-height
-stripes can leave. The TSP700II's double-resolution mode (16 rows/mm) is
-a printer-wide setting that outlives `ESC @`, hence the explicit reset:
+`prepared.preview` is a square-pixel grayscale for showing on screen. Without the feature, `graphics::Bitmap` still lets you print your own pixels.
 
-```rust
-use starprint::graphics::{DeviceProfile, ImagePipeline};
-use starprint::{PrintMode, RasterQuality};
+## Examples
 
-let prepared = ImagePipeline::new()
-    .profile(DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
-    .prepare_bytes(&std::fs::read("photo.jpg")?)?;
+Run with `cargo run --example <name> -- <printer-ip>`; the photo examples also need `--features image`.
 
-let doc = starprint::starline()
-    .print_mode(PrintMode::DoubleResolution)
-    .raster(&prepared.image, RasterQuality::High)
-    .print_mode(PrintMode::SingleColor)
-    .build();
-```
+- **thermal_receipt:** a receipt with a total, a Code 128 barcode and a QR code.
+- **impact_kitchen_ticket:** a red/black ticket for an SP700.
+- **thermal_test_pattern:** a head-check page; a white hairline through the solid bar means a dead element.
+- **thermal_image, impact_image:** print a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 
-`prepared.preview` is a square-pixel grayscale for showing on screen.
-Dithering, impact command serialisation and the tone-mapping stages are
-tested byte-for-byte against fixtures generated by the reference
-implementation (`tests/fixtures/generate.py`); the thermal raster stream
-is tested against the command specification and awaits a hardware check.
+## Notes
 
-Without the feature, the `graphics` module still lets you build and print
-a `Bitmap`/`BitImage` from your own pixels.
-
-## Text encoding
-
-Star printers read bytes through a code page, not UTF-8. `Builder::new()`
-selects CP437 and `text()` encodes into it, so Western-European characters
-work out of the box; anything unmappable prints as `?`. For other code
-pages, call `code_page()` and pass pre-encoded bytes to `raw()`.
-
-## Not implemented
-
-Stored logos, status back (ASB), the newer StarPRNT protocol (mc-Print,
-TSP100IV), USB and serial transports.
+- **Pacing:** Star's Ethernet cards drop a large job sent all at once, so `TcpTransport` writes 1400 bytes every 20 ms. Send one job at a time; `set_pacing` tunes or disables it.
+- **Double resolution:** `PrintMode::DoubleResolution` prints 16 rows/mm. Pair it with a `*_DOUBLE_RESOLUTION` profile and switch back afterwards; the mode survives `ESC @`.
+- **Long images:** the TSP800II buffers about 2,560 raster rows and pauses to print them, leaving a faint line past roughly 320 mm (160 mm at double resolution).
+- **Text encoding:** `text()` encodes into CP437; unmappable characters print as `?`. For other code pages call `code_page()` and pass encoded bytes to `raw()`.
+- **Not implemented:** stored logos, status back (ASB), StarPRNT (mc-Print, TSP100IV), USB and serial transports.
 
 ## License
 
