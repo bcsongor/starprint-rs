@@ -32,11 +32,37 @@ pub trait Transport {
     }
 }
 
+/// Write pacing: send `chunk_size` bytes, pause `delay`, repeat.
+///
+/// Star's Ethernet interface cards (IFBD-HE07/08 and kin) have small
+/// buffers and do not apply TCP back-pressure reliably: fed a large job
+/// faster than the printer prints, they silently drop data and the job
+/// never appears. Pacing writes to roughly the printer's own throughput
+/// avoids that; [`Pacing::STAR_ETHERNET`] matches the values proven on
+/// real SP700 and TSP800II hardware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pacing {
+    /// Bytes written per chunk (an Ethernet frame's worth by default).
+    pub chunk_size: usize,
+    /// Pause between chunks.
+    pub delay: Duration,
+}
+
+impl Pacing {
+    /// 1400 bytes every 100 ms (≈ 14 KB/s) — safe for Star interface
+    /// cards.
+    pub const STAR_ETHERNET: Self = Self {
+        chunk_size: 1400,
+        delay: Duration::from_millis(100),
+    };
+}
+
 /// An Ethernet transport using raw-socket ("port 9100") printing.
 ///
 /// All networked Star printers accept print data on TCP port 9100 with no
 /// framing or handshake: bytes written to the socket go straight to the
-/// printer's input buffer.
+/// printer's input buffer. Writes are paced by default (see [`Pacing`]);
+/// use [`set_pacing`](Self::set_pacing) to tune or disable that.
 ///
 /// # Examples
 ///
@@ -52,6 +78,7 @@ pub trait Transport {
 #[derive(Debug)]
 pub struct TcpTransport {
     stream: TcpStream,
+    pacing: Option<Pacing>,
 }
 
 impl TcpTransport {
@@ -97,7 +124,10 @@ impl TcpTransport {
                     stream.set_write_timeout(Some(Self::DEFAULT_TIMEOUT))?;
                     stream.set_read_timeout(Some(Self::DEFAULT_TIMEOUT))?;
                     stream.set_nodelay(true)?;
-                    return Ok(Self { stream });
+                    return Ok(Self {
+                        stream,
+                        pacing: Some(Pacing::STAR_ETHERNET),
+                    });
                 }
                 Err(err) => last_err = Some(err.into()),
             }
@@ -116,6 +146,13 @@ impl TcpTransport {
         Ok(())
     }
 
+    /// Sets write pacing (`None` writes everything at once, relying on
+    /// TCP flow control — fine for modern interfaces, risky on the older
+    /// Star cards).
+    pub fn set_pacing(&mut self, pacing: Option<Pacing>) {
+        self.pacing = pacing;
+    }
+
     /// Sends a rendered [`Document`] to the printer.
     ///
     /// Inherent mirror of [`Transport::print`], so the common case needs
@@ -127,8 +164,22 @@ impl TcpTransport {
 
 impl Transport for TcpTransport {
     fn send(&mut self, bytes: &[u8]) -> Result<()> {
-        self.stream.write_all(bytes)?;
-        self.stream.flush()?;
+        match self.pacing {
+            Some(Pacing { chunk_size, delay }) if chunk_size > 0 => {
+                let mut chunks = bytes.chunks(chunk_size).peekable();
+                while let Some(chunk) = chunks.next() {
+                    self.stream.write_all(chunk)?;
+                    self.stream.flush()?;
+                    if chunks.peek().is_some() {
+                        std::thread::sleep(delay);
+                    }
+                }
+            }
+            _ => {
+                self.stream.write_all(bytes)?;
+                self.stream.flush()?;
+            }
+        }
         Ok(())
     }
 }
