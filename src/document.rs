@@ -359,14 +359,19 @@ impl Builder<StarLine> {
         self.raw([ESC, 0x1E, b'r', speed.code()])
     }
 
-    /// Sets print density (`ESC RS d n`): `0` is darkest (+3), `3` is the
-    /// printer's standard, `6` is lightest (−3). Values above 6 are clamped.
+    /// Sets print density (`ESC RS d n`) on the printer's own scale:
+    /// `-3` (lightest) to `+3` (darkest), `0` being the standard density
+    /// from the memory switches. Out-of-range values are clamped.
     ///
-    /// Heavier density darkens dithered graphics; lighter density can tame
-    /// heat-related banding in dense areas.
+    /// Heavier density darkens dithered graphics and fills solid areas
+    /// that pinhole at the default; lighter density tames heat-related
+    /// banding in dense areas.
     #[must_use]
-    pub fn print_density(self, level: u8) -> Self {
-        self.raw([ESC, 0x1E, b'd', level.min(6)])
+    pub fn print_density(self, level: i8) -> Self {
+        // The command counts the other way: n = 0 is +3, n = 3 is standard,
+        // n = 6 is -3.
+        let n = (3 - level.clamp(-3, 3)) as u8;
+        self.raw([ESC, 0x1E, b'd', n])
     }
 
     /// Prints a bitmap through Star Line Mode's raster mode — the
@@ -719,14 +724,18 @@ mod tests {
             Builder::<StarLine>::without_init()
                 .print_mode(PrintMode::DoubleResolution)
                 .print_speed(PrintSpeed::Slow)
-                .print_density(9)
+                .print_density(2)
+                .print_density(0)
+                .print_density(-9)
                 .print_mode(PrintMode::SingleColor),
         );
         #[rustfmt::skip]
         assert_eq!(doc, [
             0x1B, 0x1E, b'C', 32,
             0x1B, 0x1E, b'r', 2,
-            0x1B, 0x1E, b'd', 6,   // clamped
+            0x1B, 0x1E, b'd', 1,   // +2
+            0x1B, 0x1E, b'd', 3,   // standard
+            0x1B, 0x1E, b'd', 6,   // clamped to -3
             0x1B, 0x1E, b'C', 0,
         ]);
     }
