@@ -77,9 +77,10 @@ impl ToneCurve {
     };
 
     /// Curve for thermal heads, which print dark with blooming dots:
-    /// lighten midtones to keep shadow detail, no equalisation.
+    /// lighten midtones strongly to keep shadow detail, no equalisation.
+    /// Dialled in on a TSP800II at slow speed and density +3.
     pub const THERMAL: Self = Self {
-        gamma: 0.8,
+        gamma: 0.55,
         equalize: false,
     };
 

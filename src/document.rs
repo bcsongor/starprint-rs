@@ -385,6 +385,13 @@ impl Builder<StarLine> {
     /// at the top of a fresh line. Rows wider than the printer's print area
     /// are cropped by the printer.
     ///
+    /// The printer expands rows into a fixed-size image buffer and, when it
+    /// fills, prints it before taking more data — a brief stop that leaves
+    /// a faint line across the picture. On the TSP800II the buffer holds
+    /// about 2,560 rows (≈ 320 mm at normal resolution, ≈ 160 mm in
+    /// double-resolution mode); keep images shorter than that, or print
+    /// very long ones at normal resolution.
+    ///
     /// Accepts a [`Bitmap`] or a [`BitImage`] (e.g. from `ImagePipeline`
     /// with a thermal [`DeviceProfile`](crate::graphics::DeviceProfile)).
     /// For the

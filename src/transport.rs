@@ -36,10 +36,10 @@ pub trait Transport {
 ///
 /// Star's Ethernet interface cards (IFBD-HE07/08 and kin) have small
 /// buffers and do not apply TCP back-pressure reliably: fed a large job
-/// faster than the printer prints, they silently drop data and the job
-/// never appears. Pacing writes to roughly the printer's own throughput
-/// avoids that; [`Pacing::STAR_ETHERNET`] matches the values proven on
-/// real SP700 and TSP800II hardware.
+/// all at once, they silently drop data and the job never appears.
+/// Pacing writes to a rate the card can pass on avoids that;
+/// [`Pacing::STAR_ETHERNET`] holds values proven on real SP700 and
+/// TSP800II hardware.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pacing {
     /// Bytes written per chunk (an Ethernet frame's worth by default).
@@ -49,11 +49,11 @@ pub struct Pacing {
 }
 
 impl Pacing {
-    /// 1400 bytes every 100 ms (≈ 14 KB/s) — safe for Star interface
-    /// cards.
+    /// 1400 bytes every 20 ms (≈ 70 KB/s): fast enough that the printer
+    /// never runs dry mid-image, slow enough that the card keeps up.
     pub const STAR_ETHERNET: Self = Self {
         chunk_size: 1400,
-        delay: Duration::from_millis(100),
+        delay: Duration::from_millis(20),
     };
 }
 
