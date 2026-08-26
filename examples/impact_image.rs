@@ -1,6 +1,8 @@
 //! Prints a photo on a Star SP700-series impact printer.
 //!
-//! Usage: cargo run --example impact_image --features image -- <printer-host> <image-path> [single|double]
+//! Usage: cargo run --example impact_image --features image -- <printer-host> <image-path> [single|double] [rotate]
+//!
+//! `rotate` turns a landscape picture 90° so it runs along the paper.
 
 use starprint::graphics::Density;
 use starprint::graphics::ImagePipeline;
@@ -9,19 +11,26 @@ use starprint::{Alignment, Cut};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: impact_image <printer-host> <image-path> [single|double]";
+    let usage = "usage: impact_image <printer-host> <image-path> [single|double] [rotate]";
     let host = args.next().ok_or(usage)?;
     let path = args.next().ok_or(usage)?;
-    let density = match args.next().as_deref() {
+    let flags: Vec<String> = args.collect();
+    let density = match flags
+        .iter()
+        .find(|f| f.as_str() != "rotate")
+        .map(String::as_str)
+    {
         None | Some("single") => Density::Single,
         Some("double") => Density::Double,
-        Some(other) => return Err(format!("unknown density {other:?}; {usage}").into()),
+        Some(other) => return Err(format!("unknown option {other:?}; {usage}").into()),
     };
+    let rotate = flags.iter().any(|f| f == "rotate");
 
-    let photo = std::fs::read(&path)?;
-    let prepared = ImagePipeline::new()
-        .density(density)
-        .prepare_bytes(&photo)?;
+    let mut source = image::load_from_memory(&std::fs::read(&path)?)?;
+    if rotate {
+        source = source.rotate90();
+    }
+    let prepared = ImagePipeline::new().density(density).prepare(&source)?;
 
     let bitmap_h = prepared.preview.height();
     let doc = starprint::impact()
