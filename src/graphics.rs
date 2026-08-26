@@ -19,7 +19,7 @@ mod pipeline;
 
 pub use dither::{Dithering, Grayscale};
 #[cfg(feature = "image")]
-pub use pipeline::{ImagePipeline, PreparedImage};
+pub use pipeline::{ImagePipeline, PreparedImage, ToneCurve};
 
 use crate::error::{Error, Result};
 
@@ -47,6 +47,18 @@ pub enum Density {
     Double,
 }
 
+/// The printing technology behind a [`DeviceProfile`]; it decides which
+/// tone curve the image pipeline applies by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HeadKind {
+    /// Dot-matrix impact head with a ribbon: prints light, so images need
+    /// darkening and strong contrast.
+    Impact,
+    /// Thermal line head: prints dark and dots bloom, so images need
+    /// lightening to keep shadow detail.
+    Thermal,
+}
+
 /// Physical characteristics of a printer's head and paper, used to size
 /// and proportion images.
 ///
@@ -57,6 +69,8 @@ pub enum Density {
 pub struct DeviceProfile {
     /// Human-readable name of the device or family.
     pub name: &'static str,
+    /// Printing technology, which selects the default tone curve.
+    pub head: HeadKind,
     /// Vertical paper-feed resolution in DPI (dot rows are 1/72″ apart).
     pub vertical_dpi: f64,
     /// Horizontal resolution in DPI at single density.
@@ -72,6 +86,7 @@ impl DeviceProfile {
     /// 210 dots wide at single density (≈ 84.7 DPI), 72 DPI vertically.
     pub const SP700: Self = Self {
         name: "Star SP700 series",
+        head: HeadKind::Impact,
         vertical_dpi: 72.0,
         horizontal_dpi: (210.0 * 25.4) / 63.0,
         width_dots_single: 210,
@@ -84,6 +99,7 @@ impl DeviceProfile {
     /// double-density mode, so [`Density`] makes no difference here.
     pub const THERMAL_80MM: Self = Self {
         name: "Star 80 mm thermal",
+        head: HeadKind::Thermal,
         vertical_dpi: 203.2,
         horizontal_dpi: 203.2,
         width_dots_single: 576,
@@ -93,6 +109,7 @@ impl DeviceProfile {
     /// TSP800II on 112 mm paper: a 104 mm print width = 832 dots.
     pub const THERMAL_112MM: Self = Self {
         name: "Star TSP800II 112 mm",
+        head: HeadKind::Thermal,
         vertical_dpi: 203.2,
         horizontal_dpi: 203.2,
         width_dots_single: 832,
@@ -106,6 +123,7 @@ impl DeviceProfile {
     /// (406.4 DPI vertically).
     pub const THERMAL_80MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 80 mm thermal (double resolution)",
+        head: HeadKind::Thermal,
         vertical_dpi: 406.4,
         horizontal_dpi: 203.2,
         width_dots_single: 576,
@@ -116,6 +134,7 @@ impl DeviceProfile {
     /// wide, 406.4 DPI vertically.
     pub const THERMAL_112MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 112 mm thermal (double resolution)",
+        head: HeadKind::Thermal,
         vertical_dpi: 406.4,
         horizontal_dpi: 203.2,
         width_dots_single: 832,

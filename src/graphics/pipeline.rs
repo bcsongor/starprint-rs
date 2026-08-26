@@ -40,13 +40,10 @@
 use image::DynamicImage;
 use image::imageops::FilterType;
 
-use super::{BitImage, Density, DeviceProfile};
+use super::{BitImage, Density, DeviceProfile, HeadKind};
 use super::{Dithering, Grayscale};
 use crate::error::{Error, Result};
 
-/// Gamma applied after auto-contrast; > 1 darkens midtones so they
-/// survive dithering on paper.
-const GAMMA_MIDTONE_DARKENING: f64 = 1.8;
 /// Base sharpening strength; the unsharp radius is `3 ×` this value.
 const SHARPEN_SIGMA: f64 = 0.8;
 /// Unsharp-mask amount in percent.
@@ -55,6 +52,46 @@ const UNSHARP_PERCENT: i32 = 150;
 /// the physical dot overlap when dots are printed at half the normal
 /// spacing.
 const DOUBLE_DENSITY_BRIGHTNESS: f64 = 1.2;
+
+/// The tone-mapping stages that depend on the printing technology.
+///
+/// Applied after auto-contrast and before sharpening/dithering. The
+/// defaults come from [`ToneCurve::for_head`]; override with
+/// [`ImagePipeline::tone`] to tune for a particular printer or paper.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToneCurve {
+    /// Gamma exponent: `> 1` darkens midtones, `< 1` lightens them,
+    /// `1.0` leaves them alone.
+    pub gamma: f64,
+    /// Histogram equalisation after sharpening — maximises contrast, at
+    /// the cost of crushing shadows on printers that already print dark.
+    pub equalize: bool,
+}
+
+impl ToneCurve {
+    /// The curve dialled in on SP700 hardware: darken midtones (a ribbon
+    /// prints light) and equalise for maximum contrast.
+    pub const IMPACT: Self = Self {
+        gamma: 1.8,
+        equalize: true,
+    };
+
+    /// Curve for thermal heads, which print dark with blooming dots:
+    /// lighten midtones to keep shadow detail, no equalisation.
+    pub const THERMAL: Self = Self {
+        gamma: 0.8,
+        equalize: false,
+    };
+
+    /// The default curve for a printing technology.
+    #[must_use]
+    pub const fn for_head(head: HeadKind) -> Self {
+        match head {
+            HeadKind::Impact => Self::IMPACT,
+            HeadKind::Thermal => Self::THERMAL,
+        }
+    }
+}
 
 /// A configured image-preparation pipeline, in the style of
 /// [`std::fs::OpenOptions`]: chain settings, then call
@@ -70,6 +107,7 @@ pub struct ImagePipeline {
     brightness: f64,
     contrast: f64,
     profile: DeviceProfile,
+    tone: Option<ToneCurve>,
 }
 
 impl Default for ImagePipeline {
@@ -88,7 +126,16 @@ impl ImagePipeline {
             brightness: 1.0,
             contrast: 1.0,
             profile: DeviceProfile::SP700,
+            tone: None,
         }
+    }
+
+    /// Overrides the tone curve (default: [`ToneCurve::for_head`] of the
+    /// profile's head kind).
+    #[must_use]
+    pub fn tone(mut self, tone: ToneCurve) -> Self {
+        self.tone = Some(tone);
+        self
     }
 
     /// Sets the horizontal dot density to render for (default: single).
@@ -169,10 +216,17 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
     }
 
     // Tone-mapping pipeline.
+    let tone = options
+        .tone
+        .unwrap_or(ToneCurve::for_head(options.profile.head));
     autocontrast(&mut gray);
-    apply_lut(&mut gray, &gamma_lut(GAMMA_MIDTONE_DARKENING));
+    if tone.gamma != 1.0 {
+        apply_lut(&mut gray, &gamma_lut(tone.gamma));
+    }
     gray = unsharp_mask(&gray, SHARPEN_SIGMA * 3.0, UNSHARP_PERCENT, 0);
-    equalize(&mut gray);
+    if tone.equalize {
+        equalize(&mut gray);
+    }
     if options.density == Density::Double {
         brightness(&mut gray, DOUBLE_DENSITY_BRIGHTNESS);
     }
