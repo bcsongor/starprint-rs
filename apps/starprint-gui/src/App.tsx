@@ -6,13 +6,6 @@ import { PrinterSettings } from "@/components/printer-settings";
 import { TaskCardForm } from "@/components/task-card-form";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   printTaskCard,
   taskCardHexdump,
   taskCardLayout,
@@ -23,6 +16,9 @@ import {
 import { DEFAULT_PRINTER, loadPrinter, savePrinter } from "@/lib/settings";
 
 const EMPTY_CARD: TaskCard = { text: "", priority: false, due: null };
+
+const HEADING =
+  "text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 
 export default function App() {
   const [printer, setPrinter] = useState<Printer>(DEFAULT_PRINTER);
@@ -92,79 +88,52 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen bg-muted/40 p-6">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
-        <div className="grid gap-6 content-start">
-          <Card>
-            <CardHeader>
-              <CardTitle>Task card</CardTitle>
-              <CardDescription>
-                A bold, double-size task with an optional priority flag and due
-                date.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6">
-              <TaskCardForm
-                card={card}
-                onChange={updateCard}
-                onSubmit={print}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={print} disabled={!canPrint}>
-                  <PrinterIcon />
-                  {printing ? "Printing…" : "Print"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={toggleHexdump}
-                  disabled={!hasText}
-                >
-                  <TerminalIcon />
-                  {hexdump === null ? "Show bytes" : "Hide bytes"}
-                </Button>
-                {!hasHost && (
-                  <span className="text-destructive text-xs">
-                    Enter the printer's host to print.
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+    <main className="flex min-h-screen flex-col text-sm">
+      <header className="border-b bg-card px-3 py-2">
+        <PrinterSettings printer={printer} onChange={updatePrinter} />
+      </header>
 
-          <PrinterSettings printer={printer} onChange={updatePrinter} />
-        </div>
-
-        <div className="grid gap-6 content-start lg:sticky lg:top-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Preview</CardTitle>
-              <CardDescription>
-                {layout
-                  ? `${layout.columns} columns, as laid out for the ${printer.kind} printer.`
-                  : "Loading…"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CardPreview layout={layout} kind={printer.kind} />
-            </CardContent>
-          </Card>
-
+      <div className="grid flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="grid content-start gap-3 border-b p-3 md:border-r md:border-b-0">
+          <TaskCardForm card={card} onChange={updateCard} onSubmit={print} />
+          <div className="flex flex-wrap items-center gap-1.5 border-t pt-3">
+            <Button size="sm" onClick={print} disabled={!canPrint}>
+              <PrinterIcon />
+              {printing ? "Printing…" : "Print"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleHexdump}
+              disabled={!hasText}
+            >
+              <TerminalIcon />
+              {hexdump === null ? "Bytes" : "Hide bytes"}
+            </Button>
+            {!hasHost && (
+              <span className="text-[11px] text-destructive">
+                Enter the printer host to print.
+              </span>
+            )}
+          </div>
           {hexdump !== null && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Bytes</CardTitle>
-                <CardDescription>
-                  Exactly what Print sends, for checking without a printer.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed">
-                  {hexdump}
-                </pre>
-              </CardContent>
-            </Card>
+            <pre className="overflow-x-auto rounded-md bg-muted px-2 py-1.5 text-[11px] leading-snug">
+              {hexdump}
+            </pre>
           )}
-        </div>
+        </section>
+
+        <section className="grid content-start gap-3 bg-muted/40 p-3">
+          <h2 className={HEADING}>
+            Preview
+            {layout && (
+              <span className="ml-1.5 font-normal normal-case tracking-normal">
+                {layout.columns} cols · {printer.kind}
+              </span>
+            )}
+          </h2>
+          <CardPreview layout={layout} kind={printer.kind} />
+        </section>
       </div>
     </main>
   );
