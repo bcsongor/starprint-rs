@@ -27,11 +27,38 @@ pub enum PrinterKind {
 }
 
 impl PrinterKind {
-    fn layout(self, card: &TaskCard) -> Layout {
+    fn layout(self, card: &TaskCard, paper: Paper) -> Layout {
         match self {
-            Self::Thermal => card.layout::<starprint::StarLine>(),
-            Self::Impact => card.layout::<starprint::Impact>(),
+            Self::Thermal => card.layout::<starprint::StarLine>(paper),
+            Self::Impact => card.layout::<starprint::Impact>(paper),
         }
+    }
+}
+
+/// Paper width of a thermal printer: it decides the raster width and the
+/// number of columns, so it belongs to the printer rather than to any one
+/// job. The SP700's carriage is fixed, so impact ignores it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Paper {
+    /// 80 mm roll: 72 mm print region, 576 dots, 48 columns in Font A.
+    #[serde(rename = "80")]
+    Mm80,
+    /// 112 mm roll: 104 mm print region, 832 dots, 69 columns in Font A.
+    #[serde(rename = "112")]
+    Mm112,
+}
+
+impl Paper {
+    pub fn dots(self) -> u32 {
+        match self {
+            Self::Mm80 => 576,
+            Self::Mm112 => 832,
+        }
+    }
+
+    /// Columns of Font A, which is 12 dots wide.
+    pub fn columns(self) -> usize {
+        (self.dots() / 12) as usize
     }
 }
 
@@ -65,8 +92,15 @@ pub struct Printer {
     pub density: i8,
     /// Thermal only: slow gives the best text quality.
     pub speed: Speed,
+    /// Thermal only: the roll loaded in the printer.
+    #[serde(default = "default_paper")]
+    pub paper: Paper,
     /// Cut the paper after the card.
     pub cut: bool,
+}
+
+fn default_paper() -> Paper {
+    Paper::Mm80
 }
 
 /// What to print: one variant per workflow the app offers.
@@ -92,19 +126,22 @@ impl Printer {
                 Err("The task text is empty.".to_owned())
             }
             (Job::TaskCard(card), PrinterKind::Thermal) => {
-                Ok(card.document(self.thermal(), self.cut))
+                Ok(card.document(self.thermal(), self.paper, self.cut))
             }
             (Job::TaskCard(card), PrinterKind::Impact) => {
-                Ok(card.document(starprint::impact(), self.cut))
+                Ok(card.document(starprint::impact(), self.paper, self.cut))
             }
-            (Job::TestPage(page), PrinterKind::Thermal) => {
-                Ok(test_page::thermal(self.thermal(), page, self.cut))
-            }
+            (Job::TestPage(page), PrinterKind::Thermal) => Ok(test_page::thermal(
+                self.thermal(),
+                page,
+                self.paper,
+                self.cut,
+            )),
             (Job::TestPage(_), PrinterKind::Impact) => {
                 Ok(test_page::impact(starprint::impact(), self.cut))
             }
             (Job::Picture(picture), PrinterKind::Thermal) => {
-                picture::thermal(self.thermal(), picture, self.cut, cache)
+                picture::thermal(self.thermal(), picture, self.paper, self.cut, cache)
             }
             (Job::Picture(picture), PrinterKind::Impact) => {
                 picture::impact(starprint::impact(), picture, self.cut, cache)
@@ -120,8 +157,8 @@ pub struct PrintReport {
 }
 
 #[tauri::command]
-fn task_card_layout(card: TaskCard, kind: PrinterKind) -> Layout {
-    kind.layout(&card)
+fn task_card_layout(card: TaskCard, kind: PrinterKind, paper: Paper) -> Layout {
+    kind.layout(&card, paper)
 }
 
 /// The numbered sections of the test page for this printer, for the
@@ -240,10 +277,11 @@ fn hexdump(bytes: &[u8]) -> HexDump {
 async fn picture_preview(
     picture: Picture,
     kind: PrinterKind,
+    paper: Paper,
     cache: tauri::State<'_, Arc<SourceCache>>,
 ) -> Result<tauri::ipc::Response, String> {
     let cache = Arc::clone(&cache);
-    tauri::async_runtime::spawn_blocking(move || picture.preview_png(kind, &cache))
+    tauri::async_runtime::spawn_blocking(move || picture.preview_png(kind, paper, &cache))
         .await
         .map_err(|e| e.to_string())?
         .map(tauri::ipc::Response::new)

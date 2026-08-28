@@ -59,11 +59,10 @@ function emptyCard(): TaskCard {
   return { text: "", priority: false, due: format(new Date(), "yyyy-MM-dd") };
 }
 
-const DEFAULT_TEST_PAGE: TestPage = { paper: "80", doubleResolution: false };
+const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
 
 const DEFAULT_PICTURE: Picture = {
   path: "",
-  paper: "80",
   double: false,
   dither: "floyd-steinberg",
   threshold: 128,
@@ -114,7 +113,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    taskCardLayout(card, printer.kind)
+    taskCardLayout(card, printer.kind, printer.paper)
       .then((result) => {
         if (!cancelled) setLayout(result);
       })
@@ -122,7 +121,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [card, printer.kind]);
+  }, [card, printer.kind, printer.paper]);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,7 +146,11 @@ export default function App() {
       previewChain.current = previewChain.current.then(async () => {
         if (cancelled) return;
         try {
-          const png = await picturePreview(picture, printer.kind);
+          const png = await picturePreview(
+            picture,
+            printer.kind,
+            printer.paper,
+          );
           if (cancelled) return;
           url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
           setPictureUrl(url);
@@ -164,7 +167,7 @@ export default function App() {
       clearTimeout(timer);
       if (url) URL.revokeObjectURL(url);
     };
-  }, [picture, printer.kind]);
+  }, [picture, printer.kind, printer.paper]);
 
   const job: Job =
     workflow === "task-card"
@@ -217,20 +220,29 @@ export default function App() {
   };
 
   return (
-    <main className="flex h-screen flex-col">
+    // `--col` is the width of the form column, shared by the toolbar so
+    // that the print options start where the preview does. It is wide
+    // enough for the due date row at its longest, a Wednesday.
+    <main className="flex h-screen flex-col [--col:27.5rem]">
       {/* The toolbar is rendered in the dark theme so it reads as app
           chrome; every control inside picks up the dark tokens. */}
-      <header className="dark flex items-end gap-3 border-b bg-background px-4 py-3 text-foreground">
-        <ProfileToolbar
-          state={profiles}
-          onChange={updateProfiles}
-          printing={printing}
-        />
-        <PrintOptions printer={printer} onChange={updatePrinter} />
+      <header className="dark grid grid-cols-[var(--col)_minmax(0,1fr)] items-end border-b bg-background py-3 text-foreground">
+        <div className="pl-4">
+          <ProfileToolbar
+            state={profiles}
+            onChange={updateProfiles}
+            printing={printing}
+          />
+        </div>
+        {/* Three equal columns spanning the preview's content box, so the
+            Paper label starts where the Preview label does. */}
+        <div className="grid grid-cols-3 items-end gap-3 px-4">
+          <PrintOptions printer={printer} onChange={updatePrinter} />
+        </div>
       </header>
 
-      {/* The window's minimum size is chosen so this never has to wrap. */}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      {/* The form column is fixed; the preview takes whatever is left. */}
+      <div className="grid min-h-0 flex-1 grid-cols-[var(--col)_minmax(0,1fr)]">
         <section className="flex flex-col gap-4 border-r p-4">
           <Tabs
             value={workflow}

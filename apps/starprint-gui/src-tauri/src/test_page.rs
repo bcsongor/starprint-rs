@@ -7,36 +7,17 @@
 
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, Dithering, Grayscale};
+
+use crate::Paper;
 use starprint::{
     Alignment, Barcode, Builder, Color, Cut, Document, Impact, ImpactFont, PrintMode, QrCode,
     RasterQuality, StarLine, Symbology, ThermalFont,
 };
 
-/// Paper width of a thermal printer; decides the raster width.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Paper {
-    /// 80 mm roll: 72 mm print region, 576 dots.
-    #[serde(rename = "80")]
-    Mm80,
-    /// 112 mm roll: 104 mm print region, 832 dots.
-    #[serde(rename = "112")]
-    Mm112,
-}
-
-impl Paper {
-    fn dots(self) -> u32 {
-        match self {
-            Self::Mm80 => 576,
-            Self::Mm112 => 832,
-        }
-    }
-}
-
-/// Options for the test page. Impact ignores both.
+/// Options for the test page. Impact ignores it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPage {
-    pub paper: Paper,
     /// Thermal: repeat the grey ramp in double-resolution mode.
     pub double_resolution: bool,
 }
@@ -100,8 +81,8 @@ fn ramp(width: u32, height: u32) -> Bitmap {
         .to_bitmap()
 }
 
-pub fn thermal(builder: Builder<StarLine>, page: &TestPage, cut: bool) -> Document {
-    let width = page.paper.dots();
+pub fn thermal(builder: Builder<StarLine>, page: &TestPage, paper: Paper, cut: bool) -> Document {
+    let width = paper.dots();
     let black_bar = Bitmap::from_fn(width, 64, |_, _| true);
     let hairlines = Bitmap::from_fn(width, 48, |x, _| x % 8 == 0);
     let checkerboard = Bitmap::from_fn(width, 32, |x, y| (x + y) % 2 == 0);
@@ -247,17 +228,14 @@ fn finish<P: starprint::Protocol>(doc: Builder<P>, cut: bool) -> Document {
 mod tests {
     use super::*;
 
-    fn page(paper: Paper, double_resolution: bool) -> TestPage {
-        TestPage {
-            paper,
-            double_resolution,
-        }
+    fn page(double_resolution: bool) -> TestPage {
+        TestPage { double_resolution }
     }
 
     #[test]
     fn thermal_page_builds_for_both_papers() {
         for paper in [Paper::Mm80, Paper::Mm112] {
-            let doc = thermal(starprint::starline(), &page(paper, true), true);
+            let doc = thermal(starprint::starline(), &page(true), paper, true);
             assert!(
                 doc.as_bytes().len() > 10_000,
                 "{paper:?} page is a raster job"
@@ -271,8 +249,8 @@ mod tests {
 
     #[test]
     fn double_resolution_adds_a_section() {
-        assert_eq!(thermal_sections(&page(Paper::Mm80, false)).len(), 5);
-        assert_eq!(thermal_sections(&page(Paper::Mm80, true)).len(), 6);
+        assert_eq!(thermal_sections(&page(false)).len(), 5);
+        assert_eq!(thermal_sections(&page(true)).len(), 6);
     }
 
     #[test]

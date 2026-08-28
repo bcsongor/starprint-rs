@@ -6,6 +6,9 @@ export type PrinterKind = "thermal" | "impact";
 /** Mirrors `Speed` in src-tauri/src/lib.rs. */
 export type Speed = "high" | "medium" | "slow";
 
+/** Mirrors `Paper` in src-tauri/src/lib.rs. */
+export type Paper = "80" | "112";
+
 /** Mirrors `Printer` in src-tauri/src/lib.rs. */
 export interface Printer {
   kind: PrinterKind;
@@ -13,6 +16,8 @@ export interface Printer {
   port: number;
   density: number;
   speed: Speed;
+  /** Thermal only: the roll loaded in the printer. */
+  paper: Paper;
   /** Cut the paper after the job. */
   cut: boolean;
 }
@@ -33,12 +38,8 @@ export interface Layout {
   lines: string[];
 }
 
-/** Mirrors `Paper` in src-tauri/src/test_page.rs. */
-export type Paper = "80" | "112";
-
 /** Mirrors `TestPage` in src-tauri/src/test_page.rs. */
 export interface TestPage {
-  paper: Paper;
   doubleResolution: boolean;
 }
 
@@ -55,7 +56,6 @@ export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
 export interface Picture {
   /** Path of the image file on disk; empty until one is chosen. */
   path: string;
-  paper: Paper;
   /** Impact: double density. Thermal: double-resolution mode. */
   double: boolean;
   dither: Dither;
@@ -83,8 +83,8 @@ export interface HexDump {
   dump: string;
 }
 
-export function taskCardLayout(card: TaskCard, kind: PrinterKind) {
-  return invoke<Layout>("task_card_layout", { card, kind });
+export function taskCardLayout(card: TaskCard, kind: PrinterKind, paper: Paper) {
+  return invoke<Layout>("task_card_layout", { card, kind, paper });
 }
 
 export function testPageSections(page: TestPage, kind: PrinterKind) {
@@ -100,8 +100,12 @@ export function jobHexdump(job: Job, printer: Printer) {
 }
 
 /** The dithered picture as a PNG, through the dot model on thermal. */
-export function picturePreview(picture: Picture, kind: PrinterKind) {
-  return invoke<ArrayBuffer>("picture_preview", { picture, kind });
+export function picturePreview(
+  picture: Picture,
+  kind: PrinterKind,
+  paper: Paper,
+) {
+  return invoke<ArrayBuffer>("picture_preview", { picture, kind, paper });
 }
 
 /** True when the printer answers on its port. */

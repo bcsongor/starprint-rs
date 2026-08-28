@@ -10,8 +10,7 @@ use serde::Deserialize;
 use starprint::graphics::{Density, DeviceProfile, Dithering, ImagePipeline, PreparedImage};
 use starprint::{Alignment, Builder, Cut, Document, Impact, PrintMode, RasterQuality, StarLine};
 
-use crate::test_page::Paper;
-use crate::{PrinterKind, preview};
+use crate::{Paper, PrinterKind, preview};
 
 /// Mirrors [`Dithering`] without its threshold, which is a separate field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -40,8 +39,6 @@ impl Dither {
 pub struct Picture {
     /// Path of the image file on disk.
     pub path: String,
-    /// Thermal only: decides the raster width.
-    pub paper: Paper,
     /// Impact: double horizontal density (420 dots). Thermal: the
     /// double-resolution print mode (16 rows/mm).
     pub double: bool,
@@ -98,8 +95,8 @@ impl SourceCache {
 }
 
 impl Picture {
-    fn profile(&self, kind: PrinterKind) -> DeviceProfile {
-        match (kind, self.paper, self.double) {
+    fn profile(&self, kind: PrinterKind, paper: Paper) -> DeviceProfile {
+        match (kind, paper, self.double) {
             (PrinterKind::Impact, _, _) => DeviceProfile::SP700,
             (PrinterKind::Thermal, Paper::Mm80, false) => DeviceProfile::THERMAL_80MM,
             (PrinterKind::Thermal, Paper::Mm80, true) => {
@@ -113,11 +110,16 @@ impl Picture {
     }
 
     /// Decodes and prepares the picture for this head.
-    pub fn prepare(&self, kind: PrinterKind, cache: &SourceCache) -> Result<PreparedImage, String> {
+    pub fn prepare(
+        &self,
+        kind: PrinterKind,
+        paper: Paper,
+        cache: &SourceCache,
+    ) -> Result<PreparedImage, String> {
         if self.path.trim().is_empty() {
             return Err("No picture chosen.".to_owned());
         }
-        let profile = self.profile(kind);
+        let profile = self.profile(kind, paper);
         let density = match (kind, self.double) {
             (PrinterKind::Impact, true) => Density::Double,
             _ => Density::Single,
@@ -137,8 +139,13 @@ impl Picture {
     /// pixels: what the paper will show. On thermal heads the dots are
     /// widened as the head's own bloom widens them, see
     /// [`preview::dot_gain`].
-    pub fn preview_png(&self, kind: PrinterKind, cache: &SourceCache) -> Result<Vec<u8>, String> {
-        let preview = self.prepare(kind, cache)?.preview;
+    pub fn preview_png(
+        &self,
+        kind: PrinterKind,
+        paper: Paper,
+        cache: &SourceCache,
+    ) -> Result<Vec<u8>, String> {
+        let preview = self.prepare(kind, paper, cache)?.preview;
         let shown = match kind {
             PrinterKind::Thermal => preview::dot_gain(&preview, self.thermal_dot_size()),
             PrinterKind::Impact => preview,
@@ -158,10 +165,11 @@ impl Picture {
 pub fn thermal(
     builder: Builder<StarLine>,
     picture: &Picture,
+    paper: Paper,
     cut: bool,
     cache: &SourceCache,
 ) -> Result<Document, String> {
-    let prepared = picture.prepare(PrinterKind::Thermal, cache)?;
+    let prepared = picture.prepare(PrinterKind::Thermal, paper, cache)?;
     let mut doc = builder.align(Alignment::Center);
     if picture.double {
         doc = doc.print_mode(PrintMode::DoubleResolution);
@@ -180,7 +188,8 @@ pub fn impact(
     cut: bool,
     cache: &SourceCache,
 ) -> Result<Document, String> {
-    let prepared = picture.prepare(PrinterKind::Impact, cache)?;
+    // The SP700 has one head width, so the roll does not come into it.
+    let prepared = picture.prepare(PrinterKind::Impact, Paper::Mm80, cache)?;
     let doc = builder.align(Alignment::Center).bit_image(&prepared.image);
     Ok(finish(doc, cut))
 }
@@ -200,7 +209,6 @@ mod tests {
     fn picture(path: &str, double: bool) -> Picture {
         Picture {
             path: path.to_owned(),
-            paper: Paper::Mm80,
             double,
             dither: Dither::FloydSteinberg,
             threshold: 128,
@@ -223,7 +231,7 @@ mod tests {
     fn missing_path_is_an_error() {
         assert_eq!(
             picture("", false)
-                .prepare(PrinterKind::Impact, &SourceCache::default())
+                .prepare(PrinterKind::Impact, Paper::Mm80, &SourceCache::default())
                 .unwrap_err(),
             "No picture chosen."
         );
@@ -257,7 +265,14 @@ mod tests {
         let file = sample();
         let path = file.path().to_str().unwrap();
         let cache = SourceCache::default();
-        let doc = thermal(starprint::starline(), &picture(path, true), false, &cache).unwrap();
+        let doc = thermal(
+            starprint::starline(),
+            &picture(path, true),
+            Paper::Mm80,
+            false,
+            &cache,
+        )
+        .unwrap();
         let bytes = doc.as_bytes();
         let modes: Vec<u8> = bytes
             .windows(4)
@@ -273,7 +288,7 @@ mod tests {
         let file = sample();
         let path = file.path().to_str().unwrap();
         let png = picture(path, true)
-            .preview_png(PrinterKind::Impact, &SourceCache::default())
+            .preview_png(PrinterKind::Impact, Paper::Mm80, &SourceCache::default())
             .unwrap();
         let decoded = image::load_from_memory(&png).unwrap();
         assert_eq!(decoded.width(), 210);

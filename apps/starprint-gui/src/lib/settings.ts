@@ -23,6 +23,7 @@ const THERMAL: Printer = {
   port: 9100,
   density: 3,
   speed: "slow",
+  paper: "80",
   cut: true,
 };
 
@@ -64,7 +65,8 @@ export async function loadProfiles(): Promise<Profiles> {
   const saved = await store.get<Profiles>(KEY);
   if (saved?.profiles?.length) {
     return {
-      profiles: saved.profiles,
+      // Profiles saved before paper moved to the printer get the default.
+      profiles: saved.profiles.map((p) => ({ ...p, paper: p.paper ?? "80" })),
       activeId: saved.profiles.some((p) => p.id === saved.activeId)
         ? saved.activeId
         : saved.profiles[0].id,

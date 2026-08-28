@@ -11,18 +11,13 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import type { Dither, Paper, Picture, PrinterKind } from "@/lib/api";
+import type { Dither, Picture, PrinterKind } from "@/lib/api";
 
 const DITHERS: { value: Dither; label: string; hint: string }[] = [
   { value: "floyd-steinberg", label: "Floyd–Steinberg", hint: "photos" },
   { value: "atkinson", label: "Atkinson", hint: "lighter, crisper" },
   { value: "threshold", label: "Threshold", hint: "line art" },
   { value: "bayer", label: "Bayer 8×8", hint: "ordered pattern" },
-];
-
-const PAPERS: { value: Paper; label: string; hint: string }[] = [
-  { value: "80", label: "80 mm", hint: "576 dots" },
-  { value: "112", label: "112 mm", hint: "832 dots" },
 ];
 
 const FILE_FILTERS = [
@@ -80,56 +75,31 @@ export function PictureForm({ picture, kind, onChange }: Props) {
         </div>
       </Field>
 
-      <div className="flex gap-4">
-        <Field className="w-44">
-          <FieldLabel htmlFor="dither">Dither</FieldLabel>
-          <Select
-            value={picture.dither}
-            onValueChange={(value) => set("dither", value as Dither)}
+      <Field className="w-44">
+        <FieldLabel htmlFor="dither">Dither</FieldLabel>
+        <Select
+          value={picture.dither}
+          onValueChange={(value) => set("dither", value as Dither)}
+        >
+          <SelectTrigger id="dither" className="w-full">
+            <SelectValue>
+              {DITHERS.find((d) => d.value === picture.dither)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent
+            alignItemWithTrigger={false}
+            align="start"
+            className="w-max min-w-(--anchor-width)"
           >
-            <SelectTrigger id="dither" className="w-full">
-              <SelectValue>
-                {DITHERS.find((d) => d.value === picture.dither)?.label}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent
-              alignItemWithTrigger={false}
-              align="start"
-              className="w-max min-w-(--anchor-width)"
-            >
-              {DITHERS.map((d) => (
-                <SelectItem key={d.value} value={d.value}>
-                  <span className="w-30">{d.label}</span>
-                  <span className="text-muted-foreground">{d.hint}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field className="w-32" data-disabled={!thermal}>
-          <FieldLabel htmlFor="picture-paper">Paper</FieldLabel>
-          <Select
-            value={picture.paper}
-            disabled={!thermal}
-            onValueChange={(value) => set("paper", value as Paper)}
-          >
-            <SelectTrigger id="picture-paper" className="w-full">
-              <SelectValue>
-                {PAPERS.find((p) => p.value === picture.paper)?.label}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false} align="start">
-              {PAPERS.map((p) => (
-                <SelectItem key={p.value} value={p.value}>
-                  <span className="w-14">{p.label}</span>
-                  <span className="text-muted-foreground">{p.hint}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
+            {DITHERS.map((d) => (
+              <SelectItem key={d.value} value={d.value}>
+                <span className="w-30">{d.label}</span>
+                <span className="text-muted-foreground">{d.hint}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
 
       <Field orientation="horizontal">
         <Switch

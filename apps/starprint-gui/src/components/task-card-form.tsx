@@ -1,5 +1,5 @@
 import { addDays, format, nextSunday, parseISO } from "date-fns";
-import { CalendarIcon, CornerDownLeftIcon, XIcon } from "lucide-react";
+import { CalendarIcon, CornerDownLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -59,7 +59,9 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         </div>
         <Textarea
           id="task"
-          className="min-h-0"
+          // Same fill, border and text as the date button below, and the
+          // 5px padding puts an empty box at that button's 32px height.
+          className="min-h-0 border-border bg-background py-[0.3125rem] text-sm"
           value={card.text}
           placeholder="What needs doing?"
           rows={3}
@@ -76,14 +78,16 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
 
       <Field>
         <FieldLabel htmlFor="due">Due</FieldLabel>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* No clear button: pressing the active shortcut, or the selected
+            day in the calendar, unsets the date. */}
+        <div className="flex items-center gap-2">
           <Popover>
             <PopoverTrigger
               render={
                 <Button
                   id="due"
                   variant="outline"
-                  className="w-36 justify-start font-normal"
+                  className="w-34 justify-start font-normal"
                 />
               }
             >
@@ -110,7 +114,8 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
               <Button
                 key={label}
                 variant={active ? "default" : "secondary"}
-                size="sm"
+                // Same height and padding as the date button beside it.
+                className="px-2.5"
                 aria-pressed={active}
                 onClick={() => setDate(active ? undefined : date)}
               >
@@ -118,16 +123,6 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
               </Button>
             );
           })}
-          {selected && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Clear due date"
-              onClick={() => setDate(undefined)}
-            >
-              <XIcon />
-            </Button>
-          )}
         </div>
       </Field>
 

@@ -9,6 +9,8 @@ use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
+use crate::Paper;
+
 /// What the user typed into the form.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,11 +40,13 @@ pub struct Layout {
 /// The protocol-specific pieces of the card, so the card itself is built
 /// once for both printers.
 pub trait CardStyle: Sized {
-    const COLUMNS: usize;
     /// The priority banner. Thermal prints it inverse, so it is padded
     /// with a space each side to give the black block some margin;
     /// impact prints plain red text, which wants no padding.
     const PRIORITY_TEXT: &'static str;
+
+    /// Characters per line at normal size.
+    fn columns(paper: Paper) -> usize;
 
     fn set_wide(self, on: bool) -> Self;
     fn set_tall(self, on: bool) -> Self;
@@ -50,8 +54,11 @@ pub trait CardStyle: Sized {
 }
 
 impl CardStyle for Builder<StarLine> {
-    const COLUMNS: usize = 48;
     const PRIORITY_TEXT: &'static str = " HIGH PRIORITY ";
+
+    fn columns(paper: Paper) -> usize {
+        paper.columns()
+    }
 
     fn set_wide(self, on: bool) -> Self {
         self.wide(if on { 2 } else { 1 })
@@ -67,8 +74,12 @@ impl CardStyle for Builder<StarLine> {
 }
 
 impl CardStyle for Builder<Impact> {
-    const COLUMNS: usize = 42;
     const PRIORITY_TEXT: &'static str = "HIGH PRIORITY";
+
+    /// The SP700's carriage is 210 dots wide whatever the roll.
+    fn columns(_paper: Paper) -> usize {
+        42
+    }
 
     fn set_wide(self, on: bool) -> Self {
         self.double_wide(on)
@@ -138,11 +149,11 @@ fn align_right(text: &str, width: usize) -> String {
 }
 
 impl TaskCard {
-    pub fn layout<P: Protocol>(&self) -> Layout
+    pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: CardStyle,
     {
-        let columns = <Builder<P> as CardStyle>::COLUMNS;
+        let columns = <Builder<P> as CardStyle>::columns(paper);
         let priority = self
             .priority
             .then(|| <Builder<P> as CardStyle>::PRIORITY_TEXT.to_owned());
@@ -160,11 +171,11 @@ impl TaskCard {
 
     /// Builds the print job. `cut` feeds and cuts after the card;
     /// without it the card only feeds clear of the head.
-    pub fn document<P: Protocol>(&self, builder: Builder<P>, cut: bool) -> Document
+    pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
     where
         Builder<P>: CardStyle,
     {
-        let layout = self.layout::<P>();
+        let layout = self.layout::<P>(paper);
         let mut card = builder.bold(true);
         if layout.priority.is_some() || layout.due.is_some() {
             if let Some(priority) = &layout.priority {
@@ -212,7 +223,8 @@ mod tests {
         let expected = bytes(
             "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 64 03",
         );
-        let actual = card("Test task", false, None).document(starprint::impact(), true);
+        let actual =
+            card("Test task", false, None).document(starprint::impact(), Paper::Mm80, true);
         assert_eq!(actual.as_bytes(), expected);
     }
 
@@ -221,7 +233,8 @@ mod tests {
         let expected = bytes(
             "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 61 03",
         );
-        let actual = card("Test task", false, None).document(starprint::impact(), false);
+        let actual =
+            card("Test task", false, None).document(starprint::impact(), Paper::Mm80, false);
         assert_eq!(actual.as_bytes(), expected);
     }
 
@@ -233,16 +246,19 @@ mod tests {
         let expected = bytes(
             "1b 40 1b 1d 74 01 1b 45 1b 34 48 49 47 48 20 50 52 49 4f 52 49 54 59 1b 35 1b 46 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 31 35 20 4a 41 4e 20 32 30 32 35 1b 45 0a 1b 61 01 1b 57 01 1b 68 01 55 72 67 65 6e 74 20 74 61 73 6b 1b 61 02 1b 64 03",
         );
-        let actual =
-            card("Urgent task", true, Some("2025-01-15")).document(starprint::impact(), true);
+        let actual = card("Urgent task", true, Some("2025-01-15")).document(
+            starprint::impact(),
+            Paper::Mm80,
+            true,
+        );
         assert_eq!(actual.as_bytes(), expected);
     }
 
     #[test]
     fn thermal_priority_banner_keeps_padding() {
-        let layout = card("x", true, None).layout::<StarLine>();
+        let layout = card("x", true, None).layout::<StarLine>(Paper::Mm80);
         assert_eq!(layout.priority.as_deref(), Some(" HIGH PRIORITY "));
-        let layout = card("x", true, None).layout::<Impact>();
+        let layout = card("x", true, None).layout::<Impact>(Paper::Mm80);
         assert_eq!(layout.priority.as_deref(), Some("HIGH PRIORITY"));
     }
 
@@ -260,8 +276,8 @@ mod tests {
             wrap_by_words("one two three four", 10),
             ["one two", "three four"]
         );
-        let layout = card("one two", false, None).layout::<Impact>();
-        assert_eq!(layout.columns, 42);
+        let layout = card("one two", false, None).layout::<Impact>(Paper::Mm112);
+        assert_eq!(layout.columns, 42, "impact ignores the roll");
         assert_eq!(layout.lines, ["one two"]);
         assert_eq!(layout.priority, None);
         assert_eq!(layout.due, None);
@@ -269,7 +285,7 @@ mod tests {
 
     #[test]
     fn layout_right_aligns_due_after_priority() {
-        let layout = card("x", true, Some("2025-01-15")).layout::<StarLine>();
+        let layout = card("x", true, Some("2025-01-15")).layout::<StarLine>(Paper::Mm80);
         assert_eq!(layout.columns, 48);
         assert_eq!(layout.priority.as_deref(), Some(" HIGH PRIORITY "));
         // 48 columns minus the 15-character banner leaves 33, so the
@@ -278,5 +294,11 @@ mod tests {
             layout.due.as_deref(),
             Some("                      15 JAN 2025")
         );
+    }
+
+    #[test]
+    fn wider_paper_gives_the_card_more_columns() {
+        let layout = card("x", false, None).layout::<StarLine>(Paper::Mm112);
+        assert_eq!(layout.columns, 69, "832 dots of Font A");
     }
 }
