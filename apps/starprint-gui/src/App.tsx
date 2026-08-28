@@ -7,17 +7,25 @@ import { PrinterSettings } from "@/components/printer-settings";
 import { TaskCardForm } from "@/components/task-card-form";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
   printTaskCard,
   taskCardHexdump,
   taskCardLayout,
+  type HexDump,
   type Layout,
   type Printer,
   type TaskCard,
 } from "@/lib/api";
 import { DEFAULT_PRINTER, loadPrinter, savePrinter } from "@/lib/settings";
-
-const HEADING =
-  "text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 
 function emptyCard(): TaskCard {
   return { text: "", priority: false, due: format(new Date(), "yyyy-MM-dd") };
@@ -27,23 +35,15 @@ export default function App() {
   const [printer, setPrinter] = useState<Printer>(DEFAULT_PRINTER);
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [layout, setLayout] = useState<Layout | null>(null);
-  const [hexdump, setHexdump] = useState<string | null>(null);
+  const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     loadPrinter().then(setPrinter).catch(console.error);
   }, []);
 
-  // The hex dump is a snapshot; drop it whenever the inputs change so it
-  // never shows stale bytes.
-  const updateCard = (next: TaskCard) => {
-    setCard(next);
-    setHexdump(null);
-  };
-
   const updatePrinter = (next: Printer) => {
     setPrinter(next);
-    setHexdump(null);
     savePrinter(next).catch(console.error);
   };
 
@@ -78,11 +78,7 @@ export default function App() {
     }
   };
 
-  const toggleHexdump = async () => {
-    if (hexdump !== null) {
-      setHexdump(null);
-      return;
-    }
+  const showHexdump = async () => {
     try {
       setHexdump(await taskCardHexdump(card, printer));
     } catch (error) {
@@ -92,52 +88,77 @@ export default function App() {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <header className="border-b bg-card px-3 py-2">
+      {/* The toolbar is rendered in the dark theme so it reads as app
+          chrome; every control inside picks up the dark tokens. */}
+      <header className="dark border-b bg-background px-4 py-3 text-foreground">
         <PrinterSettings printer={printer} onChange={updatePrinter} />
       </header>
 
-      <div className="grid flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className="grid content-start gap-3 border-b p-3 md:border-r md:border-b-0">
-          <TaskCardForm card={card} onChange={updateCard} onSubmit={print} />
-          <div className="flex flex-wrap items-center gap-1.5 border-t pt-3">
-            <Button size="sm" onClick={print} disabled={!canPrint}>
+      {/* The window's minimum size is chosen so this never has to wrap. */}
+      <div className="grid flex-1 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <section className="flex flex-col gap-4 border-r p-4">
+          <TaskCardForm card={card} onChange={setCard} onSubmit={print} />
+          <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+            <Button onClick={print} disabled={!canPrint}>
               <PrinterIcon />
               {printing ? "Printing…" : "Print"}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleHexdump}
-              disabled={!hasText}
-            >
+            <Button variant="outline" onClick={showHexdump} disabled={!hasText}>
               <TerminalIcon />
-              {hexdump === null ? "Bytes" : "Hide bytes"}
+              Bytes
             </Button>
             {!hasHost && (
-              <span className="text-[11px] text-destructive">
+              <span className="text-sm text-destructive">
                 Enter the printer host to print.
               </span>
             )}
+            <Field orientation="horizontal" className="ml-auto w-auto">
+              <Switch
+                id="cut"
+                checked={printer.cut}
+                onCheckedChange={(cut) => updatePrinter({ ...printer, cut })}
+              />
+              <FieldLabel
+                htmlFor="cut"
+                className="text-sm tracking-normal normal-case text-foreground"
+              >
+                Auto cut
+              </FieldLabel>
+            </Field>
           </div>
-          {hexdump !== null && (
-            <pre className="overflow-x-auto rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-snug">
-              {hexdump}
-            </pre>
-          )}
         </section>
 
-        <section className="grid content-start gap-3 bg-muted/40 p-3">
-          <h2 className={HEADING}>
+        <section className="flex flex-col gap-4 bg-muted/40 p-4">
+          <Label render={<h2 />} className="h-5">
             Preview
             {layout && (
-              <span className="ml-1.5 font-normal normal-case tracking-normal">
-                {layout.columns} cols · {printer.kind}
+              <span className="font-normal tracking-normal normal-case">
+                {layout.columns} columns
               </span>
             )}
-          </h2>
+          </Label>
           <CardPreview layout={layout} kind={printer.kind} />
         </section>
       </div>
+
+      <Dialog
+        open={hexdump !== null}
+        onOpenChange={(open) => {
+          if (!open) setHexdump(null);
+        }}
+      >
+        <DialogContent className="w-fit max-w-none sm:max-w-none">
+          <DialogHeader>
+            <DialogTitle>Bytes</DialogTitle>
+            <DialogDescription>
+              {hexdump?.bytes} bytes, 16 per row.
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-[60vh] w-max overflow-y-auto rounded-md bg-muted px-3 py-2 font-mono text-xs leading-relaxed">
+            {hexdump?.dump}
+          </pre>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

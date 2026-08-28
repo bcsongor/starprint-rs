@@ -13,6 +13,8 @@ export interface Printer {
   port: number;
   density: number;
   speed: Speed;
+  /** Cut the paper after the card. */
+  cut: boolean;
 }
 
 /** Mirrors `TaskCard` in src-tauri/src/task_card.rs. */
@@ -43,6 +45,12 @@ export function printTaskCard(card: TaskCard, printer: Printer) {
   return invoke<PrintReport>("print_task_card", { card, printer });
 }
 
+export interface HexDump {
+  bytes: number;
+  /** 16 bytes per row: offset, hex, ASCII. */
+  dump: string;
+}
+
 export function taskCardHexdump(card: TaskCard, printer: Printer) {
-  return invoke<string>("task_card_hexdump", { card, printer });
+  return invoke<HexDump>("task_card_hexdump", { card, printer });
 }

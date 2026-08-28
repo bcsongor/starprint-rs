@@ -2,14 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
-    --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -127,11 +125,7 @@
     @apply bg-background text-foreground;
     }
   html {
-    @apply font-sans text-[13px] antialiased;
-    font-feature-settings: "tnum", "cv11";
-    }
-  /* Native controls and popups follow the app's type scale. */
-  input, textarea, button, select {
-    font-size: inherit;
+    @apply font-sans antialiased;
+    font-feature-settings: "tnum";
     }
 }

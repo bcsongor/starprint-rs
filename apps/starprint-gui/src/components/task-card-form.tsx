@@ -1,12 +1,14 @@
-import { addDays, format, nextSaturday, nextSunday, parseISO } from "date-fns";
-import { CalendarIcon, XIcon } from "lucide-react";
+import { addDays, format, nextSunday, parseISO } from "date-fns";
+import { CalendarIcon, CornerDownLeftIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { TaskCard } from "@/lib/api";
@@ -26,9 +28,6 @@ function toDate(due: string | null): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-const LABEL =
-  "text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
-
 export function TaskCardForm({ card, onChange, onSubmit }: Props) {
   const set = <K extends keyof TaskCard>(key: K, value: TaskCard[K]) =>
     onChange({ ...card, [key]: value });
@@ -40,24 +39,27 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
   const shortcuts: [string, Date][] = [
     ["Today", today],
     ["Tomorrow", addDays(today, 1)],
-    ["Sat", nextSaturday(today)],
-    ["Sun", nextSunday(today)],
+    ["Sunday", nextSunday(today)],
   ];
 
   return (
-    <div className="grid gap-3">
-      <div className="grid gap-1">
-        <div className="flex items-baseline justify-between">
-          <label htmlFor="task" className={LABEL}>
-            Task
-          </label>
-          <span className="text-[11px] text-muted-foreground">
-            Ctrl+Enter prints
+    <FieldGroup className="gap-4">
+      <Field>
+        <div className="flex h-5 items-center justify-between">
+          <FieldLabel htmlFor="task">Task</FieldLabel>
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <KbdGroup>
+              <Kbd>Ctrl</Kbd>
+              <Kbd>
+                <CornerDownLeftIcon />
+              </Kbd>
+            </KbdGroup>
+            prints
           </span>
         </div>
         <Textarea
           id="task"
-          className="min-h-0 text-[13px] leading-snug"
+          className="min-h-0"
           value={card.text}
           placeholder="What needs doing?"
           rows={3}
@@ -70,24 +72,24 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
             }
           }}
         />
-      </div>
+      </Field>
 
-      <div className="grid gap-1">
-        <label className={LABEL}>Due</label>
-        <div className="flex flex-wrap items-center gap-1.5">
+      <Field>
+        <FieldLabel htmlFor="due">Due</FieldLabel>
+        <div className="flex flex-wrap items-center gap-2">
           <Popover>
             <PopoverTrigger
               render={
                 <Button
+                  id="due"
                   variant="outline"
-                  size="sm"
-                  className="w-44 justify-start font-normal"
+                  className="w-36 justify-start font-normal"
                 />
               }
             >
               <CalendarIcon />
               {selected ? (
-                format(selected, "EEE d MMM yyyy")
+                format(selected, "d MMM yyyy")
               ) : (
                 <span className="text-muted-foreground">No due date</span>
               )}
@@ -108,7 +110,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
               <Button
                 key={label}
                 variant={active ? "default" : "secondary"}
-                size="xs"
+                size="sm"
                 aria-pressed={active}
                 onClick={() => setDate(active ? undefined : date)}
               >
@@ -119,7 +121,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
           {selected && (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               aria-label="Clear due date"
               onClick={() => setDate(undefined)}
             >
@@ -127,20 +129,21 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
             </Button>
           )}
         </div>
-      </div>
+      </Field>
 
-      <label className="flex items-center gap-2">
+      <Field orientation="horizontal">
         <Switch
           id="priority"
-          size="sm"
           checked={card.priority}
           onCheckedChange={(checked) => set("priority", checked)}
         />
-        <span>High priority</span>
-        <span className="text-muted-foreground">
-          — prints a flag, red on impact, inverse on thermal
-        </span>
-      </label>
-    </div>
+        <FieldLabel
+          htmlFor="priority"
+          className="text-sm tracking-normal normal-case text-foreground"
+        >
+          High priority
+        </FieldLabel>
+      </Field>
+    </FieldGroup>
   );
 }

@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "Starprint",
-        "width": 880,
-        "height": 440,
-        "minWidth": 760,
+        "width": 820,
+        "height": 400,
+        "minWidth": 820,
         "minHeight": 400
       }
     ],

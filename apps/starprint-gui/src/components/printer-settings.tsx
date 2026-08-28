@@ -1,3 +1,4 @@
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -7,10 +8,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Printer, PrinterKind, Speed } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 const KINDS: { value: PrinterKind; label: string; models: string }[] = [
-  { value: "thermal", label: "Thermal", models: "TSP650II, TSP700II, TSP800II" },
+  {
+    value: "thermal",
+    label: "Thermal",
+    models: "TSP650II, TSP700II, TSP800II",
+  },
   { value: "impact", label: "Impact", models: "SP712, SP742, SP717, SP747" },
 ];
 
@@ -33,33 +37,6 @@ const SPEEDS: { value: Speed; label: string; hint: string }[] = [
   { value: "high", label: "High", hint: "default" },
 ];
 
-/** A labelled cell in the toolbar. */
-function Field({
-  label,
-  htmlFor,
-  className,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={cn("grid gap-1", className)}>
-      <label
-        htmlFor={htmlFor}
-        className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
-      >
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-const INPUT = "h-7 px-2 text-[13px]";
-
 interface Props {
   printer: Printer;
   onChange: (printer: Printer) => void;
@@ -73,12 +50,13 @@ export function PrinterSettings({ printer, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-      <Field label="Printer" htmlFor="kind" className="min-w-56 flex-1">
+      <Field className="min-w-64 flex-1">
+        <FieldLabel htmlFor="kind">Printer</FieldLabel>
         <Select
           value={printer.kind}
           onValueChange={(value) => set("kind", value as PrinterKind)}
         >
-          <SelectTrigger id="kind" size="sm" className="w-full">
+          <SelectTrigger id="kind" className="w-full">
             <SelectValue>
               {kind.label}
               <span className="text-muted-foreground"> · {kind.models}</span>
@@ -95,10 +73,10 @@ export function PrinterSettings({ printer, onChange }: Props) {
         </Select>
       </Field>
 
-      <Field label="Host" htmlFor="host" className="w-36">
+      <Field className="w-36">
+        <FieldLabel htmlFor="host">Host</FieldLabel>
         <Input
           id="host"
-          className={INPUT}
           value={printer.host}
           placeholder="192.168.1.60"
           spellCheck={false}
@@ -108,10 +86,10 @@ export function PrinterSettings({ printer, onChange }: Props) {
         />
       </Field>
 
-      <Field label="Port" htmlFor="port" className="w-18">
+      <Field className="w-18">
+        <FieldLabel htmlFor="port">Port</FieldLabel>
         <Input
           id="port"
-          className={INPUT}
           type="number"
           min={1}
           max={65535}
@@ -120,63 +98,65 @@ export function PrinterSettings({ printer, onChange }: Props) {
         />
       </Field>
 
-      {thermal && (
-        <>
-          <Field label="Density" htmlFor="density" className="w-22">
-            <Select
-              value={String(printer.density)}
-              onValueChange={(value) => set("density", Number(value))}
-            >
-              <SelectTrigger id="density" size="sm" className="w-full">
-                <SelectValue>
-                  {DENSITIES.find((d) => d.value === printer.density)?.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                alignItemWithTrigger={false}
-                align="end"
-                className="w-max min-w-(--anchor-width)"
-              >
-                {DENSITIES.map((d) => (
-                  <SelectItem key={d.value} value={String(d.value)}>
-                    <span className="w-6 tabular-nums">{d.label}</span>
-                    {d.hint && (
-                      <span className="text-muted-foreground">{d.hint}</span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+      {/* Density and speed are thermal-only; they stay in place, disabled,
+          for the impact printer so the toolbar does not reflow. */}
+      <Field className="w-20" data-disabled={!thermal}>
+        <FieldLabel htmlFor="density">Density</FieldLabel>
+        <Select
+          value={String(printer.density)}
+          disabled={!thermal}
+          onValueChange={(value) => set("density", Number(value))}
+        >
+          <SelectTrigger id="density" className="w-full">
+            <SelectValue>
+              {DENSITIES.find((d) => d.value === printer.density)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent
+            alignItemWithTrigger={false}
+            align="end"
+            className="w-max min-w-(--anchor-width)"
+          >
+            {DENSITIES.map((d) => (
+              <SelectItem key={d.value} value={String(d.value)}>
+                <span className="w-6 tabular-nums">{d.label}</span>
+                {d.hint && (
+                  <span className="text-muted-foreground">{d.hint}</span>
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
 
-          <Field label="Speed" htmlFor="speed" className="w-24">
-            <Select
-              value={printer.speed}
-              onValueChange={(value) => set("speed", value as Speed)}
-            >
-              <SelectTrigger id="speed" size="sm" className="w-full">
-                <SelectValue>
-                  {SPEEDS.find((s) => s.value === printer.speed)?.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                alignItemWithTrigger={false}
-                align="end"
-                className="w-max min-w-(--anchor-width)"
-              >
-                {SPEEDS.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    <span className="w-14">{s.label}</span>
-                    {s.hint && (
-                      <span className="text-muted-foreground">{s.hint}</span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </>
-      )}
+      <Field className="w-26" data-disabled={!thermal}>
+        <FieldLabel htmlFor="speed">Speed</FieldLabel>
+        <Select
+          value={printer.speed}
+          disabled={!thermal}
+          onValueChange={(value) => set("speed", value as Speed)}
+        >
+          <SelectTrigger id="speed" className="w-full">
+            <SelectValue>
+              {SPEEDS.find((s) => s.value === printer.speed)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent
+            alignItemWithTrigger={false}
+            align="end"
+            className="w-max min-w-(--anchor-width)"
+          >
+            {SPEEDS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>
+                <span className="w-14">{s.label}</span>
+                {s.hint && (
+                  <span className="text-muted-foreground">{s.hint}</span>
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
     </div>
   );
 }

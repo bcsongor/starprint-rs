@@ -9,8 +9,6 @@ use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
-const PRIORITY_TEXT: &str = " HIGH PRIORITY ";
-
 /// What the user typed into the form.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +27,7 @@ pub struct TaskCard {
 pub struct Layout {
     /// Characters per line at normal size.
     pub columns: usize,
-    /// `PRIORITY_TEXT` when the priority flag is set, else `None`.
+    /// The priority banner text when the flag is set, else `None`.
     pub priority: Option<String>,
     /// The formatted due text, right-aligned to fill the header line.
     pub due: Option<String>,
@@ -41,6 +39,10 @@ pub struct Layout {
 /// once for both printers.
 pub trait CardStyle: Sized {
     const COLUMNS: usize;
+    /// The priority banner. Thermal prints it inverse, so it is padded
+    /// with a space each side to give the black block some margin;
+    /// impact prints plain red text, which wants no padding.
+    const PRIORITY_TEXT: &'static str;
 
     fn set_wide(self, on: bool) -> Self;
     fn set_tall(self, on: bool) -> Self;
@@ -49,6 +51,7 @@ pub trait CardStyle: Sized {
 
 impl CardStyle for Builder<StarLine> {
     const COLUMNS: usize = 48;
+    const PRIORITY_TEXT: &'static str = " HIGH PRIORITY ";
 
     fn set_wide(self, on: bool) -> Self {
         self.wide(if on { 2 } else { 1 })
@@ -65,6 +68,7 @@ impl CardStyle for Builder<StarLine> {
 
 impl CardStyle for Builder<Impact> {
     const COLUMNS: usize = 42;
+    const PRIORITY_TEXT: &'static str = "HIGH PRIORITY";
 
     fn set_wide(self, on: bool) -> Self {
         self.double_wide(on)
@@ -134,8 +138,14 @@ fn align_right(text: &str, width: usize) -> String {
 }
 
 impl TaskCard {
-    pub fn layout(&self, columns: usize) -> Layout {
-        let priority = self.priority.then(|| PRIORITY_TEXT.to_owned());
+    pub fn layout<P: Protocol>(&self) -> Layout
+    where
+        Builder<P>: CardStyle,
+    {
+        let columns = <Builder<P> as CardStyle>::COLUMNS;
+        let priority = self
+            .priority
+            .then(|| <Builder<P> as CardStyle>::PRIORITY_TEXT.to_owned());
         let due = due_text(self.due.as_deref()).map(|due| {
             let width = columns.saturating_sub(priority.as_ref().map_or(0, |p| p.chars().count()));
             align_right(&due, width)
@@ -148,11 +158,13 @@ impl TaskCard {
         }
     }
 
-    pub fn document<P: Protocol>(&self, builder: Builder<P>) -> Document
+    /// Builds the print job. `cut` feeds and cuts after the card;
+    /// without it the card only feeds clear of the head.
+    pub fn document<P: Protocol>(&self, builder: Builder<P>, cut: bool) -> Document
     where
         Builder<P>: CardStyle,
     {
-        let layout = self.layout(<Builder<P> as CardStyle>::COLUMNS);
+        let layout = self.layout::<P>();
         let mut card = builder.bold(true);
         if layout.priority.is_some() || layout.due.is_some() {
             if let Some(priority) = &layout.priority {
@@ -164,12 +176,16 @@ impl TaskCard {
             card = card.raw([b'\n']).feed(1);
         }
 
-        card.set_wide(true)
+        let card = card
+            .set_wide(true)
             .set_tall(true)
             .text(&layout.lines.join("\n"))
-            .feed(2)
-            .cut(Cut::FeedThenPartial)
-            .build()
+            .feed(2);
+        if cut {
+            card.cut(Cut::FeedThenPartial).build()
+        } else {
+            card.feed(3).build()
+        }
     }
 }
 
@@ -196,17 +212,38 @@ mod tests {
         let expected = bytes(
             "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 64 03",
         );
-        let actual = card("Test task", false, None).document(starprint::impact());
+        let actual = card("Test task", false, None).document(starprint::impact(), true);
         assert_eq!(actual.as_bytes(), expected);
     }
 
     #[test]
-    fn priority_card_emphasises_header_and_separates_task() {
+    fn card_without_cut_only_feeds() {
         let expected = bytes(
-            "1b 40 1b 1d 74 01 1b 45 1b 34 20 48 49 47 48 20 50 52 49 4f 52 49 54 59 20 1b 35 1b 46 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 31 35 20 4a 41 4e 20 32 30 32 35 1b 45 0a 1b 61 01 1b 57 01 1b 68 01 55 72 67 65 6e 74 20 74 61 73 6b 1b 61 02 1b 64 03",
+            "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 61 03",
         );
-        let actual = card("Urgent task", true, Some("2025-01-15")).document(starprint::impact());
+        let actual = card("Test task", false, None).document(starprint::impact(), false);
         assert_eq!(actual.as_bytes(), expected);
+    }
+
+    /// The Python GUI pads the banner with a space each side on every
+    /// printer; on impact the banner is plain red text, so the padding
+    /// is dropped and the due date gains two columns.
+    #[test]
+    fn impact_priority_banner_is_unpadded() {
+        let expected = bytes(
+            "1b 40 1b 1d 74 01 1b 45 1b 34 48 49 47 48 20 50 52 49 4f 52 49 54 59 1b 35 1b 46 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 31 35 20 4a 41 4e 20 32 30 32 35 1b 45 0a 1b 61 01 1b 57 01 1b 68 01 55 72 67 65 6e 74 20 74 61 73 6b 1b 61 02 1b 64 03",
+        );
+        let actual =
+            card("Urgent task", true, Some("2025-01-15")).document(starprint::impact(), true);
+        assert_eq!(actual.as_bytes(), expected);
+    }
+
+    #[test]
+    fn thermal_priority_banner_keeps_padding() {
+        let layout = card("x", true, None).layout::<StarLine>();
+        assert_eq!(layout.priority.as_deref(), Some(" HIGH PRIORITY "));
+        let layout = card("x", true, None).layout::<Impact>();
+        assert_eq!(layout.priority.as_deref(), Some("HIGH PRIORITY"));
     }
 
     #[test]
@@ -219,18 +256,27 @@ mod tests {
 
     #[test]
     fn layout_wraps_at_quad_size_width() {
-        let layout = card("one two three four", false, None).layout(20);
-        assert_eq!(layout.lines, ["one two", "three four"]);
+        assert_eq!(
+            wrap_by_words("one two three four", 10),
+            ["one two", "three four"]
+        );
+        let layout = card("one two", false, None).layout::<Impact>();
+        assert_eq!(layout.columns, 42);
+        assert_eq!(layout.lines, ["one two"]);
         assert_eq!(layout.priority, None);
         assert_eq!(layout.due, None);
     }
 
     #[test]
     fn layout_right_aligns_due_after_priority() {
-        let layout = card("x", true, Some("2025-01-15")).layout(42);
-        assert_eq!(layout.priority.as_deref(), Some(PRIORITY_TEXT));
-        // 42 columns minus the 15-character priority flag leaves 27, so
-        // the 11-character date gets 16 spaces of padding.
-        assert_eq!(layout.due.as_deref(), Some("                15 JAN 2025"));
+        let layout = card("x", true, Some("2025-01-15")).layout::<StarLine>();
+        assert_eq!(layout.columns, 48);
+        assert_eq!(layout.priority.as_deref(), Some(" HIGH PRIORITY "));
+        // 48 columns minus the 15-character banner leaves 33, so the
+        // 11-character date gets 22 spaces of padding.
+        assert_eq!(
+            layout.due.as_deref(),
+            Some("                      15 JAN 2025")
+        );
     }
 }

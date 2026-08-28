@@ -10,13 +10,17 @@ export const DEFAULT_PRINTER: Printer = {
   port: 9100,
   density: 3,
   speed: "slow",
+  cut: true,
 };
 
 export async function loadPrinter(): Promise<Printer> {
   const store = await load(FILE, { defaults: {} });
   const saved = await store.get<Partial<Printer>>(KEY);
-  const { kind, host, port, density, speed } = { ...DEFAULT_PRINTER, ...saved };
-  return { kind, host, port, density, speed };
+  const { kind, host, port, density, speed, cut } = {
+    ...DEFAULT_PRINTER,
+    ...saved,
+  };
+  return { kind, host, port, density, speed, cut };
 }
 
 export async function savePrinter(printer: Printer): Promise<void> {

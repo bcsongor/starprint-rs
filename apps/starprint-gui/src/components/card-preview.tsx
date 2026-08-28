@@ -8,7 +8,7 @@ interface Props {
 }
 
 /** Font size of the strip's normal-size text, before scaling to fit. */
-const BASE_PX = 12;
+const BASE_PX = 13;
 /** Horizontal padding of the strip, in normal-size characters. */
 const MARGIN_CH = 2;
 

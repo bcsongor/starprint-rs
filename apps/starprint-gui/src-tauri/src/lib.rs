@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use starprint::transport::TcpTransport;
 use starprint::{Document, PrintSpeed};
 
-use task_card::{CardStyle, Layout, TaskCard};
+use task_card::{Layout, TaskCard};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -20,10 +20,10 @@ pub enum PrinterKind {
 }
 
 impl PrinterKind {
-    fn columns(self) -> usize {
+    fn layout(self, card: &TaskCard) -> Layout {
         match self {
-            Self::Thermal => <starprint::Builder<starprint::StarLine> as CardStyle>::COLUMNS,
-            Self::Impact => <starprint::Builder<starprint::Impact> as CardStyle>::COLUMNS,
+            Self::Thermal => card.layout::<starprint::StarLine>(),
+            Self::Impact => card.layout::<starprint::Impact>(),
         }
     }
 }
@@ -58,6 +58,8 @@ pub struct Printer {
     pub density: i8,
     /// Thermal only: slow gives the best text quality.
     pub speed: Speed,
+    /// Cut the paper after the card.
+    pub cut: bool,
 }
 
 impl Printer {
@@ -67,8 +69,9 @@ impl Printer {
                 starprint::starline()
                     .print_density(self.density)
                     .print_speed(self.speed.into()),
+                self.cut,
             ),
-            PrinterKind::Impact => card.document(starprint::impact()),
+            PrinterKind::Impact => card.document(starprint::impact(), self.cut),
         }
     }
 }
@@ -81,7 +84,7 @@ pub struct PrintReport {
 
 #[tauri::command]
 fn task_card_layout(card: TaskCard, kind: PrinterKind) -> Layout {
-    card.layout(kind.columns())
+    kind.layout(&card)
 }
 
 #[tauri::command]
@@ -104,13 +107,21 @@ async fn print_task_card(card: TaskCard, printer: Printer) -> Result<PrintReport
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HexDump {
+    pub bytes: usize,
+    /// 16 bytes per row: offset, hex, ASCII.
+    pub dump: String,
+}
+
 /// The bytes the job would send, as a hex dump, for checking without a
 /// printer.
 #[tauri::command]
-fn task_card_hexdump(card: TaskCard, printer: Printer) -> String {
+fn task_card_hexdump(card: TaskCard, printer: Printer) -> HexDump {
     let document = printer.task_card(&card);
-    document
-        .as_bytes()
+    let bytes = document.as_bytes();
+    let dump = bytes
         .chunks(16)
         .enumerate()
         .map(|(row, chunk)| {
@@ -128,7 +139,11 @@ fn task_card_hexdump(card: TaskCard, printer: Printer) -> String {
             format!("{:04x}  {:<47}  {ascii}", row * 16, hex.join(" "))
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    HexDump {
+        bytes: bytes.len(),
+        dump,
+    }
 }
 
 pub fn run() {
