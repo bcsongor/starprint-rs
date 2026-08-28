@@ -67,6 +67,16 @@ export interface Picture {
   contrast: number;
 }
 
+/** No picture and no adjustment: what Reset puts the settings back to. */
+export const DEFAULT_PICTURE: Picture = {
+  path: "",
+  double: false,
+  dither: "floyd-steinberg",
+  threshold: 128,
+  brightness: 1,
+  contrast: 1,
+};
+
 /** Mirrors `Job` in src-tauri/src/lib.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
@@ -83,7 +93,11 @@ export interface HexDump {
   dump: string;
 }
 
-export function taskCardLayout(card: TaskCard, kind: PrinterKind, paper: Paper) {
+export function taskCardLayout(
+  card: TaskCard,
+  kind: PrinterKind,
+  paper: Paper,
+) {
   return invoke<Layout>("task_card_layout", { card, kind, paper });
 }
 

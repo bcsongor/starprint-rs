@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { FolderOpenIcon } from "lucide-react";
+import { FolderOpenIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -11,7 +11,12 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import type { Dither, Picture, PrinterKind } from "@/lib/api";
+import {
+  DEFAULT_PICTURE,
+  type Dither,
+  type Picture,
+  type PrinterKind,
+} from "@/lib/api";
 
 const DITHERS: { value: Dither; label: string; hint: string }[] = [
   { value: "floyd-steinberg", label: "Floyd–Steinberg", hint: "photos" },
@@ -43,6 +48,10 @@ export function PictureForm({ picture, kind, onChange }: Props) {
     onChange({ ...picture, [key]: value });
   const thermal = kind === "thermal";
   const hasThreshold = picture.dither !== "bayer";
+  /** Whether anything but the picture itself is off its default. */
+  const adjusted = (Object.keys(DEFAULT_PICTURE) as (keyof Picture)[]).some(
+    (key) => key !== "path" && picture[key] !== DEFAULT_PICTURE[key],
+  );
 
   const browse = async () => {
     const path = await open({
@@ -67,11 +76,22 @@ export function PictureForm({ picture, kind, onChange }: Props) {
             Browse…
           </Button>
           <span
-            className="truncate text-sm text-muted-foreground"
+            className="min-w-0 truncate text-sm text-muted-foreground"
             title={picture.path}
           >
             {picture.path ? fileName(picture.path) : "No picture chosen."}
           </span>
+          {picture.path && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Clear the picture"
+              title="Clear the picture"
+              onClick={() => set("path", "")}
+            >
+              <XIcon />
+            </Button>
+          )}
         </div>
       </Field>
 
@@ -117,6 +137,18 @@ export function PictureForm({ picture, kind, onChange }: Props) {
             {thermal ? "Double resolution" : "Double density"}
           </FieldLabel>
         </Field>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto"
+          disabled={!adjusted}
+          aria-label="Reset the settings"
+          title="Reset the settings"
+          onClick={() => onChange({ ...DEFAULT_PICTURE, path: picture.path })}
+        >
+          <RotateCcwIcon />
+        </Button>
       </div>
 
       <SliderField

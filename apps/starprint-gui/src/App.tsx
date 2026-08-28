@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  DEFAULT_PICTURE,
   jobHexdump,
   picturePreview,
   printJob,
@@ -62,15 +63,6 @@ function emptyCard(): TaskCard {
 }
 
 const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
-
-const DEFAULT_PICTURE: Picture = {
-  path: "",
-  double: false,
-  dither: "floyd-steinberg",
-  threshold: 128,
-  brightness: 1,
-  contrast: 1,
-};
 
 /**
  * Sliders fire on every pixel. A short debounce coalesces those, and
@@ -177,11 +169,16 @@ export default function App() {
       : workflow === "test-page"
         ? { kind: "test-page", ...testPage }
         : { kind: "picture", ...picture };
+  // Clearing the picture leaves the last preview in state, so what is
+  // shown, and what can be printed, follows the path rather than it.
+  const preview = picture.path
+    ? { url: pictureUrl, error: pictureError }
+    : { url: null, error: null };
   const ready =
     workflow === "task-card"
       ? card.text.trim().length > 0
       : workflow === "picture"
-        ? pictureUrl !== null
+        ? preview.url !== null
         : true;
   /** What the preview is showing, in the printer's own terms. */
   const note =
@@ -326,7 +323,7 @@ export default function App() {
               {workflow === "task-card" ? (
                 <CardPreview layout={layout} kind={printer.kind} />
               ) : (
-                <PicturePreview url={pictureUrl} error={pictureError} />
+                <PicturePreview url={preview.url} error={preview.error} />
               )}
             </PaperSheet>
           )}
