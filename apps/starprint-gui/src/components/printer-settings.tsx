@@ -58,7 +58,7 @@ function Field({
   );
 }
 
-const INPUT = "h-7 text-[0.8rem] px-2";
+const INPUT = "h-7 px-2 text-[13px]";
 
 interface Props {
   printer: Printer;
@@ -84,7 +84,7 @@ export function PrinterSettings({ printer, onChange }: Props) {
               <span className="text-muted-foreground"> · {kind.models}</span>
             </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent alignItemWithTrigger={false} align="start">
             {KINDS.map((k) => (
               <SelectItem key={k.value} value={k.value}>
                 {k.label}
@@ -132,7 +132,11 @@ export function PrinterSettings({ printer, onChange }: Props) {
                   {DENSITIES.find((d) => d.value === printer.density)?.label}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                alignItemWithTrigger={false}
+                align="end"
+                className="w-max min-w-(--anchor-width)"
+              >
                 {DENSITIES.map((d) => (
                   <SelectItem key={d.value} value={String(d.value)}>
                     <span className="w-6 tabular-nums">{d.label}</span>
@@ -155,7 +159,11 @@ export function PrinterSettings({ printer, onChange }: Props) {
                   {SPEEDS.find((s) => s.value === printer.speed)?.label}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                alignItemWithTrigger={false}
+                align="end"
+                className="w-max min-w-(--anchor-width)"
+              >
                 {SPEEDS.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
                     <span className="w-14">{s.label}</span>

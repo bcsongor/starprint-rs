@@ -57,7 +57,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         </div>
         <Textarea
           id="task"
-          className="min-h-0 text-[0.8rem] leading-snug"
+          className="min-h-0 text-[13px] leading-snug"
           value={card.text}
           placeholder="What needs doing?"
           rows={3}
@@ -129,7 +129,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-[0.8rem]">
+      <label className="flex items-center gap-2">
         <Switch
           id="priority"
           size="sm"

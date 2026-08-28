@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Starprint",
-        "width": 960,
-        "height": 720,
+        "width": 880,
+        "height": 440,
         "minWidth": 760,
-        "minHeight": 560
+        "minHeight": 400
       }
     ],
     "security": {
