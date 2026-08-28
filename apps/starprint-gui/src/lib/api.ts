@@ -48,10 +48,30 @@ export interface Section {
   check: string;
 }
 
+/** Mirrors `Dither` in src-tauri/src/picture.rs. */
+export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
+
+/** Mirrors `Picture` in src-tauri/src/picture.rs. */
+export interface Picture {
+  /** Path of the image file on disk; empty until one is chosen. */
+  path: string;
+  paper: Paper;
+  /** Impact: double density. Thermal: double-resolution mode. */
+  double: boolean;
+  dither: Dither;
+  /** 1..255; ignored by Bayer. */
+  threshold: number;
+  /** 1.0 leaves the picture as is. */
+  brightness: number;
+  /** 1.0 leaves the picture as is. */
+  contrast: number;
+}
+
 /** Mirrors `Job` in src-tauri/src/lib.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
-  | ({ kind: "test-page" } & TestPage);
+  | ({ kind: "test-page" } & TestPage)
+  | ({ kind: "picture" } & Picture);
 
 export interface PrintReport {
   bytes: number;
@@ -77,6 +97,11 @@ export function printJob(job: Job, printer: Printer) {
 
 export function jobHexdump(job: Job, printer: Printer) {
   return invoke<HexDump>("job_hexdump", { job, printer });
+}
+
+/** The dithered picture as a PNG, through the dot model on thermal. */
+export function picturePreview(picture: Picture, kind: PrinterKind) {
+  return invoke<ArrayBuffer>("picture_preview", { picture, kind });
 }
 
 /** True when the printer answers on its port. */

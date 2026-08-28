@@ -10,3 +10,17 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bcsongor/starprint-rs"
+
+# Image decoding, resampling and dithering are far too slow unoptimised
+# for the GUI's live preview, so optimise the crates that do it even in
+# dev builds; the app's own code stays quick to compile.
+[profile.dev.package.starprint]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3

@@ -71,6 +71,12 @@ width set to 80 mm) and a Star SP700 (impact).
   80 mm before printing on 80 mm rolls, otherwise the head fires onto
   bare platen. Star warns that long narrow use wears the exposed strip of
   head; at hobby volumes it is irrelevant.
+- **Thermal dot gain, for previews.** A 1-bit dither looks lighter on
+  screen than on paper because each fired element blooms past its pitch.
+  Matched against printed step wedges on the TSP700II at slow speed,
+  density +3: dots print about 150 % of the pitch wide at normal
+  resolution and effectively 200 % in double-resolution mode (rows are
+  half as far apart). The GUI's preview draws dots at those sizes.
 - **Double-resolution mode is vertical:** 16 rows/mm at the same 8
   dots/mm horizontally; images need twice the rows (the profiles handle
   it). The mode outlives `ESC @`, so switch back explicitly.

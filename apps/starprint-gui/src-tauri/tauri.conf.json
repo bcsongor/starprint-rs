@@ -15,9 +15,9 @@
         "title": "Starprint",
         "theme": "Dark",
         "width": 820,
-        "height": 400,
+        "height": 540,
         "minWidth": 820,
-        "minHeight": 400
+        "minHeight": 540
       }
     ],
     "security": {

@@ -2,13 +2,18 @@
 //! `starprint` crate. The frontend never sees printer bytes; it sends a
 //! form payload and a printer profile and gets back a layout or a result.
 
+mod picture;
+mod preview;
 mod task_card;
 mod test_page;
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use starprint::transport::TcpTransport;
 use starprint::{Document, PrintSpeed};
 
+use picture::{Picture, SourceCache};
 use task_card::{Layout, TaskCard};
 use test_page::{Section, TestPage};
 
@@ -70,17 +75,7 @@ pub struct Printer {
 pub enum Job {
     TaskCard(TaskCard),
     TestPage(TestPage),
-}
-
-impl Job {
-    fn validate(&self) -> Result<(), String> {
-        match self {
-            Self::TaskCard(card) if card.text.trim().is_empty() => {
-                Err("The task text is empty.".to_owned())
-            }
-            _ => Ok(()),
-        }
-    }
+    Picture(Picture),
 }
 
 impl Printer {
@@ -90,17 +85,29 @@ impl Printer {
             .print_speed(self.speed.into())
     }
 
-    fn document(&self, job: &Job) -> Document {
+    /// Builds the job; fails when its input is missing or unreadable.
+    fn document(&self, job: &Job, cache: &SourceCache) -> Result<Document, String> {
         match (job, self.kind) {
-            (Job::TaskCard(card), PrinterKind::Thermal) => card.document(self.thermal(), self.cut),
+            (Job::TaskCard(card), _) if card.text.trim().is_empty() => {
+                Err("The task text is empty.".to_owned())
+            }
+            (Job::TaskCard(card), PrinterKind::Thermal) => {
+                Ok(card.document(self.thermal(), self.cut))
+            }
             (Job::TaskCard(card), PrinterKind::Impact) => {
-                card.document(starprint::impact(), self.cut)
+                Ok(card.document(starprint::impact(), self.cut))
             }
             (Job::TestPage(page), PrinterKind::Thermal) => {
-                test_page::thermal(self.thermal(), page, self.cut)
+                Ok(test_page::thermal(self.thermal(), page, self.cut))
             }
             (Job::TestPage(_), PrinterKind::Impact) => {
-                test_page::impact(starprint::impact(), self.cut)
+                Ok(test_page::impact(starprint::impact(), self.cut))
+            }
+            (Job::Picture(picture), PrinterKind::Thermal) => {
+                picture::thermal(self.thermal(), picture, self.cut, cache)
+            }
+            (Job::Picture(picture), PrinterKind::Impact) => {
+                picture::impact(starprint::impact(), picture, self.cut, cache)
             }
         }
     }
@@ -128,13 +135,17 @@ fn test_page_sections(page: TestPage, kind: PrinterKind) -> Vec<Section> {
 }
 
 #[tauri::command]
-async fn print_job(job: Job, printer: Printer) -> Result<PrintReport, String> {
-    job.validate()?;
-    let document = printer.document(&job);
+async fn print_job(
+    job: Job,
+    printer: Printer,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<PrintReport, String> {
     let address = format!("{}:{}", printer.host.trim(), printer.port);
-    // The transport paces its writes with sleeps, so keep it off the
-    // async runtime's threads.
+    let cache = Arc::clone(&cache);
+    // Image preparation is CPU-bound and the transport paces its writes
+    // with sleeps, so keep both off the async runtime's threads.
     tauri::async_runtime::spawn_blocking(move || {
+        let document = printer.document(&job, &cache)?;
         let mut transport = TcpTransport::connect(&address).map_err(|e| e.to_string())?;
         transport.print(&document).map_err(|e| e.to_string())?;
         Ok(PrintReport {
@@ -183,9 +194,21 @@ pub struct HexDump {
 /// The bytes the job would send, as a hex dump, for checking without a
 /// printer.
 #[tauri::command]
-fn job_hexdump(job: Job, printer: Printer) -> HexDump {
-    let document = printer.document(&job);
-    let bytes = document.as_bytes();
+async fn job_hexdump(
+    job: Job,
+    printer: Printer,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<HexDump, String> {
+    let cache = Arc::clone(&cache);
+    tauri::async_runtime::spawn_blocking(move || {
+        let document = printer.document(&job, &cache)?;
+        Ok(hexdump(document.as_bytes()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn hexdump(bytes: &[u8]) -> HexDump {
     let dump = bytes
         .chunks(16)
         .enumerate()
@@ -209,6 +232,21 @@ fn job_hexdump(job: Job, printer: Printer) -> HexDump {
         bytes: bytes.len(),
         dump,
     }
+}
+
+/// The dithered picture as it will print, encoded as a PNG. Returned as
+/// raw bytes, which the frontend shows through a blob URL.
+#[tauri::command]
+async fn picture_preview(
+    picture: Picture,
+    kind: PrinterKind,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<tauri::ipc::Response, String> {
+    let cache = Arc::clone(&cache);
+    tauri::async_runtime::spawn_blocking(move || picture.preview_png(kind, &cache))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
 }
 
 /// Colours the Windows title bar like the app's dark toolbar
@@ -246,7 +284,9 @@ fn colour_title_bar(window: &tauri::WebviewWindow) {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(Arc::new(SourceCache::default()))
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             #[cfg(windows)]
             {
@@ -262,6 +302,7 @@ pub fn run() {
             test_page_sections,
             print_job,
             job_hexdump,
+            picture_preview,
             probe_printer
         ])
         .run(tauri::generate_context!())

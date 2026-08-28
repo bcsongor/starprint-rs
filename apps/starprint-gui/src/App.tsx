@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/card-preview";
+import { PictureForm } from "@/components/picture-form";
+import { PicturePreview } from "@/components/picture-preview";
 import { PrintOptions } from "@/components/print-options";
 import { ProfileToolbar } from "@/components/profile-toolbar";
 import { TaskCardForm } from "@/components/task-card-form";
@@ -23,12 +25,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   jobHexdump,
+  picturePreview,
   printJob,
   taskCardLayout,
   testPageSections,
   type HexDump,
   type Job,
   type Layout,
+  type Picture,
   type Printer,
   type Section,
   type TaskCard,
@@ -47,6 +51,7 @@ type Workflow = Job["kind"];
 
 const WORKFLOWS: { value: Workflow; label: string }[] = [
   { value: "task-card", label: "Task card" },
+  { value: "picture", label: "Picture" },
   { value: "test-page", label: "Test page" },
 ];
 
@@ -56,6 +61,23 @@ function emptyCard(): TaskCard {
 
 const DEFAULT_TEST_PAGE: TestPage = { paper: "80", doubleResolution: false };
 
+const DEFAULT_PICTURE: Picture = {
+  path: "",
+  paper: "80",
+  double: false,
+  dither: "floyd-steinberg",
+  threshold: 128,
+  brightness: 1,
+  contrast: 1,
+};
+
+/**
+ * Sliders fire on every pixel. A short debounce coalesces those, and
+ * while a preview is being rendered further changes wait for it and
+ * then render once: the preview is never more than one render behind.
+ */
+const PREVIEW_DEBOUNCE_MS = 30;
+
 export default function App() {
   const [profiles, setProfiles] = useState<Profiles>(DEFAULT_PROFILES);
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
@@ -63,6 +85,9 @@ export default function App() {
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
+  const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
+  const [pictureUrl, setPictureUrl] = useState<string | null>(null);
+  const [pictureError, setPictureError] = useState<string | null>(null);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
 
@@ -111,11 +136,48 @@ export default function App() {
     };
   }, [testPage, printer.kind]);
 
+  const previewChain = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    if (!picture.path) return;
+    let cancelled = false;
+    let url: string | null = null;
+    const timer = setTimeout(() => {
+      // Chain onto the render in flight so the backend works on one
+      // preview at a time and a stale request is skipped, not rendered.
+      previewChain.current = previewChain.current.then(async () => {
+        if (cancelled) return;
+        try {
+          const png = await picturePreview(picture, printer.kind);
+          if (cancelled) return;
+          url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+          setPictureUrl(url);
+          setPictureError(null);
+        } catch (error) {
+          if (cancelled) return;
+          setPictureUrl(null);
+          setPictureError(String(error));
+        }
+      });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [picture, printer.kind]);
+
   const job: Job =
     workflow === "task-card"
       ? { kind: "task-card", ...card }
-      : { kind: "test-page", ...testPage };
-  const ready = workflow !== "task-card" || card.text.trim().length > 0;
+      : workflow === "test-page"
+        ? { kind: "test-page", ...testPage }
+        : { kind: "picture", ...picture };
+  const ready =
+    workflow === "task-card"
+      ? card.text.trim().length > 0
+      : workflow === "picture"
+        ? pictureUrl !== null
+        : true;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -155,7 +217,7 @@ export default function App() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main className="flex h-screen flex-col">
       {/* The toolbar is rendered in the dark theme so it reads as app
           chrome; every control inside picks up the dark tokens. */}
       <header className="dark flex items-end gap-3 border-b bg-background px-4 py-3 text-foreground">
@@ -168,7 +230,7 @@ export default function App() {
       </header>
 
       {/* The window's minimum size is chosen so this never has to wrap. */}
-      <div className="grid flex-1 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <section className="flex flex-col gap-4 border-r p-4">
           <Tabs
             value={workflow}
@@ -185,11 +247,17 @@ export default function App() {
 
           {workflow === "task-card" ? (
             <TaskCardForm card={card} onChange={setCard} onSubmit={print} />
-          ) : (
+          ) : workflow === "test-page" ? (
             <TestPageForm
               page={testPage}
               kind={printer.kind}
               onChange={setTestPage}
+            />
+          ) : (
+            <PictureForm
+              picture={picture}
+              kind={printer.kind}
+              onChange={setPicture}
             />
           )}
 
@@ -221,7 +289,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-4 bg-muted p-4">
+        <section className="flex min-h-0 flex-col gap-4 bg-muted p-4">
           <Label render={<h2 />} className="h-5">
             Preview
             {workflow === "task-card" && layout && (
@@ -232,8 +300,10 @@ export default function App() {
           </Label>
           {workflow === "task-card" ? (
             <CardPreview layout={layout} kind={printer.kind} />
-          ) : (
+          ) : workflow === "test-page" ? (
             <TestPagePreview sections={sections} />
+          ) : (
+            <PicturePreview url={pictureUrl} error={pictureError} />
           )}
         </section>
       </div>
