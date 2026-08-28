@@ -7,6 +7,7 @@ import App from "./App.tsx";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
-    <Toaster position="bottom-center" />
+    {/* Sonner pauses the timer while the pointer is over a toast. */}
+    <Toaster position="bottom-center" closeButton duration={2500} />
   </StrictMode>,
 );
