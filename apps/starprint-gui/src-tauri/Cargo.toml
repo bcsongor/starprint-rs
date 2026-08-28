@@ -1,0 +1,26 @@
+[package]
+name = "starprint-gui"
+version = "0.1.0"
+description = "Desktop app for printing to Star receipt printers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name from clashing with the binary
+# on Windows, as the Tauri template recommends.
+name = "starprint_gui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+starprint = { path = "../../../crates/starprint" }
+tauri = { version = "2", features = [] }
+tauri-plugin-store = "2"

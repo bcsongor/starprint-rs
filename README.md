@@ -96,6 +96,10 @@ Run with `cargo run --example <name> -- <printer-ip>`; the photo examples also n
 - **thermal_test_pattern:** a head-check page; a white hairline through the solid bar means a dead element.
 - **thermal_image, impact_image:** print a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 
+## Desktop app
+
+`apps/starprint-gui` is a Tauri app for printing without writing code; it currently prints task cards. Run it with `bun install && bun tauri dev` from that directory, or `bun tauri build` for an installer.
+
 ## Notes
 
 - **Pacing:** Star's Ethernet cards drop a large job sent all at once, so `TcpTransport` writes 1400 bytes every 20 ms. Send one job at a time; `set_pacing` tunes or disables it.

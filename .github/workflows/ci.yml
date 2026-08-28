@@ -39,3 +39,23 @@ jobs:
       - run: cargo doc --no-deps --features image
         env:
           RUSTDOCFLAGS: -D warnings
+
+  gui:
+    # The desktop app only ships for Windows for now; WebView2 is
+    # preinstalled there, so no extra system packages are needed.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/starprint-gui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run build
+      - run: cargo clippy -p starprint-gui --all-targets -- -D warnings
+      - run: cargo test -p starprint-gui

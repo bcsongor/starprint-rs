@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/starprint"]
+members = ["crates/starprint", "apps/starprint-gui/src-tauri"]
 # Root `cargo test`, `cargo run --example …` and friends act on the library
 # only; the GUI is built with `-p starprint-gui` or the Tauri CLI.
 default-members = ["crates/starprint"]
