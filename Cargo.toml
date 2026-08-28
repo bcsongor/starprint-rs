@@ -1,36 +1,12 @@
-[package]
-name = "starprint"
-version = "0.1.0"
+[workspace]
+resolver = "3"
+members = ["crates/starprint"]
+# Root `cargo test`, `cargo run --example …` and friends act on the library
+# only; the GUI is built with `-p starprint-gui` or the Tauri CLI.
+default-members = ["crates/starprint"]
+
+[workspace.package]
 edition = "2024"
 rust-version = "1.85"
-description = "Driver library for Star Micronics receipt printers: Star Line Mode (thermal) and the Star impact (SP700) command set, over Ethernet."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bcsongor/starprint-rs"
-keywords = ["star", "receipt", "printer", "pos", "starline"]
-categories = ["hardware-support"]
-
-[package.metadata.docs.rs]
-all-features = true
-
-[dependencies]
-image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
-
-[features]
-## Image preparation pipeline (decode, tone mapping, resize) in the
-## `pipeline` module. The core protocol layer stays dependency-free.
-image = ["dep:image"]
-
-[dev-dependencies]
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
-
-[[example]]
-name = "impact_image"
-required-features = ["image"]
-
-[[example]]
-name = "thermal_image"
-required-features = ["image"]
-
-[[example]]
-name = "thermal_scale_template"
-required-features = ["image"]
