@@ -123,6 +123,12 @@
     }
   body {
     @apply bg-background text-foreground;
+    /* An app, not a page: labels and chrome are not selectable. Fields
+       and the hex dump opt back in with `select-text`. */
+    @apply select-none;
+    }
+  input, textarea {
+    @apply select-text;
     }
   html {
     @apply font-sans antialiased;

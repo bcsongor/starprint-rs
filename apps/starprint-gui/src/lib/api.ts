@@ -13,7 +13,7 @@ export interface Printer {
   port: number;
   density: number;
   speed: Speed;
-  /** Cut the paper after the card. */
+  /** Cut the paper after the job. */
   cut: boolean;
 }
 
@@ -33,16 +33,28 @@ export interface Layout {
   lines: string[];
 }
 
+/** Mirrors `Paper` in src-tauri/src/test_page.rs. */
+export type Paper = "80" | "112";
+
+/** Mirrors `TestPage` in src-tauri/src/test_page.rs. */
+export interface TestPage {
+  paper: Paper;
+  doubleResolution: boolean;
+}
+
+/** Mirrors `Section` in src-tauri/src/test_page.rs. */
+export interface Section {
+  title: string;
+  check: string;
+}
+
+/** Mirrors `Job` in src-tauri/src/lib.rs. */
+export type Job =
+  | ({ kind: "task-card" } & TaskCard)
+  | ({ kind: "test-page" } & TestPage);
+
 export interface PrintReport {
   bytes: number;
-}
-
-export function taskCardLayout(card: TaskCard, kind: PrinterKind) {
-  return invoke<Layout>("task_card_layout", { card, kind });
-}
-
-export function printTaskCard(card: TaskCard, printer: Printer) {
-  return invoke<PrintReport>("print_task_card", { card, printer });
 }
 
 export interface HexDump {
@@ -51,6 +63,18 @@ export interface HexDump {
   dump: string;
 }
 
-export function taskCardHexdump(card: TaskCard, printer: Printer) {
-  return invoke<HexDump>("task_card_hexdump", { card, printer });
+export function taskCardLayout(card: TaskCard, kind: PrinterKind) {
+  return invoke<Layout>("task_card_layout", { card, kind });
+}
+
+export function testPageSections(page: TestPage, kind: PrinterKind) {
+  return invoke<Section[]>("test_page_sections", { page, kind });
+}
+
+export function printJob(job: Job, printer: Printer) {
+  return invoke<PrintReport>("print_job", { job, printer });
+}
+
+export function jobHexdump(job: Job, printer: Printer) {
+  return invoke<HexDump>("job_hexdump", { job, printer });
 }

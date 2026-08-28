@@ -3,12 +3,14 @@
 //! form payload and a printer profile and gets back a layout or a result.
 
 mod task_card;
+mod test_page;
 
 use serde::{Deserialize, Serialize};
 use starprint::transport::TcpTransport;
 use starprint::{Document, PrintSpeed};
 
 use task_card::{Layout, TaskCard};
+use test_page::{Section, TestPage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -62,16 +64,44 @@ pub struct Printer {
     pub cut: bool,
 }
 
+/// What to print: one variant per workflow the app offers.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum Job {
+    TaskCard(TaskCard),
+    TestPage(TestPage),
+}
+
+impl Job {
+    fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::TaskCard(card) if card.text.trim().is_empty() => {
+                Err("The task text is empty.".to_owned())
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 impl Printer {
-    fn task_card(&self, card: &TaskCard) -> Document {
-        match self.kind {
-            PrinterKind::Thermal => card.document(
-                starprint::starline()
-                    .print_density(self.density)
-                    .print_speed(self.speed.into()),
-                self.cut,
-            ),
-            PrinterKind::Impact => card.document(starprint::impact(), self.cut),
+    fn thermal(&self) -> starprint::Builder<starprint::StarLine> {
+        starprint::starline()
+            .print_density(self.density)
+            .print_speed(self.speed.into())
+    }
+
+    fn document(&self, job: &Job) -> Document {
+        match (job, self.kind) {
+            (Job::TaskCard(card), PrinterKind::Thermal) => card.document(self.thermal(), self.cut),
+            (Job::TaskCard(card), PrinterKind::Impact) => {
+                card.document(starprint::impact(), self.cut)
+            }
+            (Job::TestPage(page), PrinterKind::Thermal) => {
+                test_page::thermal(self.thermal(), page, self.cut)
+            }
+            (Job::TestPage(_), PrinterKind::Impact) => {
+                test_page::impact(starprint::impact(), self.cut)
+            }
         }
     }
 }
@@ -87,12 +117,20 @@ fn task_card_layout(card: TaskCard, kind: PrinterKind) -> Layout {
     kind.layout(&card)
 }
 
+/// The numbered sections of the test page for this printer, for the
+/// preview.
 #[tauri::command]
-async fn print_task_card(card: TaskCard, printer: Printer) -> Result<PrintReport, String> {
-    if card.text.trim().is_empty() {
-        return Err("The task text is empty.".to_owned());
+fn test_page_sections(page: TestPage, kind: PrinterKind) -> Vec<Section> {
+    match kind {
+        PrinterKind::Thermal => test_page::thermal_sections(&page),
+        PrinterKind::Impact => test_page::impact_sections(),
     }
-    let document = printer.task_card(&card);
+}
+
+#[tauri::command]
+async fn print_job(job: Job, printer: Printer) -> Result<PrintReport, String> {
+    job.validate()?;
+    let document = printer.document(&job);
     let address = format!("{}:{}", printer.host.trim(), printer.port);
     // The transport paces its writes with sleeps, so keep it off the
     // async runtime's threads.
@@ -118,8 +156,8 @@ pub struct HexDump {
 /// The bytes the job would send, as a hex dump, for checking without a
 /// printer.
 #[tauri::command]
-fn task_card_hexdump(card: TaskCard, printer: Printer) -> HexDump {
-    let document = printer.task_card(&card);
+fn job_hexdump(job: Job, printer: Printer) -> HexDump {
+    let document = printer.document(&job);
     let bytes = document.as_bytes();
     let dump = bytes
         .chunks(16)
@@ -194,8 +232,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             task_card_layout,
-            print_task_card,
-            task_card_hexdump
+            test_page_sections,
+            print_job,
+            job_hexdump
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
