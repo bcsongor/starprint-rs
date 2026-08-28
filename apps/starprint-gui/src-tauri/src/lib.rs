@@ -146,9 +146,52 @@ fn task_card_hexdump(card: TaskCard, printer: Printer) -> HexDump {
     }
 }
 
+/// Colours the Windows title bar like the app's dark toolbar
+/// (shadcn's dark `--background`, `oklch(0.145 0 0)` ≈ `#0a0a0a`), so
+/// frame and toolbar read as one surface. Other platforms draw their
+/// own frames.
+#[cfg(windows)]
+fn colour_title_bar(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
+    };
+
+    // COLORREF is 0x00BBGGRR.
+    const BACKGROUND: u32 = 0x000a0a0a;
+    const FOREGROUND: u32 = 0x00fafafa;
+
+    let Ok(hwnd) = window.hwnd() else { return };
+    for (attribute, colour) in [
+        (DWMWA_CAPTION_COLOR, BACKGROUND),
+        (DWMWA_BORDER_COLOR, BACKGROUND),
+        (DWMWA_TEXT_COLOR, FOREGROUND),
+    ] {
+        // SAFETY: the handle comes from the live window; the attribute
+        // takes a COLORREF-sized value.
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd.0 as _,
+                attribute as u32,
+                (&raw const colour).cast(),
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
+        .setup(|app| {
+            #[cfg(windows)]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    colour_title_bar(&window);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             task_card_layout,
             print_task_card,

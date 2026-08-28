@@ -3,7 +3,8 @@ import { format } from "date-fns";
 import { PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/card-preview";
-import { PrinterSettings } from "@/components/printer-settings";
+import { PrintOptions } from "@/components/print-options";
+import { ProfileToolbar } from "@/components/profile-toolbar";
 import { TaskCardForm } from "@/components/task-card-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,27 +26,46 @@ import {
   type Printer,
   type TaskCard,
 } from "@/lib/api";
-import { DEFAULT_PRINTER, loadPrinter, savePrinter } from "@/lib/settings";
+import {
+  DEFAULT_PROFILES,
+  activeProfile,
+  loadProfiles,
+  saveProfiles,
+  toPrinter,
+  type Profiles,
+} from "@/lib/settings";
 
 function emptyCard(): TaskCard {
   return { text: "", priority: false, due: format(new Date(), "yyyy-MM-dd") };
 }
 
 export default function App() {
-  const [printer, setPrinter] = useState<Printer>(DEFAULT_PRINTER);
+  const [profiles, setProfiles] = useState<Profiles>(DEFAULT_PROFILES);
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
-    loadPrinter().then(setPrinter).catch(console.error);
+    loadProfiles().then(setProfiles).catch(console.error);
   }, []);
 
-  const updatePrinter = (next: Printer) => {
-    setPrinter(next);
-    savePrinter(next).catch(console.error);
+  const updateProfiles = (next: Profiles) => {
+    setProfiles(next);
+    saveProfiles(next).catch(console.error);
   };
+
+  const profile = activeProfile(profiles);
+  const printer = toPrinter(profile);
+
+  /** Per-job settings are remembered on the active profile. */
+  const updatePrinter = (next: Printer) =>
+    updateProfiles({
+      ...profiles,
+      profiles: profiles.profiles.map((p) =>
+        p.id === profile.id ? { ...p, ...next } : p,
+      ),
+    });
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +88,7 @@ export default function App() {
     setPrinting(true);
     try {
       const report = await printTaskCard(card, printer);
-      toast.success(`Printed on ${printer.host}`, {
+      toast.success(`Printed on ${profile.name}`, {
         description: `${report.bytes} bytes sent.`,
       });
     } catch (error) {
@@ -90,8 +110,9 @@ export default function App() {
     <main className="flex min-h-screen flex-col">
       {/* The toolbar is rendered in the dark theme so it reads as app
           chrome; every control inside picks up the dark tokens. */}
-      <header className="dark border-b bg-background px-4 py-3 text-foreground">
-        <PrinterSettings printer={printer} onChange={updatePrinter} />
+      <header className="dark flex items-end gap-3 border-b bg-background px-4 py-3 text-foreground">
+        <ProfileToolbar state={profiles} onChange={updateProfiles} />
+        <PrintOptions printer={printer} onChange={updatePrinter} />
       </header>
 
       {/* The window's minimum size is chosen so this never has to wrap. */}
@@ -109,7 +130,7 @@ export default function App() {
             </Button>
             {!hasHost && (
               <span className="text-sm text-destructive">
-                Enter the printer host to print.
+                No host set.
               </span>
             )}
             <Field orientation="horizontal" className="ml-auto w-auto">

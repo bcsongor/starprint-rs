@@ -24,3 +24,7 @@ serde_json = "1"
 starprint = { path = "../../../crates/starprint" }
 tauri = { version = "2", features = [] }
 tauri-plugin-store = "2"
+
+[target.'cfg(windows)'.dependencies]
+# Paints the title bar in the app's own colour (DwmSetWindowAttribute).
+windows-sys = { version = "0.60", features = ["Win32_Graphics_Dwm"] }
