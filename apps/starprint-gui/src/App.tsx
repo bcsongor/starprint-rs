@@ -35,8 +35,16 @@ export default function App() {
     loadPrinter().then(setPrinter).catch(console.error);
   }, []);
 
+  // The hex dump is a snapshot; drop it whenever the inputs change so it
+  // never shows stale bytes.
+  const updateCard = (next: TaskCard) => {
+    setCard(next);
+    setHexdump(null);
+  };
+
   const updatePrinter = (next: Printer) => {
     setPrinter(next);
+    setHexdump(null);
     savePrinter(next).catch(console.error);
   };
 
@@ -52,31 +60,40 @@ export default function App() {
     };
   }, [card, printer.kind]);
 
-  const canPrint = card.text.trim().length > 0 && !printing;
+  const hasText = card.text.trim().length > 0;
+  const hasHost = printer.host.trim().length > 0;
+  const canPrint = hasText && hasHost && !printing;
 
   const print = async () => {
+    if (!canPrint) return;
     setPrinting(true);
     try {
       const report = await printTaskCard(card, printer);
-      toast.success(`Sent ${report.bytes} bytes to ${printer.host}`);
+      toast.success(`Printed on ${printer.host}`, {
+        description: `${report.bytes} bytes sent.`,
+      });
     } catch (error) {
-      toast.error(String(error));
+      toast.error("Print failed", { description: String(error) });
     } finally {
       setPrinting(false);
     }
   };
 
-  const showHexdump = async () => {
+  const toggleHexdump = async () => {
+    if (hexdump !== null) {
+      setHexdump(null);
+      return;
+    }
     try {
       setHexdump(await taskCardHexdump(card, printer));
     } catch (error) {
-      toast.error(String(error));
+      toast.error("Could not build the job", { description: String(error) });
     }
   };
 
   return (
     <main className="min-h-screen bg-muted/40 p-6">
-      <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
         <div className="grid gap-6 content-start">
           <Card>
             <CardHeader>
@@ -87,21 +104,48 @@ export default function App() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6">
-              <TaskCardForm card={card} onChange={setCard} />
-              <div className="flex gap-2">
+              <TaskCardForm
+                card={card}
+                onChange={updateCard}
+                onSubmit={print}
+              />
+              <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={print} disabled={!canPrint}>
                   <PrinterIcon />
                   {printing ? "Printing…" : "Print"}
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={showHexdump}
-                  disabled={!card.text.trim()}
+                  onClick={toggleHexdump}
+                  disabled={!hasText}
                 >
                   <TerminalIcon />
-                  Show bytes
+                  {hexdump === null ? "Show bytes" : "Hide bytes"}
                 </Button>
+                {!hasHost && (
+                  <span className="text-destructive text-xs">
+                    Enter the printer's host to print.
+                  </span>
+                )}
               </div>
+            </CardContent>
+          </Card>
+
+          <PrinterSettings printer={printer} onChange={updatePrinter} />
+        </div>
+
+        <div className="grid gap-6 content-start lg:sticky lg:top-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Preview</CardTitle>
+              <CardDescription>
+                {layout
+                  ? `${layout.columns} columns, as laid out for the ${printer.kind} printer.`
+                  : "Loading…"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CardPreview layout={layout} kind={printer.kind} />
             </CardContent>
           </Card>
 
@@ -109,26 +153,17 @@ export default function App() {
             <Card>
               <CardHeader>
                 <CardTitle>Bytes</CardTitle>
+                <CardDescription>
+                  Exactly what Print sends, for checking without a printer.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed">
                   {hexdump}
                 </pre>
               </CardContent>
             </Card>
           )}
-        </div>
-
-        <div className="grid gap-6 content-start">
-          <PrinterSettings printer={printer} onChange={updatePrinter} />
-          <Card>
-            <CardHeader>
-              <CardTitle>Preview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardPreview layout={layout} kind={printer.kind} />
-            </CardContent>
-          </Card>
         </div>
       </div>
     </main>

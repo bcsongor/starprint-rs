@@ -28,6 +28,25 @@ impl PrinterKind {
     }
 }
 
+/// Mirrors [`PrintSpeed`], which has no serde support of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Speed {
+    High,
+    Medium,
+    Slow,
+}
+
+impl From<Speed> for PrintSpeed {
+    fn from(speed: Speed) -> Self {
+        match speed {
+            Speed::High => Self::High,
+            Speed::Medium => Self::Medium,
+            Speed::Slow => Self::Slow,
+        }
+    }
+}
+
 /// Where and how to print. Persisted by the frontend via the store plugin.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,20 +56,18 @@ pub struct Printer {
     pub port: u16,
     /// Thermal only: print density, -3..=3.
     pub density: i8,
-    /// Thermal only: slow print speed for the best text quality.
-    pub slow: bool,
+    /// Thermal only: slow gives the best text quality.
+    pub speed: Speed,
 }
 
 impl Printer {
     fn task_card(&self, card: &TaskCard) -> Document {
         match self.kind {
-            PrinterKind::Thermal => {
-                let mut builder = starprint::starline().print_density(self.density);
-                if self.slow {
-                    builder = builder.print_speed(PrintSpeed::Slow);
-                }
-                card.document(builder)
-            }
+            PrinterKind::Thermal => card.document(
+                starprint::starline()
+                    .print_density(self.density)
+                    .print_speed(self.speed.into()),
+            ),
             PrinterKind::Impact => card.document(starprint::impact()),
         }
     }

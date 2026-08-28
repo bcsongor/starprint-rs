@@ -3,13 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 /** Mirrors `PrinterKind` in src-tauri/src/lib.rs. */
 export type PrinterKind = "thermal" | "impact";
 
+/** Mirrors `Speed` in src-tauri/src/lib.rs. */
+export type Speed = "high" | "medium" | "slow";
+
 /** Mirrors `Printer` in src-tauri/src/lib.rs. */
 export interface Printer {
   kind: PrinterKind;
   host: string;
   port: number;
   density: number;
-  slow: boolean;
+  speed: Speed;
 }
 
 /** Mirrors `TaskCard` in src-tauri/src/task_card.rs. */

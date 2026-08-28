@@ -9,13 +9,14 @@ export const DEFAULT_PRINTER: Printer = {
   host: "192.168.1.60",
   port: 9100,
   density: 3,
-  slow: true,
+  speed: "slow",
 };
 
 export async function loadPrinter(): Promise<Printer> {
   const store = await load(FILE, { defaults: {} });
   const saved = await store.get<Partial<Printer>>(KEY);
-  return { ...DEFAULT_PRINTER, ...saved };
+  const { kind, host, port, density, speed } = { ...DEFAULT_PRINTER, ...saved };
+  return { kind, host, port, density, speed };
 }
 
 export async function savePrinter(printer: Printer): Promise<void> {

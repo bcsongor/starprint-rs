@@ -8,10 +8,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import type { Printer, PrinterKind } from "@/lib/api";
+import type { Printer, PrinterKind, Speed } from "@/lib/api";
 
-const DENSITIES = [-3, -2, -1, 0, 1, 2, 3];
+const KINDS: { value: PrinterKind; label: string; models: string }[] = [
+  {
+    value: "thermal",
+    label: "Thermal",
+    models: "TSP650II, TSP700II, TSP800II",
+  },
+  { value: "impact", label: "Impact", models: "SP712, SP742, SP717, SP747" },
+];
+
+const DENSITIES = [3, 2, 1, 0, -1, -2, -3].map((value) => ({
+  value,
+  label:
+    value === 0
+      ? "0 (default)"
+      : `${value > 0 ? "+" : ""}${value}${value === 3 ? " (darkest)" : value === -3 ? " (lightest)" : ""}`,
+}));
+
+const SPEEDS: { value: Speed; label: string }[] = [
+  { value: "slow", label: "Slow (best quality)" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High (default)" },
+];
+
+function kindLabel(kind: PrinterKind) {
+  const entry = KINDS.find((k) => k.value === kind) ?? KINDS[0];
+  return `${entry.label} (${entry.models})`;
+}
 
 interface Props {
   printer: Printer;
@@ -35,16 +60,24 @@ export function PrinterSettings({ printer, onChange }: Props) {
             onValueChange={(value) => set("kind", value as PrinterKind)}
           >
             <SelectTrigger id="kind" className="w-full">
-              <SelectValue />
+              <SelectValue>{kindLabel(printer.kind)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="thermal">Thermal (TSP800II)</SelectItem>
-              <SelectItem value="impact">Impact (SP700)</SelectItem>
+              {KINDS.map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  <span className="grid">
+                    <span>{k.label}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {k.models}
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
 
-        <div className="grid grid-cols-[1fr_6rem] gap-2">
+        <div className="grid grid-cols-[1fr_6rem] gap-3">
           <div className="grid gap-2">
             <Label htmlFor="host">Host</Label>
             <Input
@@ -52,6 +85,8 @@ export function PrinterSettings({ printer, onChange }: Props) {
               value={printer.host}
               placeholder="192.168.1.60"
               spellCheck={false}
+              autoComplete="off"
+              aria-invalid={printer.host.trim() === "" || undefined}
               onChange={(e) => set("host", e.target.value)}
             />
           </div>
@@ -69,7 +104,7 @@ export function PrinterSettings({ printer, onChange }: Props) {
         </div>
 
         {printer.kind === "thermal" && (
-          <>
+          <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label htmlFor="density">Density</Label>
               <Select
@@ -77,27 +112,44 @@ export function PrinterSettings({ printer, onChange }: Props) {
                 onValueChange={(value) => set("density", Number(value))}
               >
                 <SelectTrigger id="density" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {DENSITIES.find((d) => d.value === printer.density)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {DENSITIES.map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {d > 0 ? `+${d}` : d}
-                      {d === 0 ? " (default)" : ""}
+                    <SelectItem key={d.value} value={String(d.value)}>
+                      {d.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="slow">Slow speed</Label>
-              <Switch
-                id="slow"
-                checked={printer.slow}
-                onCheckedChange={(checked) => set("slow", checked)}
-              />
+            <div className="grid gap-2">
+              <Label htmlFor="speed">Speed</Label>
+              <Select
+                value={printer.speed}
+                onValueChange={(value) => set("speed", value as Speed)}
+              >
+                <SelectTrigger id="speed" className="w-full">
+                  <SelectValue>
+                    {SPEEDS.find((s) => s.value === printer.speed)?.label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {SPEEDS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </>
+            <p className="col-span-2 text-muted-foreground text-xs">
+              Slow speed and +2/+3 density stop cheap paper pinholing in solid
+              black.
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

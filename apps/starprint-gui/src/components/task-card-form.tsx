@@ -15,6 +15,8 @@ import type { TaskCard } from "@/lib/api";
 interface Props {
   card: TaskCard;
   onChange: (card: TaskCard) => void;
+  /** Called on Ctrl/Cmd+Enter in the task field. */
+  onSubmit: () => void;
 }
 
 const ISO = "yyyy-MM-dd";
@@ -25,7 +27,7 @@ function toDate(due: string | null): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-export function TaskCardForm({ card, onChange }: Props) {
+export function TaskCardForm({ card, onChange, onSubmit }: Props) {
   const set = <K extends keyof TaskCard>(key: K, value: TaskCard[K]) =>
     onChange({ ...card, [key]: value });
   const setDate = (date: Date | undefined) =>
@@ -33,6 +35,7 @@ export function TaskCardForm({ card, onChange }: Props) {
 
   const today = new Date();
   const selected = toDate(card.due);
+  const selectedIso = card.due;
   const shortcuts: [string, Date][] = [
     ["Today", today],
     ["Tomorrow", addDays(today, 1)],
@@ -43,7 +46,12 @@ export function TaskCardForm({ card, onChange }: Props) {
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">
-        <Label htmlFor="task">Task</Label>
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="task">Task</Label>
+          <span className="text-muted-foreground text-xs">
+            Ctrl+Enter to print
+          </span>
+        </div>
         <Textarea
           id="task"
           value={card.text}
@@ -51,6 +59,12 @@ export function TaskCardForm({ card, onChange }: Props) {
           rows={4}
           autoFocus
           onChange={(e) => set("text", e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              onSubmit();
+            }
+          }}
         />
       </div>
 
@@ -58,7 +72,7 @@ export function TaskCardForm({ card, onChange }: Props) {
         <div className="grid gap-0.5">
           <Label htmlFor="priority">High priority</Label>
           <p className="text-muted-foreground text-xs">
-            Red on impact, inverse on thermal.
+            Prints a “HIGH PRIORITY” flag: red on impact, inverse on thermal.
           </p>
         </div>
         <Switch
@@ -82,7 +96,7 @@ export function TaskCardForm({ card, onChange }: Props) {
             >
               <CalendarIcon />
               {selected ? (
-                format(selected, "EEE d MMM yyyy")
+                format(selected, "EEEE d MMMM yyyy")
               ) : (
                 <span className="text-muted-foreground">No due date</span>
               )}
@@ -109,16 +123,20 @@ export function TaskCardForm({ card, onChange }: Props) {
           )}
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {shortcuts.map(([label, date]) => (
-            <Button
-              key={label}
-              variant="secondary"
-              size="sm"
-              onClick={() => setDate(date)}
-            >
-              {label}
-            </Button>
-          ))}
+          {shortcuts.map(([label, date]) => {
+            const active = format(date, ISO) === selectedIso;
+            return (
+              <Button
+                key={label}
+                variant={active ? "default" : "secondary"}
+                size="sm"
+                aria-pressed={active}
+                onClick={() => setDate(active ? undefined : date)}
+              >
+                {label}
+              </Button>
+            );
+          })}
         </div>
       </div>
     </div>
