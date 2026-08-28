@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/card-preview";
+import { PaperSheet } from "@/components/paper-sheet";
 import { PictureForm } from "@/components/picture-form";
 import { PicturePreview } from "@/components/picture-preview";
 import { PrintOptions } from "@/components/print-options";
@@ -38,6 +39,7 @@ import {
   type TaskCard,
   type TestPage,
 } from "@/lib/api";
+import { roll } from "@/lib/paper";
 import {
   DEFAULT_PROFILES,
   activeProfile,
@@ -181,6 +183,13 @@ export default function App() {
       : workflow === "picture"
         ? pictureUrl !== null
         : true;
+  /** What the preview is showing, in the printer's own terms. */
+  const note =
+    workflow === "task-card"
+      ? layout && `${layout.columns} columns`
+      : workflow === "picture"
+        ? `${roll(printer.kind, printer.paper).dots} dots`
+        : null;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -304,18 +313,22 @@ export default function App() {
         <section className="flex min-h-0 flex-col gap-4 bg-muted p-4">
           <Label render={<h2 />} className="h-5">
             Preview
-            {workflow === "task-card" && layout && (
+            {note && (
               <span className="font-normal tracking-normal normal-case">
-                {layout.columns} columns
+                {note}
               </span>
             )}
           </Label>
-          {workflow === "task-card" ? (
-            <CardPreview layout={layout} kind={printer.kind} />
-          ) : workflow === "test-page" ? (
+          {workflow === "test-page" ? (
             <TestPagePreview sections={sections} />
           ) : (
-            <PicturePreview url={pictureUrl} error={pictureError} />
+            <PaperSheet kind={printer.kind} paper={printer.paper}>
+              {workflow === "task-card" ? (
+                <CardPreview layout={layout} kind={printer.kind} />
+              ) : (
+                <PicturePreview url={pictureUrl} error={pictureError} />
+              )}
+            </PaperSheet>
           )}
         </section>
       </div>

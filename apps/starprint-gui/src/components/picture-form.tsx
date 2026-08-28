@@ -75,45 +75,49 @@ export function PictureForm({ picture, kind, onChange }: Props) {
         </div>
       </Field>
 
-      <Field className="w-44">
-        <FieldLabel htmlFor="dither">Dither</FieldLabel>
-        <Select
-          value={picture.dither}
-          onValueChange={(value) => set("dither", value as Dither)}
-        >
-          <SelectTrigger id="dither" className="w-full">
-            <SelectValue>
-              {DITHERS.find((d) => d.value === picture.dither)?.label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent
-            alignItemWithTrigger={false}
-            align="start"
-            className="w-max min-w-(--anchor-width)"
+      {/* The switch is boxed to the select's height so the two line up
+          on their bottom edge. */}
+      <div className="flex items-end gap-4">
+        <Field className="w-44">
+          <FieldLabel htmlFor="dither">Dither</FieldLabel>
+          <Select
+            value={picture.dither}
+            onValueChange={(value) => set("dither", value as Dither)}
           >
-            {DITHERS.map((d) => (
-              <SelectItem key={d.value} value={d.value}>
-                <span className="w-30">{d.label}</span>
-                <span className="text-muted-foreground">{d.hint}</span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
+            <SelectTrigger id="dither" className="w-full">
+              <SelectValue>
+                {DITHERS.find((d) => d.value === picture.dither)?.label}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent
+              alignItemWithTrigger={false}
+              align="start"
+              className="w-max min-w-(--anchor-width)"
+            >
+              {DITHERS.map((d) => (
+                <SelectItem key={d.value} value={d.value}>
+                  <span className="w-30">{d.label}</span>
+                  <span className="text-muted-foreground">{d.hint}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
 
-      <Field orientation="horizontal">
-        <Switch
-          id="double"
-          checked={picture.double}
-          onCheckedChange={(checked) => set("double", checked)}
-        />
-        <FieldLabel
-          htmlFor="double"
-          className="text-sm tracking-normal normal-case text-foreground"
-        >
-          {thermal ? "Double resolution" : "Double density"}
-        </FieldLabel>
-      </Field>
+        <Field orientation="horizontal" className="h-8 w-auto">
+          <Switch
+            id="double"
+            checked={picture.double}
+            onCheckedChange={(checked) => set("double", checked)}
+          />
+          <FieldLabel
+            htmlFor="double"
+            className="text-sm tracking-normal normal-case text-foreground"
+          >
+            {thermal ? "Double resolution" : "Double density"}
+          </FieldLabel>
+        </Field>
+      </div>
 
       <SliderField
         id="threshold"

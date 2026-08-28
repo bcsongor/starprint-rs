@@ -7,32 +7,32 @@ interface Props {
   kind: PrinterKind;
 }
 
-/** Font size of the strip's normal-size text, before scaling to fit. */
-const BASE_PX = 13;
-/** Horizontal padding of the strip, in normal-size characters. */
-const MARGIN_CH = 2;
+/** Size the strip is laid out at before it is scaled to the print
+ * region; any size does, this one keeps the scaling factor small. */
+const BASE_PX = 16;
 
 /**
- * Draws the card as the printer will lay it out. The strip is
- * `columns` characters wide at normal size and the task is printed at
- * double width and height. The strip is rendered at a fixed size and
- * then scaled down to fit its container, so nothing is ever clipped.
+ * Draws the card as the printer will lay it out: `columns` characters of
+ * Font A across the print region, with the task at double width and
+ * height. Font A is 12 dots wide, so a full line of it is the print
+ * region exactly; the strip is laid out at [`BASE_PX`] and then scaled to
+ * that width, whatever the monospace font's own metrics.
  */
 export function CardPreview({ layout, kind }: Props) {
-  const container = useRef<HTMLDivElement>(null);
+  const region = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [height, setHeight] = useState(0);
 
   useLayoutEffect(() => {
-    const outer = container.current;
+    const outer = region.current;
     const inner = strip.current;
     if (!outer || !inner) return;
 
     const fit = () => {
-      const available = outer.clientWidth;
-      const natural = inner.offsetWidth;
-      const next = natural > available ? available / natural : 1;
+      // Layout widths, not painted ones: the sheet around us is itself
+      // scaled, which offsetWidth ignores and a bounding rect would not.
+      const next = outer.clientWidth / inner.offsetWidth;
       setScale(next);
       setHeight(inner.offsetHeight * next);
     };
@@ -49,17 +49,15 @@ export function CardPreview({ layout, kind }: Props) {
   const empty = lines.length === 0;
 
   return (
-    <div ref={container} className="relative w-full" style={{ height }}>
+    <div ref={region} className="relative w-full" style={{ height }}>
       <div
         ref={strip}
-        className="absolute top-0 left-1/2 bg-white text-black shadow-md ring-1 ring-black/10 font-mono whitespace-pre"
+        className="absolute top-0 left-0 origin-top-left font-mono whitespace-pre"
         style={{
           fontSize: BASE_PX,
           lineHeight: 1.3,
-          width: `${columns + MARGIN_CH * 2}ch`,
-          padding: `1.5em ${MARGIN_CH}ch 3em`,
-          transform: `translateX(-50%) scale(${scale})`,
-          transformOrigin: "top center",
+          width: `${columns}ch`,
+          transform: `scale(${scale})`,
         }}
       >
         {hasHeader && (
