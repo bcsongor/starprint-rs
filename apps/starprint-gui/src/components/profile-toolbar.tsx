@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { EllipsisIcon } from "lucide-react";
+import { ConnectionDot } from "@/components/connection-dot";
+import { statusLabel, useProbes } from "@/hooks/use-probes";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -37,12 +39,15 @@ function uniqueName(base: string, profiles: Profile[]): string {
 interface Props {
   state: Profiles;
   onChange: (state: Profiles) => void;
+  /** Suspends the connection probe while a job is printing. */
+  printing: boolean;
 }
 
 /** Profile picker plus its ⋯ menu; the settings live in a dialog. */
-export function ProfileToolbar({ state, onChange }: Props) {
+export function ProfileToolbar({ state, onChange, printing }: Props) {
   const [editing, setEditing] = useState(false);
   const profile = activeProfile(state);
+  const statuses = useProbes(state.profiles, state.activeId, printing);
 
   const add = (next: Profile) =>
     onChange({ profiles: [...state.profiles, next], activeId: next.id });
@@ -59,6 +64,11 @@ export function ProfileToolbar({ state, onChange }: Props) {
         >
           <SelectTrigger id="profile" className="min-w-0 flex-1">
             <SelectValue>
+              <ConnectionDot
+                status={statuses[profile.id] ?? "checking"}
+                label={statusLabel(profile, statuses[profile.id] ?? "checking")}
+                className="mr-1"
+              />
               {profile.name}
               <span className="text-muted-foreground">
                 {" "}
@@ -69,6 +79,10 @@ export function ProfileToolbar({ state, onChange }: Props) {
           <SelectContent alignItemWithTrigger={false} align="start">
             {state.profiles.map((p) => (
               <SelectItem key={p.id} value={p.id}>
+                <ConnectionDot
+                  status={statuses[p.id] ?? "checking"}
+                  label={statusLabel(p, statuses[p.id] ?? "checking")}
+                />
                 {p.name}
                 <span className="text-muted-foreground">
                   {" "}

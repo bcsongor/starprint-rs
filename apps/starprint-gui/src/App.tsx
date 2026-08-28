@@ -159,7 +159,11 @@ export default function App() {
       {/* The toolbar is rendered in the dark theme so it reads as app
           chrome; every control inside picks up the dark tokens. */}
       <header className="dark flex items-end gap-3 border-b bg-background px-4 py-3 text-foreground">
-        <ProfileToolbar state={profiles} onChange={updateProfiles} />
+        <ProfileToolbar
+          state={profiles}
+          onChange={updateProfiles}
+          printing={printing}
+        />
         <PrintOptions printer={printer} onChange={updatePrinter} />
       </header>
 

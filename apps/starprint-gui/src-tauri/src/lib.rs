@@ -145,6 +145,33 @@ async fn print_job(job: Job, printer: Printer) -> Result<PrintReport, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Whether the printer answers on its port.
+///
+/// The probe opens a connection and drops it without writing, so it
+/// cannot disturb a job: Star's Ethernet cards accept one job at a time
+/// and discard anything sent while the printer is busy.
+#[tauri::command]
+async fn probe_printer(host: String, port: u16) -> bool {
+    // Printers on the LAN answer in single-digit milliseconds; this only
+    // bounds how long a missing one takes to show as offline.
+    const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(400);
+
+    let host = host.trim().to_owned();
+    if host.is_empty() {
+        return false;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), port)) else {
+            return false;
+        };
+        addrs
+            .into_iter()
+            .any(|addr| std::net::TcpStream::connect_timeout(&addr, TIMEOUT).is_ok())
+    })
+    .await
+    .unwrap_or(false)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HexDump {
@@ -234,7 +261,8 @@ pub fn run() {
             task_card_layout,
             test_page_sections,
             print_job,
-            job_hexdump
+            job_hexdump,
+            probe_printer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

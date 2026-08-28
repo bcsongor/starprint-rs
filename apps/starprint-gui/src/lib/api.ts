@@ -78,3 +78,8 @@ export function printJob(job: Job, printer: Printer) {
 export function jobHexdump(job: Job, printer: Printer) {
   return invoke<HexDump>("job_hexdump", { job, printer });
 }
+
+/** True when the printer answers on its port. */
+export function probePrinter(host: string, port: number) {
+  return invoke<boolean>("probe_printer", { host, port });
+}
