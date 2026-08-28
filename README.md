@@ -91,6 +91,8 @@ Run with `cargo run --example <name> -- <printer-ip>`; the photo examples also n
 
 - **thermal_receipt:** a receipt with a total, a Code 128 barcode and a QR code.
 - **impact_kitchen_ticket:** a red/black ticket for an SP700.
+- **receipt:** a till receipt with line items, service charge and total, built once for either printer; pass `thermal` or `impact` after the address.
+- **task_card:** the task card from the desktop GUI, with priority and due-date shortcuts; supports both thermal and impact printers.
 - **thermal_test_pattern:** a head-check page; a white hairline through the solid bar means a dead element.
 - **thermal_image, impact_image:** print a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 
