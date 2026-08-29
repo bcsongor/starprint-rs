@@ -1,0 +1,9 @@
+# Pinned so that a new stable's lints cannot fail CI on a commit that
+# passed locally; rustup honours this file, and CI installs whatever it
+# names. Bump it deliberately, and run the checks in AGENTS.md first.
+#
+# Cargo.toml's `rust-version` is a different, much older number: the
+# minimum the library promises its users, not what builds it here.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]

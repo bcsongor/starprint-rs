@@ -21,6 +21,9 @@ A Cargo workspace: `crates/starprint` is the library and default member,
 - Run `cargo test --all-targets` and `cargo test --features image`, plus
   clippy with `-D warnings` and `cargo fmt --check`, in both feature
   configurations before committing. CI does the same.
+- `rust-toolchain.toml` pins the compiler, so those checks give the same
+  answer here as on CI. Bumping it can turn up new lints; do it on its
+  own commit.
 - Rust API guidelines for names; anything the `Builder` accepts lives at
   the crate root.
 - British English. Commits are subject-only, imperative, at most 72
