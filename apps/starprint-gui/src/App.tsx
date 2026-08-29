@@ -64,12 +64,12 @@ import {
 
 type Workflow = Job["kind"];
 
+/** The everyday jobs; the test page is a diagnostic and sits apart. */
 const WORKFLOWS: { value: Workflow; label: string }[] = [
-  { value: "task-card", label: "Task card" },
+  { value: "task-card", label: "Task" },
   { value: "text", label: "Text" },
   { value: "note", label: "Note" },
   { value: "picture", label: "Picture" },
-  { value: "test-page", label: "Test page" },
 ];
 
 function emptyCard(): TaskCard {
@@ -300,6 +300,12 @@ export default function App() {
                   {w.label}
                 </TabsTrigger>
               ))}
+              {/* Reached for when something looks wrong, not to print
+                  with, so it sits behind a divider and reads quieter. */}
+              <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+              <TabsTrigger value="test-page" className="text-foreground/40">
+                Test page
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
