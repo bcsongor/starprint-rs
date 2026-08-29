@@ -61,6 +61,42 @@ export const DEFAULT_TEXT: Text = {
   accent: false,
 };
 
+/** Mirrors `Rule` in src-tauri/src/note.rs. */
+export type Rule = "blank" | "dots" | "lines" | "squares";
+
+/** Mirrors `Note` in src-tauri/src/note.rs. */
+export interface Note {
+  rule: Rule;
+  /** Rows to write in. */
+  rows: number;
+  /** Millimetres between the rules, across and down. */
+  pitch: number;
+}
+
+/** Mirrors `Layout` in src-tauri/src/note.rs. */
+export interface NoteLayout {
+  columns: number;
+  /** Right-aligned to fill the header line. */
+  date: string;
+}
+
+/**
+ * The pitch ruled paper is sold at: 7 mm between lines, 5 mm squares
+ * and a 5 mm dot grid. Blank keeps the lined pitch, since there it only
+ * decides how long the slip is.
+ *
+ * The rows go with the pitch, so every ruling tears off at the same
+ * 70 mm as the 10 lines of 7 mm this is measured from.
+ */
+export const NOTEBOOK_RULING: Record<Rule, { rows: number; pitch: number }> = {
+  blank: { rows: 10, pitch: 7 },
+  dots: { rows: 14, pitch: 5 },
+  lines: { rows: 10, pitch: 7 },
+  squares: { rows: 14, pitch: 5 },
+};
+
+export const DEFAULT_NOTE: Note = { rule: "lines", ...NOTEBOOK_RULING.lines };
+
 /** Mirrors `TestPage` in src-tauri/src/test_page.rs. */
 export interface TestPage {
   doubleResolution: boolean;
@@ -101,6 +137,7 @@ export const DEFAULT_PICTURE: Picture = {
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
   | ({ kind: "text" } & Text)
+  | ({ kind: "note" } & Note)
   | ({ kind: "test-page" } & TestPage)
   | ({ kind: "picture" } & Picture);
 
@@ -124,6 +161,10 @@ export function taskCardLayout(
 
 export function textLayout(text: Text, kind: PrinterKind, paper: Paper) {
   return invoke<TextLayout>("text_layout", { text, kind, paper });
+}
+
+export function noteLayout(note: Note, kind: PrinterKind, paper: Paper) {
+  return invoke<NoteLayout>("note_layout", { note, kind, paper });
 }
 
 export function testPageSections(page: TestPage, kind: PrinterKind) {

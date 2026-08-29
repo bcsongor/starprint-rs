@@ -1,6 +1,7 @@
 //! Tauri commands over the `starprint` crate. The frontend sends a job and
 //! a printer profile and gets back a layout, a preview or a result.
 
+mod note;
 mod picture;
 mod preview;
 mod task_card;
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use starprint::transport::TcpTransport;
 use starprint::{Document, PrintSpeed};
 
+use note::Note;
 use picture::{Picture, SourceCache};
 use task_card::{Layout, TaskCard};
 use test_page::{Section, TestPage};
@@ -102,6 +104,7 @@ fn default_paper() -> Paper {
 pub enum Job {
     TaskCard(TaskCard),
     Text(Text),
+    Note(Note),
     TestPage(TestPage),
     Picture(Picture),
 }
@@ -136,6 +139,12 @@ impl Printer {
             }
             (Job::Text(text), PrinterKind::Impact) => {
                 Ok(text.document(starprint::impact(), self.paper, self.cut))
+            }
+            (Job::Note(note), PrinterKind::Thermal) => {
+                Ok(note.document(self.thermal(), self.paper, self.cut))
+            }
+            (Job::Note(note), PrinterKind::Impact) => {
+                Ok(note.document(starprint::impact(), self.paper, self.cut))
             }
             (Job::TestPage(page), PrinterKind::Thermal) => Ok(test_page::thermal(
                 self.thermal(),
@@ -172,6 +181,14 @@ fn text_layout(text: Text, kind: PrinterKind, paper: Paper) -> text::Layout {
     match kind {
         PrinterKind::Thermal => text.layout::<starprint::StarLine>(paper),
         PrinterKind::Impact => text.layout::<starprint::Impact>(paper),
+    }
+}
+
+#[tauri::command]
+fn note_layout(note: Note, kind: PrinterKind, paper: Paper) -> note::Layout {
+    match kind {
+        PrinterKind::Thermal => note.layout::<starprint::StarLine>(paper),
+        PrinterKind::Impact => note.layout::<starprint::Impact>(paper),
     }
 }
 
@@ -341,6 +358,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             task_card_layout,
             text_layout,
+            note_layout,
             test_page_sections,
             print_job,
             job_hexdump,
@@ -383,6 +401,11 @@ mod tests {
                 wide: false,
                 tall: false,
                 accent: false,
+            }),
+            Job::Note(Note {
+                rule: note::Rule::Lines,
+                rows: 4,
+                pitch: 7,
             }),
             Job::TestPage(TestPage {
                 double_resolution: false,

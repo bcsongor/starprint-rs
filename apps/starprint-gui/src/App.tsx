@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/card-preview";
+import { NoteForm } from "@/components/note-form";
+import { NotePreview } from "@/components/note-preview";
 import { PaperSheet } from "@/components/paper-sheet";
 import { PictureForm } from "@/components/picture-form";
 import { PicturePreview } from "@/components/picture-preview";
@@ -27,9 +29,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  DEFAULT_NOTE,
   DEFAULT_PICTURE,
   DEFAULT_TEXT,
   jobHexdump,
+  noteLayout,
   picturePreview,
   printJob,
   taskCardLayout,
@@ -38,6 +42,8 @@ import {
   type HexDump,
   type Job,
   type Layout,
+  type Note,
+  type NoteLayout,
   type Picture,
   type Printer,
   type Section,
@@ -61,6 +67,7 @@ type Workflow = Job["kind"];
 const WORKFLOWS: { value: Workflow; label: string }[] = [
   { value: "task-card", label: "Task card" },
   { value: "text", label: "Text" },
+  { value: "note", label: "Note" },
   { value: "picture", label: "Picture" },
   { value: "test-page", label: "Test page" },
 ];
@@ -79,9 +86,11 @@ export default function App() {
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
+  const [note, setNote] = useState<Note>(DEFAULT_NOTE);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [wrap, setWrap] = useState<TextLayout | null>(null);
+  const [slip, setSlip] = useState<NoteLayout | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [pictureUrl, setPictureUrl] = useState<string | null>(null);
@@ -135,6 +144,18 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    noteLayout(note, printer.kind, printer.paper)
+      .then((result) => {
+        if (!cancelled) setSlip(result);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [note, printer.kind, printer.paper]);
+
+  useEffect(() => {
+    let cancelled = false;
     testPageSections(testPage, printer.kind)
       .then((result) => {
         if (!cancelled) setSections(result);
@@ -183,9 +204,11 @@ export default function App() {
       ? { kind: "task-card", ...card }
       : workflow === "text"
         ? { kind: "text", ...text }
-        : workflow === "test-page"
-          ? { kind: "test-page", ...testPage }
-          : { kind: "picture", ...picture };
+        : workflow === "note"
+          ? { kind: "note", ...note }
+          : workflow === "test-page"
+            ? { kind: "test-page", ...testPage }
+            : { kind: "picture", ...picture };
   // Clearing the picture leaves the last preview in state.
   const preview = picture.path
     ? { url: pictureUrl, error: pictureError }
@@ -198,14 +221,16 @@ export default function App() {
         : workflow === "picture"
           ? preview.url !== null
           : true;
-  const note =
+  const hint =
     workflow === "task-card"
       ? layout && `${layout.columns} columns`
       : workflow === "text"
         ? wrap && `${wrap.columns} columns`
-        : workflow === "picture"
-          ? `${roll(printer.kind, printer.paper).dots} dots`
-          : null;
+        : workflow === "note"
+          ? `${note.rows} rows, ${note.rows * note.pitch} mm`
+          : workflow === "picture"
+            ? `${roll(printer.kind, printer.paper).dots} dots`
+            : null;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -287,6 +312,8 @@ export default function App() {
               onChange={setText}
               onSubmit={print}
             />
+          ) : workflow === "note" ? (
+            <NoteForm note={note} onChange={setNote} />
           ) : workflow === "test-page" ? (
             <TestPageForm
               page={testPage}
@@ -332,9 +359,9 @@ export default function App() {
         <section className="flex min-h-0 flex-col gap-4 bg-muted p-4">
           <Label render={<h2 />} className="h-5">
             Preview
-            {note && (
+            {hint && (
               <span className="font-normal tracking-normal normal-case">
-                {note}
+                {hint}
               </span>
             )}
           </Label>
@@ -346,6 +373,13 @@ export default function App() {
                 <CardPreview layout={layout} kind={printer.kind} />
               ) : workflow === "text" ? (
                 <TextPreview layout={wrap} text={text} kind={printer.kind} />
+              ) : workflow === "note" ? (
+                <NotePreview
+                  layout={slip}
+                  note={note}
+                  kind={printer.kind}
+                  paper={printer.paper}
+                />
               ) : (
                 <PicturePreview url={preview.url} error={preview.error} />
               )}

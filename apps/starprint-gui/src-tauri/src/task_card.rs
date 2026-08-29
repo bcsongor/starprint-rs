@@ -43,7 +43,8 @@ impl CardStyle for Builder<Impact> {
     const PRIORITY_TEXT: &'static str = "HIGH PRIORITY";
 }
 
-fn format_date(date: NaiveDate) -> String {
+/// Shared with the note slip, so a stack of paper reads the same.
+pub(crate) fn format_date(date: NaiveDate) -> String {
     const MONTHS: [&str; 12] = [
         "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
     ];
@@ -64,7 +65,7 @@ fn due_text(due: Option<&str>) -> Option<String> {
     )
 }
 
-fn align_right(text: &str, width: usize) -> String {
+pub(crate) fn align_right(text: &str, width: usize) -> String {
     let padding = width.saturating_sub(text.chars().count());
     format!("{}{text}", " ".repeat(padding))
 }
