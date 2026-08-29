@@ -161,7 +161,7 @@ where
             });
             card = card.bold(false).text(&align_right(&due, width)).bold(true);
         }
-        card = card.raw([b'\n']).feed(1);
+        card = card.raw(b"\n").feed(1);
     }
 
     card.set_wide(true)

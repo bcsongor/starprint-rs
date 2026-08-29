@@ -157,7 +157,7 @@ impl Text {
 
         // After the styles are put back, so the feed is one normal line.
         // The cut feeds to the cutter itself; anything more is blank paper.
-        let doc = doc.raw([b'\n']);
+        let doc = doc.raw(b"\n");
         if cut {
             doc.cut(Cut::FeedThenPartial).build()
         } else {
@@ -253,7 +253,7 @@ mod tests {
             .document(starprint::starline(), Paper::Mm80, false)
             .as_bytes()
             .to_vec();
-        assert!(bytes.windows(2).any(|w| w == [b'H', b'i']));
+        assert!(bytes.windows(2).any(|w| w == *b"Hi"));
         assert!(!bytes.windows(2).any(|w| w == [0x1b, b'E']), "no bold");
         assert!(
             bytes.ends_with(b"Hi\n"),

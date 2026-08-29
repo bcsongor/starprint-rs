@@ -104,7 +104,7 @@ impl TaskCard {
             if let Some(due) = &layout.due {
                 card = card.bold(false).text(due).bold(true);
             }
-            card = card.raw([b'\n']).feed(1);
+            card = card.raw(b"\n").feed(1);
         }
 
         let card = card

@@ -169,7 +169,7 @@ impl<P: Protocol> Builder<P> {
     /// Prints text followed by a line feed.
     #[must_use]
     pub fn line(self, text: &str) -> Self {
-        self.text(text).raw([b'\n'])
+        self.text(text).raw(b"\n")
     }
 
     /// Feeds `lines` blank lines (`ESC a n`), clamped to 1–127.
