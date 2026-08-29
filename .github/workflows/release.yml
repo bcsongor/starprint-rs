@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# The draft is created once and both platform jobs upload into it, so a
+# re-pushed tag must not run twice against the same release.
+concurrency:
+  group: release-${{ github.ref_name }}
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Bundle filenames come from tauri.conf.json, not from the tag, so
+      # a stale version there ships v0.2.0 as Starprint_0.1.0_x64.
+      - name: Check the tag against the bundled version
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(jq -r .version apps/starprint-gui/src-tauri/tauri.conf.json)
+          if [ "$want" != "$have" ]; then
+            echo "::error::tag $GITHUB_REF_NAME wants $want, tauri.conf.json says $have"
+            exit 1
+          fi
+
+      # Idempotent, so re-running a failed release reuses the draft
+      # rather than colliding with it.
+      - name: Open the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Draft already exists, reusing it"
+            exit 0
+          fi
+          notes=$(cat <<'EOF'
+          ### Install
+
+          **Windows, installed** — run `Starprint_*_x64-setup.exe`.
+
+          **Windows, portable** — `Starprint_*_x64-portable.exe` is the
+          whole app in one file; put it anywhere and run it. It still
+          keeps printer profiles in `%APPDATA%\com.csongorbokay.starprint`,
+          so it travels between folders, not between machines.
+
+          Both are unsigned, so SmartScreen will say the publisher is
+          unknown: choose **More info**, then **Run anyway**.
+
+          **macOS (Apple silicon)** — open the `.dmg` and drag Starprint to
+          Applications. Unsigned too, so macOS quarantines it and reports
+          it as damaged until you clear the flag once:
+
+          ```
+          xattr -d com.apple.quarantine /Applications/Starprint.app
+          ```
+          EOF
+          )
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "Starprint $GITHUB_REF_NAME" \
+            --notes "$notes"
+
+  build:
+    needs: draft
+    # One platform failing should still leave the other's installer on
+    # the draft for you to look at.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artefacts: >-
+              target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+              Starprint_*_x64-portable.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artefacts: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install
+      # A no-op on both runners, whose host triple is already the target;
+      # here so the matrix stays honest if a runner image ever changes.
+      - run: rustup target add ${{ matrix.target }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - run: bun install --frozen-lockfile
+        working-directory: apps/starprint-gui
+      # `tauri build` runs the frontend build itself via beforeBuildCommand.
+      - run: bun tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        working-directory: apps/starprint-gui
+
+      # `tauri build` writes the plain executable before bundling it, and
+      # that executable is already the whole app. Renaming it is the only
+      # work a portable build needs. The draft job has checked the tag
+      # against the version the bundles are named for.
+      - name: Stage the portable executable
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp "target/${{ matrix.target }}/release/starprint-gui.exe" \
+             "Starprint_${GITHUB_REF_NAME#v}_x64-portable.exe"
+
+      # bash on both platforms, because PowerShell will not expand the
+      # glob for a native command.
+      - name: Upload the installer to the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" ${{ matrix.artefacts }} --clobber
