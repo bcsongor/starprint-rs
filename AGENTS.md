@@ -79,7 +79,23 @@ width set to 80 mm) and a Star SP700 (impact).
   half as far apart). The GUI's preview draws dots at those sizes.
 - **Double-resolution mode is vertical:** 16 rows/mm at the same 8
   dots/mm horizontally; images need twice the rows (the profiles handle
-  it). The mode outlives `ESC @`, so switch back explicitly.
+  it). The mode outlives `ESC @` *and the job that set it*, so select the
+  mode you want at the start of a job rather than trusting what printed
+  last, and switch back at the end. It applies within a job: the printer
+  prints the line buffer, then changes mode, so both halves of one
+  document come out as asked.
+- **Double resolution is the darkness lever, and it is for rasters only.**
+  Twice the rows per millimetre lay down about 1.85× the energy per unit
+  area, even though Star's density table gives that mode a lower ceiling
+  (`+3` is 1.2× standard there against 1.3× in single colour), so solid
+  blacks and photo shadows come out markedly denser on the TSP700II. The
+  printer's own fonts are *not* doubled — text prints at half height, so
+  the mode must not be switched on for a card or a line of text.
+- **Print speed has a fourth value.** `ESC RS r 3` is defined ("option
+  speed, depends on the model") but `PrintSpeed` stops at slow. On the
+  TSP700II it is not slower than slow; slow is the floor. Low peak
+  current mode is worse than useless for darkness: the density command is
+  ignored while it is on.
 
 ## Diagnostics
 
@@ -91,3 +107,9 @@ width set to 80 mm) and a Star SP700 (impact).
   `rotate` runs a landscape picture along the paper.
 - `cargo run --example impact_image --features image -- <host> photo.jpg
   double [rotate]` for the SP700.
+- Three probes answer "what does this setting actually do", each printing
+  the same content under two settings so the paper can be compared:
+  `thermal_black_probe` (normal against double resolution — the darkness
+  question), `thermal_text_probe` (what double resolution does to the
+  printer's own fonts) and `thermal_speed_probe` (times each value of
+  `ESC RS r`, including the undocumented option speed).
