@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpenIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { SliderField } from "@/components/slider-field";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -9,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_PICTURE,
@@ -178,47 +178,5 @@ export function PictureForm({ picture, kind, onChange }: Props) {
         onChange={(value) => set("contrast", value / 100)}
       />
     </FieldGroup>
-  );
-}
-
-interface SliderFieldProps {
-  id: string;
-  label: string;
-  value: number;
-  display: string;
-  min: number;
-  max: number;
-  disabled?: boolean;
-  onChange: (value: number) => void;
-}
-
-function SliderField({
-  id,
-  label,
-  value,
-  display,
-  min,
-  max,
-  disabled,
-  onChange,
-}: SliderFieldProps) {
-  return (
-    <Field data-disabled={disabled}>
-      <div className="flex items-center justify-between">
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {display}
-        </span>
-      </div>
-      <Slider
-        id={id}
-        value={[value]}
-        min={min}
-        max={max}
-        step={1}
-        disabled={disabled}
-        onValueChange={(next) => onChange(Array.isArray(next) ? next[0] : next)}
-      />
-    </Field>
   );
 }
