@@ -5,33 +5,25 @@ import { PX_PER_MM, roll } from "@/lib/paper";
 interface Props {
   kind: PrinterKind;
   paper: Paper;
-  /** Drawn across the print region, which is as many pixels wide as the
-   * head has dots. */
+  /** Drawn across the print region, one pixel per dot. */
   children: ReactNode;
 }
 
-/** Paper above the first line and below the last, as the feed leaves it. */
+/** Paper the feed leaves above the first line and below the last. */
 const TOP_MM = 5;
 const BOTTOM_MM = 8;
 
-/**
- * A normal-size character cell in sheet pixels. Font A is 12 dots wide
- * on a thermal head, which is 12 px here; the SP700 fits 42 columns into
- * 210 dots across 63 mm, which comes to the same 12 px.
- */
+/** A character cell: Font A is 12 dots, and 210 dots / 42 columns on the
+ * SP700 comes to the same. */
 const CELL_PX = 12;
 
-/** Characters the probe measures, and the size it measures them at. */
 const PROBE = "0".repeat(10);
 const PROBE_PX = 100;
 
 /**
- * The paper every preview is drawn on: the roll at its true width with
- * the print region centred on it, scaled down as far as the pane needs
- * but never up, so a picture keeps one screen pixel per dot.
- *
- * The sheet also sets the size of printed text, so anything drawn on it
- * comes out at the printer's own normal size unless it says otherwise.
+ * The roll at true width with the print region centred, scaled down to
+ * fit the pane but never up. Sets the font size so text on it prints at
+ * the printer's normal size.
  */
 export function PaperSheet({ kind, paper, children }: Props) {
   const pane = useRef<HTMLDivElement>(null);
@@ -67,16 +59,14 @@ export function PaperSheet({ kind, paper, children }: Props) {
   useLayoutEffect(() => {
     const el = probe.current;
     if (!el) return;
-    // The monospace font's advance as a fraction of its size, from which
-    // the size that puts one character in one cell follows.
+    // The font's advance as a fraction of its size.
     const advance = el.offsetWidth / PROBE.length / PROBE_PX;
     setPrintPx(CELL_PX / advance);
   }, []);
 
   return (
     <div className="relative min-h-0 flex-1">
-      {/* The pane is measured on its own so that the sheet's height,
-          which the scale depends on, cannot feed back into it. */}
+      {/* Measured apart from the sheet so the scale cannot feed back. */}
       <div ref={pane} className="absolute inset-0" />
       <div
         ref={sheet}

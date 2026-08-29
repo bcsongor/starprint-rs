@@ -2,26 +2,22 @@
 //!
 //! `starprint` implements the two classic Star command sets over Ethernet:
 //!
-//! * **Star Line Mode** — the native protocol of Star *thermal* receipt
+//! * **Star Line Mode**, the native protocol of Star *thermal* receipt
 //!   printers (TSP100 Line Mode, TSP650II, TSP700II, TSP800II, …), per
 //!   Star's *Star Line Mode Command Specifications*. See [`StarLine`].
-//! * **Star Mode for dot impact printers** — the native protocol of the
+//! * **Star Mode for dot impact printers**, the native protocol of the
 //!   SP700 series of *impact* printers (SP712, SP742, …), per Star's *Dot
 //!   Impact Printer STAR Command Specifications*, including red/black
 //!   two-colour printing. See [`Impact`].
 //!
-//! The crate is split into a pure protocol layer and a transport layer:
-//! a [`Builder`] renders a [`Document`] (plain bytes) and a
-//! [`Transport`](transport::Transport) delivers it. Ethernet (raw-socket
-//! printing on TCP port 9100) ships in the box as
-//! [`TcpTransport`](transport::TcpTransport).
+//! A [`Builder`] renders a [`Document`] (plain bytes) and a
+//! [`Transport`](transport::Transport) delivers it;
+//! [`TcpTransport`](transport::TcpTransport) covers port 9100.
 //!
-//! Both kinds of printer can print pictures: the [`graphics`] module covers
-//! 1-bit rasters and dithering without dependencies, and the optional
-//! `image` cargo feature adds `graphics::ImagePipeline` — a
-//! hardware-tuned decode/tone-map/resize pipeline that turns a photo
-//! into a print-ready [`BitImage`](graphics::BitImage) for
-//! [`Builder::bit_image`] (impact) or [`Builder::raster`] (thermal).
+//! The [`graphics`] module has 1-bit rasters and dithering; the `image`
+//! feature adds `graphics::ImagePipeline`, which turns a photo into a
+//! [`BitImage`](graphics::BitImage) for [`Builder::bit_image`] (impact)
+//! or [`Builder::raster`] (thermal).
 //!
 //! # Quick start
 //!
@@ -52,9 +48,8 @@
 //! # Ok::<(), starprint::Error>(())
 //! ```
 //!
-//! Unsupported features are unrepresentable: the compiler rejects, say, a
-//! QR code on an impact printer, because [`Builder::qr_code`] only exists
-//! for `Builder<StarLine>`.
+//! Commands a printer lacks are compile errors: [`Builder::qr_code`] only
+//! exists for `Builder<StarLine>`.
 
 mod code;
 mod cp437;
@@ -73,20 +68,13 @@ pub use types::{
     PrintMode, PrintSpeed, RasterQuality, ThermalFont,
 };
 
-/// Starts a document for a **Star Line Mode** (thermal) printer.
-///
-/// Equivalent to `Builder::<StarLine>::new()`; the document begins with an
-/// `ESC @` reset.
+/// Starts a document for a Star Line Mode (thermal) printer.
 #[must_use]
 pub fn starline() -> Builder<StarLine> {
     Builder::new()
 }
 
-/// Starts a document for a **Star Mode dot impact** (SP700-series)
-/// printer.
-///
-/// Equivalent to `Builder::<Impact>::new()`; the document begins with an
-/// `ESC @` reset.
+/// Starts a document for an SP700-series impact printer.
 #[must_use]
 pub fn impact() -> Builder<Impact> {
     Builder::new()

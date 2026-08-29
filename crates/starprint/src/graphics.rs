@@ -1,17 +1,6 @@
-//! Bit-image and raster graphics.
-//!
-//! Everything needed to put a picture on paper:
-//!
-//! * [`Bitmap`] (1-bit) and [`BitImage`] (a bitmap validated against the
-//!   head width). Impact printers print either via
-//!   [`bit_image`](crate::Builder::bit_image); thermal printers via
-//!   [`raster`](crate::Builder::raster);
-//! * [`Grayscale`] (8-bit) and [`Dithering`] to reduce it to 1 bit;
-//! * with the `image` cargo feature, `ImagePipeline` — decode, tone
-//!   mapping and resizing tuned on real hardware, producing a
-//!   `PreparedImage`.
-//!
-//! Only `ImagePipeline` pulls in a dependency; the rest is plain Rust.
+//! Pictures: [`Bitmap`] and [`BitImage`] (1-bit), [`Grayscale`] and
+//! [`Dithering`] (8-bit to 1-bit), and with the `image` feature
+//! `ImagePipeline`, which prepares a photo for a given head.
 
 mod dither;
 #[cfg(feature = "image")]
@@ -23,67 +12,48 @@ pub use pipeline::{ImagePipeline, PreparedImage, ToneCurve};
 
 use crate::error::{Error, Result};
 
-/// Vertical dot rows per 9-dot bit-image stripe (`ESC ^` prints one
-/// stripe per command).
+/// Rows per `ESC ^` stripe.
 pub(crate) const STRIPE_HEIGHT: u32 = 9;
 
-/// Line-feed units (1/216″) per vertical dot row: dot rows are 1/72″
-/// apart, so one stripe is `9 × 3 = 27` units.
+/// `ESC 3` units (1/216″) per dot row (1/72″).
 pub(crate) const LINE_FEED_UNITS_PER_DOT: u8 = 3;
 
-/// Horizontal dot density of a bit image.
-///
-/// Double density prints twice as many columns across the same physical
-/// width; the dots physically overlap, which darkens the output (the
-/// image pipeline compensates by brightening).
+/// Horizontal dot density of a bit image. Double prints twice the columns
+/// across the same width, so the dots overlap and print darker; the
+/// pipeline brightens to compensate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Density {
-    /// One dot per single-density column (210 dots across 63 mm on the
-    /// SP700).
+    /// 210 dots across the SP700's 63 mm.
     #[default]
     Single,
-    /// Two dots per single-density column (420 dots across 63 mm on the
-    /// SP700).
+    /// 420 dots.
     Double,
 }
 
-/// The printing technology behind a [`DeviceProfile`]; it decides which
-/// tone curve the image pipeline applies by default.
+/// Decides the default tone curve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HeadKind {
-    /// Dot-matrix impact head with a ribbon: prints light, so images need
-    /// darkening and strong contrast.
+    /// A ribbon prints light; images need darkening and contrast.
     Impact,
-    /// Thermal line head: prints dark and dots bloom, so images need
-    /// lightening to keep shadow detail.
+    /// Prints dark with blooming dots; images need lightening.
     Thermal,
 }
 
-/// Physical characteristics of a printer's head and paper, used to size
-/// and proportion images.
-///
-/// [`DeviceProfile::SP700`] was measured on real hardware and covers the
-/// SP700 series (and most Star dot-impact printers); the thermal profiles
-/// follow the printers' published 8 dots/mm geometry.
+/// Head and paper geometry, used to size and proportion images.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceProfile {
-    /// Human-readable name of the device or family.
     pub name: &'static str,
-    /// Printing technology, which selects the default tone curve.
     pub head: HeadKind,
-    /// Vertical paper-feed resolution in DPI (dot rows are 1/72″ apart).
     pub vertical_dpi: f64,
-    /// Horizontal resolution in DPI at single density.
+    /// At single density.
     pub horizontal_dpi: f64,
-    /// Maximum print width in dots at single density.
     pub width_dots_single: u32,
-    /// Maximum print width in dots at double density.
     pub width_dots_double: u32,
 }
 
 impl DeviceProfile {
-    /// The SP700 series (SP712/SP742/SP717/SP747): a 63 mm print region,
-    /// 210 dots wide at single density (≈ 84.7 DPI), 72 DPI vertically.
+    /// 63 mm print region, 210 dots (≈ 84.7 DPI), 72 DPI vertically.
+    /// Measured on real hardware.
     pub const SP700: Self = Self {
         name: "Star SP700 series",
         head: HeadKind::Impact,
@@ -93,10 +63,8 @@ impl DeviceProfile {
         width_dots_double: 420,
     };
 
-    /// 80 mm Star Line Mode thermal printers (TSP650II, TSP700II, TSP100 in
-    /// Line Mode, TSP800II on 80 mm paper): a 72 mm print width at 8 dots/mm
-    /// = 576 dots, isotropic 203.2 DPI. Thermal heads have no horizontal
-    /// double-density mode, so [`Density`] makes no difference here.
+    /// 72 mm print width at 8 dots/mm, 576 dots. Thermal heads have no
+    /// horizontal double density, so [`Density`] makes no difference.
     pub const THERMAL_80MM: Self = Self {
         name: "Star 80 mm thermal",
         head: HeadKind::Thermal,
@@ -106,7 +74,7 @@ impl DeviceProfile {
         width_dots_double: 576,
     };
 
-    /// TSP800II on 112 mm paper: a 104 mm print width = 832 dots.
+    /// TSP800II on 112 mm paper: 104 mm print width, 832 dots.
     pub const THERMAL_112MM: Self = Self {
         name: "Star TSP800II 112 mm",
         head: HeadKind::Thermal,
@@ -116,11 +84,9 @@ impl DeviceProfile {
         width_dots_double: 832,
     };
 
-    /// 80 mm paper in double-resolution print mode
-    /// ([`PrintMode::DoubleResolution`](crate::PrintMode::DoubleResolution),
-    /// available on the TSP700II and TSP800II): still 576 dots wide, but
-    /// the paper is fed at half pitch, so images need twice the rows
-    /// (406.4 DPI vertically).
+    /// [`THERMAL_80MM`](Self::THERMAL_80MM) in
+    /// [`PrintMode::DoubleResolution`](crate::PrintMode::DoubleResolution):
+    /// twice the rows.
     pub const THERMAL_80MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 80 mm thermal (double resolution)",
         head: HeadKind::Thermal,
@@ -130,8 +96,7 @@ impl DeviceProfile {
         width_dots_double: 576,
     };
 
-    /// 112 mm paper (TSP800II) in double-resolution print mode: 832 dots
-    /// wide, 406.4 DPI vertically.
+    /// [`THERMAL_112MM`](Self::THERMAL_112MM) in double resolution.
     pub const THERMAL_112MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 112 mm thermal (double resolution)",
         head: HeadKind::Thermal,
@@ -141,7 +106,6 @@ impl DeviceProfile {
         width_dots_double: 832,
     };
 
-    /// The maximum printable width in dots at the given density.
     #[must_use]
     pub fn max_width(&self, density: Density) -> u32 {
         match density {
@@ -150,7 +114,6 @@ impl DeviceProfile {
         }
     }
 
-    /// The effective horizontal DPI at the given density.
     #[must_use]
     pub fn horizontal_dpi_at(&self, density: Density) -> f64 {
         match density {
@@ -169,8 +132,7 @@ impl Default for DeviceProfile {
     }
 }
 
-/// A 1-bit raster: `true` pixels are inked (printed), `false` pixels are
-/// blank paper.
+/// A 1-bit raster; `true` is ink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bitmap {
     width: u32,
@@ -179,17 +141,11 @@ pub struct Bitmap {
 }
 
 impl Bitmap {
-    /// Builds a bitmap by evaluating `ink` for every `(x, y)` position,
-    /// row by row.
-    ///
-    /// # Examples
-    ///
     /// ```
     /// use starprint::graphics::Bitmap;
     ///
-    /// // A 16x16 checkerboard.
-    /// let bmp = Bitmap::from_fn(16, 16, |x, y| (x + y) % 2 == 0);
-    /// assert!(bmp.get(0, 0) && !bmp.get(1, 0));
+    /// let checkerboard = Bitmap::from_fn(16, 16, |x, y| (x + y) % 2 == 0);
+    /// assert!(checkerboard.get(0, 0) && !checkerboard.get(1, 0));
     /// ```
     #[must_use]
     pub fn from_fn(width: u32, height: u32, mut ink: impl FnMut(u32, u32) -> bool) -> Self {
@@ -206,31 +162,25 @@ impl Bitmap {
         }
     }
 
-    /// Width in dots.
     #[must_use]
     pub fn width(&self) -> u32 {
         self.width
     }
 
-    /// Height in dot rows.
     #[must_use]
     pub fn height(&self) -> u32 {
         self.height
     }
 
-    /// Whether the pixel at `(x, y)` is inked; out-of-bounds reads are
-    /// blank.
+    /// Out-of-bounds reads are blank.
     #[must_use]
     pub fn get(&self, x: u32, y: u32) -> bool {
         x < self.width && y < self.height && self.ink[(y * self.width + x) as usize]
     }
 }
 
-/// A [`Bitmap`] validated against a printer profile and bound to a
-/// [`Density`], ready for [`bit_image`](crate::Builder::bit_image).
-///
-/// Constructing it up front (like [`Barcode`](crate::Barcode)) keeps
-/// the builder infallible: a `BitImage` is printable by construction.
+/// A [`Bitmap`] that fits the head at its [`Density`], so
+/// [`bit_image`](crate::Builder::bit_image) cannot fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitImage {
     pub(crate) bitmap: Bitmap,
@@ -238,13 +188,11 @@ pub struct BitImage {
 }
 
 impl BitImage {
-    /// Validates `bitmap` against the [`DeviceProfile::SP700`] head width
-    /// for the chosen density.
+    /// Validates against [`DeviceProfile::SP700`].
     pub fn new(bitmap: Bitmap, density: Density) -> Result<Self> {
         Self::with_profile(bitmap, density, &DeviceProfile::SP700)
     }
 
-    /// Validates `bitmap` against a specific device profile.
     pub fn with_profile(bitmap: Bitmap, density: Density, profile: &DeviceProfile) -> Result<Self> {
         if bitmap.width == 0 || bitmap.height == 0 {
             return Err(Error::InvalidData {
@@ -261,13 +209,11 @@ impl BitImage {
         Ok(Self { bitmap, density })
     }
 
-    /// The underlying 1-bit raster.
     #[must_use]
     pub fn bitmap(&self) -> &Bitmap {
         &self.bitmap
     }
 
-    /// The density this image was validated for.
     #[must_use]
     pub fn density(&self) -> Density {
         self.density
@@ -286,9 +232,7 @@ impl AsRef<Bitmap> for BitImage {
     }
 }
 
-/// Packs one dot row for raster commands: each byte holds 8 horizontal
-/// dots, most significant bit leftmost, `1` = ink; the last byte is padded
-/// with blank dots.
+/// One raster row, 8 dots per byte, MSB leftmost, padded with blanks.
 pub(crate) fn pack_row(bitmap: &Bitmap, y: u32) -> Vec<u8> {
     let mut out = vec![0u8; (bitmap.width as usize).div_ceil(8)];
     for x in 0..bitmap.width {
@@ -299,9 +243,8 @@ pub(crate) fn pack_row(bitmap: &Bitmap, y: u32) -> Vec<u8> {
     out
 }
 
-/// Packs one 9-row stripe starting at row `top` into `ESC ^` column data:
-/// two bytes per column — rows `top..top+8` MSB-first in the first byte,
-/// row `top+8` in the MSB of the second byte.
+/// One `ESC ^` stripe from row `top`: two bytes per column, rows
+/// `top..top+8` in the first, row `top+8` in the MSB of the second.
 pub(crate) fn pack_stripe(bitmap: &Bitmap, top: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity(bitmap.width as usize * 2);
     for x in 0..bitmap.width {

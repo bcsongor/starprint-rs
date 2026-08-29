@@ -3,23 +3,19 @@
 //! A [`Builder`] renders a receipt into the raw command stream of one of
 //! the two supported Star command sets, chosen at the type level:
 //!
-//! * [`StarLine`] — **Star Line Mode**, the native command set of Star
+//! * [`StarLine`] is **Star Line Mode**, the native command set of Star
 //!   thermal receipt printers (TSP100 Line Mode, TSP650II, TSP700II,
-//!   TSP800II, …), per Star's *Line Thermal Printer — Star Line Mode
+//!   TSP800II, …), per Star's *Line Thermal Printer, Star Line Mode
 //!   Command Specifications*.
-//! * [`Impact`] — **Star Mode for dot impact printers**, the native
+//! * [`Impact`] is **Star Mode for dot impact printers**, the native
 //!   command set of the SP700 series (SP712, SP742, SP717, SP747), per
-//!   Star's *Dot Impact Printer — STAR Command Specifications*. It shares
+//!   Star's *Dot Impact Printer, STAR Command Specifications*. It shares
 //!   most of Star Line Mode's vocabulary but adds two-colour (red/black)
 //!   printing and omits thermal-only features such as barcodes.
 //!
-//! Features that only exist on one protocol are only *available* on that
-//! protocol: e.g. [`Builder::qr_code`] exists for `Builder<StarLine>` but
-//! not for `Builder<Impact>`, so an unsupported command is a compile
-//! error, not a runtime surprise. Where capabilities differ in shape, so
-//! does the API: thermal printers scale characters ×1–×6
-//! ([`Builder::wide`] / [`Builder::tall`]), while impact printers only
-//! toggle double size (`double_wide` / `double_tall`).
+//! Commands only exist on the builder whose printer supports them, so an
+//! unsupported command is a compile error: [`Builder::qr_code`] is
+//! thermal-only, `double_wide` is impact-only.
 
 use std::marker::PhantomData;
 
@@ -45,7 +41,7 @@ mod sealed {
 /// [`Impact`].
 pub trait Protocol: sealed::Sealed + 'static {}
 
-/// Marker for **Star Line Mode** — thermal receipt printers.
+/// Marker for **Star Line Mode**, the thermal receipt printers.
 ///
 /// Build documents for it with [`crate::starline()`].
 #[derive(Debug)]
@@ -53,7 +49,7 @@ pub enum StarLine {}
 
 impl Protocol for StarLine {}
 
-/// Marker for **Star Mode on dot impact printers** — the SP700 series of
+/// Marker for **Star Mode on dot impact printers**, the SP700 series of
 /// two-colour dot-matrix kitchen printers.
 ///
 /// Build documents for it with [`crate::impact()`].
@@ -62,11 +58,8 @@ pub enum Impact {}
 
 impl Protocol for Impact {}
 
-/// A fully rendered command stream, ready to send to a printer.
-///
-/// Produced by [`Builder::build`]; consumed by a
-/// [`Transport`](crate::transport::Transport). A `Document` is plain
-/// bytes: it can also be spooled to disk, queued, or concatenated.
+/// A rendered command stream, ready for a
+/// [`Transport`](crate::transport::Transport).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
     bytes: Vec<u8>,
@@ -98,11 +91,8 @@ impl From<Document> for Vec<u8> {
     }
 }
 
-/// A fluent, protocol-aware builder for printer documents.
-///
-/// Methods append commands in order and return the builder, so a whole
-/// receipt reads as one expression. The protocol parameter `P` decides
-/// which commands are available and how they are encoded.
+/// Builds a [`Document`] one command at a time. `P` decides which
+/// commands exist and how they are encoded.
 ///
 /// # Examples
 ///
@@ -136,14 +126,11 @@ impl<P: Protocol> Default for Builder<P> {
 }
 
 impl<P: Protocol> Builder<P> {
-    /// Starts a new document with a known-good baseline: `ESC @` resets
-    /// the printer's command state to its power-on defaults (alignment,
-    /// emphasis, magnification, …), and the code page is set to CP437 so
-    /// that [`text`](Self::text) prints exactly what it encoded.
+    /// Starts a document with `ESC @` and the CP437 code page that
+    /// [`text`](Self::text) encodes for.
     ///
-    /// Note that `ESC @` deliberately does *not* reset everything on the
-    /// printer — e.g. cash-drawer pulse settings and the impact printers'
-    /// two-colour mode survive it.
+    /// `ESC @` does not reset everything: drawer pulse settings, print
+    /// mode and the impact printers' two-colour mode survive it.
     #[must_use]
     pub fn new() -> Self {
         Self::without_init()
@@ -151,11 +138,8 @@ impl<P: Protocol> Builder<P> {
             .code_page(CodePage::CP437)
     }
 
-    /// Starts a document *without* the leading reset, inheriting whatever
-    /// state the printer is in.
-    ///
-    /// Use this to continue a print job whose styling was set up by an
-    /// earlier document.
+    /// Starts a document without the reset, to continue a job whose
+    /// styling an earlier document set up.
     #[must_use]
     pub fn without_init() -> Self {
         Self {
@@ -164,23 +148,18 @@ impl<P: Protocol> Builder<P> {
         }
     }
 
-    /// Appends raw bytes verbatim — the escape hatch for commands this
-    /// builder does not model (or text pre-encoded for a non-CP437 code
-    /// page).
+    /// Appends bytes verbatim, for commands this builder does not model
+    /// or text pre-encoded for another code page.
     #[must_use]
     pub fn raw(mut self, bytes: impl AsRef<[u8]>) -> Self {
         self.buf.extend_from_slice(bytes.as_ref());
         self
     }
 
-    /// Prints text, encoded as code page 437 (which
-    /// [`new`](Self::new) selects on the printer).
-    ///
-    /// Characters CP437 cannot represent are printed as `?`. Embedded
-    /// `'\n'` characters print and feed the line, so multi-line strings
-    /// work as expected. To print in another code page, select it with
-    /// [`code_page`](Self::code_page) and send pre-encoded bytes via
-    /// [`raw`](Self::raw).
+    /// Prints text encoded as CP437; characters it cannot represent print
+    /// as `?`. `'\n'` prints and feeds the line. For another code page,
+    /// select it with [`code_page`](Self::code_page) and send pre-encoded
+    /// bytes with [`raw`](Self::raw).
     #[must_use]
     pub fn text(mut self, text: &str) -> Self {
         cp437::encode_into(text, &mut self.buf);
@@ -193,17 +172,14 @@ impl<P: Protocol> Builder<P> {
         self.text(text).raw([b'\n'])
     }
 
-    /// Feeds `lines` blank lines (`ESC a n`; the command accepts 1–127,
-    /// out-of-range values are clamped).
+    /// Feeds `lines` blank lines (`ESC a n`), clamped to 1–127.
     #[must_use]
     pub fn feed(self, lines: u8) -> Self {
         self.raw([ESC, b'a', lines.clamp(1, 127)])
     }
 
-    /// Sets horizontal alignment for subsequent lines (`ESC GS a n`).
-    ///
-    /// Takes effect at the start of a line; the printer default is
-    /// [`Alignment::Left`].
+    /// Sets the alignment of subsequent lines (`ESC GS a n`). Takes effect
+    /// at the start of a line.
     #[must_use]
     pub fn align(self, alignment: Alignment) -> Self {
         self.raw([ESC, 0x1D, b'a', alignment.code()])
@@ -236,34 +212,22 @@ impl<P: Protocol> Builder<P> {
         self.raw([ESC, b'R', set.code()])
     }
 
-    /// Selects the printer's active code page (`ESC GS t n`).
-    ///
-    /// This changes how the *printer* interprets bytes ≥ 0x80; it does
-    /// not change how [`text`](Self::text) encodes (always CP437). Pair a
-    /// non-default page with pre-encoded [`raw`](Self::raw) bytes.
+    /// Selects the printer's code page (`ESC GS t n`). This changes how the
+    /// printer reads bytes ≥ 0x80, not how [`text`](Self::text) encodes.
     #[must_use]
     pub fn code_page(self, page: CodePage) -> Self {
         self.raw([ESC, 0x1D, b't', page.0])
     }
 
-    /// Cuts the paper (`ESC d n`).
-    ///
-    /// For a normal receipt use [`Cut::FeedThenPartial`] (or
-    /// [`Cut::FeedThenFull`]), which first feeds the printed content past
-    /// the cutter blade. On tear-bar models (e.g. SP712/SP717) the
-    /// non-feeding variants are ignored and the feeding variants advance
-    /// to the tear-bar position instead.
+    /// Cuts the paper (`ESC d n`). Tear-bar models (SP712, SP717) ignore
+    /// the non-feeding variants and feed to the tear bar for the others.
     #[must_use]
     pub fn cut(self, cut: Cut) -> Self {
         self.raw([ESC, b'd', cut.code()])
     }
 
-    /// Fires the pulse that opens a cash drawer connected to the given
-    /// peripheral-drive circuit (`BEL` / `SUB`).
-    ///
-    /// Drawer 1 uses the pulse timing configured by
-    /// [`drawer_pulse`](Self::drawer_pulse) (default 200 ms); drawer 2's
-    /// timing is fixed at 200 ms.
+    /// Pulses a cash drawer (`BEL` / `SUB`). Drawer 1 uses the timing from
+    /// [`drawer_pulse`](Self::drawer_pulse); drawer 2 is fixed at 200 ms.
     #[must_use]
     pub fn open_drawer(self, drawer: Drawer) -> Self {
         match drawer {
@@ -272,16 +236,13 @@ impl<P: Protocol> Builder<P> {
         }
     }
 
-    /// Configures the drive pulse for drawer 1 (`ESC BEL n1 n2`):
-    /// energize time `on_10ms` × 10 ms, then delay `off_10ms` × 10 ms.
-    /// Both values are clamped to 1–127; the printer default is 20/20
-    /// (200 ms each).
+    /// Sets drawer 1's pulse (`ESC BEL n1 n2`) in units of 10 ms, clamped
+    /// to 1–127. The printer default is 20/20.
     #[must_use]
     pub fn drawer_pulse(self, on_10ms: u8, off_10ms: u8) -> Self {
         self.raw([ESC, 0x07, on_10ms.clamp(1, 127), off_10ms.clamp(1, 127)])
     }
 
-    /// Finishes the document, returning the rendered command stream.
     #[must_use]
     pub fn build(self) -> Document {
         Document { bytes: self.buf }
@@ -289,32 +250,20 @@ impl<P: Protocol> Builder<P> {
 }
 
 impl Builder<StarLine> {
-    /// Sets the character width multiplier (`ESC W n`): ×1 (normal) to
-    /// ×6, clamped.
-    ///
-    /// Width and height are independent — combine with
-    /// [`tall`](Self::tall) for proportionally bigger characters.
+    /// Sets the character width multiplier (`ESC W n`), clamped to 1–6.
     #[must_use]
     pub fn wide(self, multiplier: u8) -> Self {
         self.raw([ESC, b'W', multiplier.clamp(1, 6) - 1])
     }
 
-    /// Sets the character height multiplier (`ESC h n`): ×1 (normal) to
-    /// ×6, clamped.
-    ///
-    /// Width and height are independent — combine with
-    /// [`wide`](Self::wide) for proportionally bigger characters.
+    /// Sets the character height multiplier (`ESC h n`), clamped to 1–6.
     #[must_use]
     pub fn tall(self, multiplier: u8) -> Self {
         self.raw([ESC, b'h', multiplier.clamp(1, 6) - 1])
     }
 
-    /// Switches white-on-black (inverted) printing on or off
-    /// (`ESC 4` / `ESC 5`).
-    ///
-    /// Thermal printers only: on impact models the same byte pair selects
-    /// the red/black colour instead — see the impact builder's `color`
-    /// method.
+    /// Switches white-on-black printing on or off (`ESC 4` / `ESC 5`).
+    /// On impact printers the same bytes select red/black instead.
     #[must_use]
     pub fn invert(self, on: bool) -> Self {
         self.raw([ESC, if on { b'4' } else { b'5' }])
@@ -326,8 +275,7 @@ impl Builder<StarLine> {
         self.raw([ESC, 0x1E, b'F', font.code()])
     }
 
-    /// Sets the line-feed pitch (`ESC z n`): 4 mm is the usual receipt
-    /// pitch, 3 mm packs lines tighter.
+    /// Sets the line-feed pitch (`ESC z n`).
     #[must_use]
     pub fn line_spacing(self, spacing: LineSpacing) -> Self {
         let n = match spacing {
@@ -337,50 +285,34 @@ impl Builder<StarLine> {
         self.raw([ESC, b'z', n])
     }
 
-    /// Selects the printer-wide print mode (`ESC RS C n`): single colour,
-    /// two-colour paper, low power, or the TSP700II's double-resolution
-    /// mode.
+    /// Selects the print mode (`ESC RS C n`).
     ///
-    /// The printer prints whatever is left in the line buffer first and
-    /// applies the mode once that has finished, so a document may change
-    /// mode part-way through and have both halves come out as asked.
+    /// The printer flushes its line buffer before changing mode, so a
+    /// document may switch part-way through. The setting **survives
+    /// `ESC @`** and the job: switch back to [`PrintMode::SingleColor`] at
+    /// the end, and select the mode you want at the start rather than
+    /// trusting what the last job left.
     ///
-    /// The setting **survives `ESC @`** and a job boundary, so switch back
-    /// to [`PrintMode::SingleColor`] at the end of a document that changed
-    /// it — and select the mode explicitly at the start of one that cares,
-    /// rather than trusting whatever the last job left behind.
-    ///
-    /// Double resolution halves the vertical dot pitch without changing
-    /// the printer's fonts, which come out half height; it is for rasters
-    /// prepared at twice the rows, not for text.
+    /// Double resolution is for rasters prepared at twice the rows; the
+    /// printer's fonts come out half height in it.
     #[must_use]
     pub fn print_mode(self, mode: PrintMode) -> Self {
         self.raw([ESC, 0x1E, b'C', mode.code()])
     }
 
-    /// Sets the line-mode print speed (`ESC RS r n`).
-    ///
-    /// The printer finishes whatever it is printing before the new speed
-    /// takes effect. Ignored in double-resolution, two-colour and low-power
-    /// modes; use [`RasterQuality`] to slow raster graphics down instead.
+    /// Sets the line-mode print speed (`ESC RS r n`). Ignored in
+    /// double-resolution, two-colour and low-power modes; rasters use
+    /// [`RasterQuality`] instead.
     #[must_use]
     pub fn print_speed(self, speed: PrintSpeed) -> Self {
         self.raw([ESC, 0x1E, b'r', speed.code()])
     }
 
-    /// Sets print density (`ESC RS d n`) on the printer's own scale:
-    /// `-3` (lightest) to `+3` (darkest), `0` being the standard density
-    /// from the memory switches. Out-of-range values are clamped.
+    /// Sets print density (`ESC RS d n`), `-3` to `+3` around the memory
+    /// switch standard, clamped. The setting survives `ESC @`.
     ///
-    /// Heavier density darkens dithered graphics and fills solid areas
-    /// that pinhole at the default; lighter density tames heat-related
-    /// banding in dense areas.
-    ///
-    /// Like [`print_mode`](Self::print_mode) and
-    /// [`print_speed`](Self::print_speed), the printer stops printing
-    /// before the new density takes effect, and the setting survives
-    /// `ESC @`. Double-resolution mode has its own, lower ceiling: `+3`
-    /// there is 1.2× the standard energy rather than 1.3×.
+    /// `+2`/`+3` fills solid areas that pinhole at the default. In
+    /// double-resolution mode `+3` is 1.2× standard rather than 1.3×.
     #[must_use]
     pub fn print_density(self, level: i8) -> Self {
         // The command counts the other way: n = 0 is +3, n = 3 is standard,
@@ -389,29 +321,16 @@ impl Builder<StarLine> {
         self.raw([ESC, 0x1E, b'd', n])
     }
 
-    /// Prints a bitmap through Star Line Mode's raster mode — the
-    /// banding-free path for graphics, one contiguous dot row per command
-    /// rather than fixed-height stripes.
+    /// Prints a bitmap in raster mode (`ESC * r`), one dot row per
+    /// command, so there is no stripe banding. The printer crops rows
+    /// wider than its print area.
     ///
-    /// Emits `ESC * r A` (enter raster mode), continuous page length,
-    /// an end-of-transmission mode that only prints (no automatic cut), the
-    /// requested [`RasterQuality`], one `b n1 n2 …` command per dot row,
-    /// and `ESC * r B` to print any remaining rows and return to line mode
-    /// at the top of a fresh line. Rows wider than the printer's print area
-    /// are cropped by the printer.
+    /// The printer buffers about 2,560 rows (TSP800II) and pauses to print
+    /// them when full, which leaves a faint line across a picture longer
+    /// than ~320 mm (~160 mm in double resolution).
     ///
-    /// The printer expands rows into a fixed-size image buffer and, when it
-    /// fills, prints it before taking more data — a brief stop that leaves
-    /// a faint line across the picture. On the TSP800II the buffer holds
-    /// about 2,560 rows (≈ 320 mm at normal resolution, ≈ 160 mm in
-    /// double-resolution mode); keep images shorter than that, or print
-    /// very long ones at normal resolution.
-    ///
-    /// Accepts a [`Bitmap`] or a [`BitImage`] (e.g. from `ImagePipeline`
-    /// with a thermal [`DeviceProfile`](crate::graphics::DeviceProfile)).
-    /// For the
-    /// TSP700II's double-resolution mode, prepare the image with
-    /// [`DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION`](crate::graphics::DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
+    /// For double resolution, prepare the image with a
+    /// `*_DOUBLE_RESOLUTION` [`DeviceProfile`](crate::graphics::DeviceProfile)
     /// and select [`PrintMode::DoubleResolution`] first.
     #[must_use]
     pub fn raster(mut self, image: impl AsRef<Bitmap>, quality: RasterQuality) -> Self {
@@ -419,8 +338,8 @@ impl Builder<StarLine> {
         if bitmap.width() == 0 || bitmap.height() == 0 {
             return self;
         }
-        // Raster settings are reset on entry, so they must follow ESC * r A.
-        // Numeric parameters are ASCII decimal digits terminated by NUL.
+        // Entering raster mode resets its settings, so they follow ESC * r A.
+        // Numeric parameters are ASCII digits terminated by NUL.
         self.buf.extend_from_slice(&[ESC, b'*', b'r', b'A']);
         self.buf
             .extend_from_slice(&[ESC, b'*', b'r', b'P', b'0', 0]); // continuous length
@@ -439,16 +358,11 @@ impl Builder<StarLine> {
         self
     }
 
-    /// Prints a one-dimensional barcode (`ESC b n1 n2 n3 n4 … RS`).
-    ///
-    /// The payload was validated when the [`Barcode`] was constructed, so
-    /// this cannot fail. The barcode is placed using the current
-    /// [`align`](Self::align) setting, and the printer feeds past it
-    /// automatically before the next line.
+    /// Prints a barcode (`ESC b n1 n2 n3 n4 … RS`) at the current
+    /// alignment. The printer feeds past it before the next line.
     #[must_use]
     pub fn barcode(mut self, barcode: &Barcode) -> Self {
-        // n2: 1 = no HRI text, 2 = HRI text below; both with automatic
-        // line feed after the bars.
+        // n2: 1 = no HRI text, 2 = HRI text below; both feed after the bars.
         self.buf.extend_from_slice(&[
             ESC,
             b'b',
@@ -458,15 +372,11 @@ impl Builder<StarLine> {
             barcode.height,
         ]);
         self.buf.extend_from_slice(&barcode.data);
-        self.buf.push(0x1E); // RS terminates the payload.
+        self.buf.push(0x1E); // RS
         self
     }
 
-    /// Prints a QR code (`ESC GS y` command family).
-    ///
-    /// Emits the model, error-correction and cell-size settings, stores
-    /// the payload (automatic encoding mode), and prints it at the
-    /// current alignment.
+    /// Prints a QR code (`ESC GS y`) at the current alignment.
     #[must_use]
     pub fn qr_code(mut self, qr: &QrCode) -> Self {
         let model = match qr.model {
@@ -486,11 +396,10 @@ impl Builder<StarLine> {
             .extend_from_slice(&[ESC, 0x1D, b'y', b'S', b'1', ec]);
         self.buf
             .extend_from_slice(&[ESC, 0x1D, b'y', b'S', b'2', qr.cell_size]);
-        // Store data: ESC GS y D 1 m nL nH d1…dk (m = 0: automatic mode).
+        // ESC GS y D 1 m nL nH d1…dk, m = 0 for automatic encoding.
         self.buf
             .extend_from_slice(&[ESC, 0x1D, b'y', b'D', b'1', 0, len[0], len[1]]);
         self.buf.extend_from_slice(&qr.data);
-        // Print the stored symbol.
         self.buf.extend_from_slice(&[ESC, 0x1D, b'y', b'P']);
         self
     }
@@ -498,57 +407,36 @@ impl Builder<StarLine> {
 
 impl Builder<Impact> {
     /// Switches double-wide characters on or off (`ESC W n`).
-    ///
-    /// Impact printers only scale ×1/×2 per axis; combine with
-    /// [`double_tall`](Self::double_tall) for double-size characters.
     #[must_use]
     pub fn double_wide(self, on: bool) -> Self {
         self.raw([ESC, b'W', on as u8])
     }
 
     /// Switches double-tall characters on or off (`ESC h n`).
-    ///
-    /// Impact printers only scale ×1/×2 per axis; combine with
-    /// [`double_wide`](Self::double_wide) for double-size characters.
     #[must_use]
     pub fn double_tall(self, on: bool) -> Self {
         self.raw([ESC, b'h', on as u8])
     }
 
-    /// Selects or cancels two-colour printing mode (`ESC RS C n`).
-    ///
-    /// The power-on default comes from the printer's DIP switches, and
-    /// the setting survives `ESC @`. Two-colour mode must be selected for
-    /// [`color`](Self::color) to produce red.
+    /// Switches two-colour mode on or off (`ESC RS C n`). The default
+    /// comes from the DIP switches and the setting survives `ESC @`.
+    /// [`color`](Self::color) only prints red while it is on.
     #[must_use]
     pub fn two_color(self, on: bool) -> Self {
         self.raw([ESC, 0x1E, b'C', on as u8])
     }
 
-    /// Selects the print colour (`ESC 4` red / `ESC 5` black).
-    ///
-    /// Requires two-colour mode (see [`two_color`](Self::two_color)) and
-    /// a black/red ribbon; red and black can be mixed within one line.
-    /// On a printer configured for single-colour operation the same
-    /// commands render the firmware's substitute decoration (e.g.
-    /// inverted printing) instead of red.
+    /// Selects the print colour (`ESC 4` red / `ESC 5` black). Colours
+    /// can be mixed within a line. In single-colour mode the printer
+    /// substitutes a decoration such as inverse for red.
     #[must_use]
     pub fn color(self, color: Color) -> Self {
         self.raw([ESC, if color == Color::Red { b'4' } else { b'5' }])
     }
 
-    /// Prints a 9-dot bit image (`ESC ^ n n1 n2 d…`).
-    ///
-    /// The image is emitted in stripes of 9 dot rows. Line spacing is
-    /// temporarily set to exactly one stripe (`ESC 3` with 27/216″, i.e.
-    /// 9 rows at 1/72″) so consecutive stripes tile seamlessly, and is
-    /// restored to the printer default afterwards (`ESC 2`).
-    ///
-    /// The [`BitImage`] was validated against the head width at
-    /// construction, so this cannot fail. Build one from a picture with
-    /// `ImagePipeline` (`image` feature), or directly via
-    /// [`Bitmap`](crate::graphics::Bitmap) /
-    /// [`Grayscale`](crate::graphics::Grayscale).
+    /// Prints a 9-dot bit image (`ESC ^ n n1 n2 d…`) in stripes of 9 rows.
+    /// Line spacing is set to one stripe (`ESC 3`, 27/216″) so the stripes
+    /// tile without gaps, and restored afterwards (`ESC 2`).
     #[must_use]
     pub fn bit_image(mut self, image: &BitImage) -> Self {
         let bitmap = &image.bitmap;

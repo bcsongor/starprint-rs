@@ -1,29 +1,20 @@
-//! Image preparation pipeline (requires the `image` cargo feature).
+//! Turns a picture into a print-ready [`BitImage`], with the tone mapping
+//! dialled in on SP700 hardware:
 //!
-//! Turns an ordinary picture into a print-ready [`BitImage`] using the
-//! tone-mapping pipeline that was dialled in on real SP700 hardware (the
-//! thermal [`DeviceProfile`]s reuse the same tuning; only the geometry
-//! differs):
-//!
-//! 1. flatten transparency onto white and convert to 8-bit grayscale,
-//! 2. auto-contrast (linear histogram stretch),
-//! 3. gamma 1.8 (darken midtones),
+//! 1. flatten transparency onto white, convert to grayscale,
+//! 2. auto-contrast,
+//! 3. gamma (1.8 impact, 0.55 thermal),
 //! 4. unsharp mask (radius 2.4, 150 %),
-//! 5. histogram equalisation,
-//! 6. at double density: brighten ×1.2 to offset physical dot overlap,
-//! 7. optional user brightness/contrast adjustments,
-//! 8. resize to the head width — compensating for the anisotropic
-//!    resolution (≈ 84.7 DPI horizontally vs 72 DPI vertically, so a
-//!    naive resize would print stretched),
-//! 9. dither to 1-bit.
+//! 5. histogram equalisation (impact only),
+//! 6. at double density, brighten ×1.2 to offset dot overlap,
+//! 7. user brightness and contrast,
+//! 8. resize to the head width, correcting the SP700's anisotropic
+//!    resolution (84.7 DPI across, 72 DPI along),
+//! 9. dither.
 //!
-//! The LUT-based stages (2, 3, 5, 6, 7) reproduce the reference
-//! implementation byte-for-byte and are verified against fixtures it
-//! generated. Resampling and the unsharp blur are mathematically
-//! equivalent but not bit-identical (Lanczos3 and a true Gaussian in
-//! place of Pillow's C resampler and box-blur approximation).
-//!
-//! # Examples
+//! The LUT stages match the Python reference byte-for-byte and are tested
+//! against its fixtures. Resampling and blurring are equivalent but not
+//! bit-identical (Lanczos3 and a true Gaussian against Pillow's).
 //!
 //! ```no_run
 //! use starprint::graphics::Density;
@@ -44,47 +35,36 @@ use super::{BitImage, Density, DeviceProfile, HeadKind};
 use super::{Dithering, Grayscale};
 use crate::error::{Error, Result};
 
-/// Base sharpening strength; the unsharp radius is `3 ×` this value.
+/// The unsharp radius is 3× this.
 const SHARPEN_SIGMA: f64 = 0.8;
-/// Unsharp-mask amount in percent.
 const UNSHARP_PERCENT: i32 = 150;
-/// Post-equalise brightness lift for double density, compensating for
-/// the physical dot overlap when dots are printed at half the normal
-/// spacing.
+/// Offsets the dot overlap of double density.
 const DOUBLE_DENSITY_BRIGHTNESS: f64 = 1.2;
 
-/// The tone-mapping stages that depend on the printing technology.
-///
-/// Applied after auto-contrast and before sharpening/dithering. The
-/// defaults come from [`ToneCurve::for_head`]; override with
-/// [`ImagePipeline::tone`] to tune for a particular printer or paper.
+/// The stages that depend on the head. [`ImagePipeline::tone`] overrides
+/// the head's default.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ToneCurve {
-    /// Gamma exponent: `> 1` darkens midtones, `< 1` lightens them,
-    /// `1.0` leaves them alone.
+    /// `> 1` darkens midtones, `< 1` lightens them.
     pub gamma: f64,
-    /// Histogram equalisation after sharpening — maximises contrast, at
-    /// the cost of crushing shadows on printers that already print dark.
+    /// Equalise the histogram after sharpening. Maximum contrast, but it
+    /// crushes shadows on a head that already prints dark.
     pub equalize: bool,
 }
 
 impl ToneCurve {
-    /// The curve dialled in on SP700 hardware: darken midtones (a ribbon
-    /// prints light) and equalise for maximum contrast.
+    /// Dialled in on the SP700. Do not change; it is the reference.
     pub const IMPACT: Self = Self {
         gamma: 1.8,
         equalize: true,
     };
 
-    /// Curve for thermal heads, which print dark with blooming dots:
-    /// lighten midtones strongly to keep shadow detail, no equalisation.
-    /// Dialled in on a TSP800II at slow speed and density +3.
+    /// Dialled in on a TSP800II at slow speed, density +3.
     pub const THERMAL: Self = Self {
         gamma: 0.55,
         equalize: false,
     };
 
-    /// The default curve for a printing technology.
     #[must_use]
     pub const fn for_head(head: HeadKind) -> Self {
         match head {
@@ -94,13 +74,9 @@ impl ToneCurve {
     }
 }
 
-/// A configured image-preparation pipeline, in the style of
-/// [`std::fs::OpenOptions`]: chain settings, then call
-/// [`prepare`](Self::prepare) or [`prepare_bytes`](Self::prepare_bytes).
-///
-/// [`ImagePipeline::new`] gives the hardware-tuned reference behaviour:
-/// single density, Floyd–Steinberg at threshold 128, no user
-/// adjustments, SP700 profile.
+/// Chain settings, then [`prepare`](Self::prepare) or
+/// [`prepare_bytes`](Self::prepare_bytes). [`new`](Self::new) is the
+/// reference: SP700, single density, Floyd–Steinberg at 128.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImagePipeline {
     density: Density,
@@ -118,7 +94,6 @@ impl Default for ImagePipeline {
 }
 
 impl ImagePipeline {
-    /// A pipeline with the hardware-tuned defaults.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -131,55 +106,46 @@ impl ImagePipeline {
         }
     }
 
-    /// Overrides the tone curve (default: [`ToneCurve::for_head`] of the
-    /// profile's head kind).
+    /// Overrides the profile head's [`ToneCurve`].
     #[must_use]
     pub fn tone(mut self, tone: ToneCurve) -> Self {
         self.tone = Some(tone);
         self
     }
 
-    /// Sets the horizontal dot density to render for (default: single).
     #[must_use]
     pub fn density(mut self, density: Density) -> Self {
         self.density = density;
         self
     }
 
-    /// Sets the dithering algorithm (default: Floyd–Steinberg at
-    /// threshold 128).
     #[must_use]
     pub fn dither(mut self, dither: Dithering) -> Self {
         self.dither = dither;
         self
     }
 
-    /// Sets a user brightness multiplier applied after the standard
-    /// pipeline (default 1.0 = unchanged).
+    /// Applied after the tone curve; 1.0 is unchanged.
     #[must_use]
     pub fn brightness(mut self, factor: f64) -> Self {
         self.brightness = factor;
         self
     }
 
-    /// Sets a user contrast factor applied after the standard pipeline
-    /// (default 1.0 = unchanged).
+    /// Applied after the tone curve; 1.0 is unchanged.
     #[must_use]
     pub fn contrast(mut self, factor: f64) -> Self {
         self.contrast = factor;
         self
     }
 
-    /// Sets the printer head geometry (default:
-    /// [`DeviceProfile::SP700`]).
     #[must_use]
     pub fn profile(mut self, profile: DeviceProfile) -> Self {
         self.profile = profile;
         self
     }
 
-    /// Decodes an encoded image (PNG, JPEG, WebP, BMP) and runs
-    /// [`prepare`](Self::prepare).
+    /// Decodes PNG, JPEG, WebP or BMP, then [`prepare`](Self::prepare).
     pub fn prepare_bytes(&self, bytes: &[u8]) -> Result<PreparedImage> {
         let decoded = image::load_from_memory(bytes).map_err(|err| Error::InvalidData {
             reason: format!("image decode failed: {err}"),
@@ -187,23 +153,16 @@ impl ImagePipeline {
         self.prepare(&decoded)
     }
 
-    /// Runs the full preparation pipeline on a decoded image.
     pub fn prepare(&self, source: &DynamicImage) -> Result<PreparedImage> {
         prepare(source, self)
     }
 }
 
-/// The result of [`ImagePipeline::prepare`]: the print-ready image plus
-/// an on-screen preview.
 #[derive(Debug, Clone)]
 pub struct PreparedImage {
-    /// Validated bit image, ready for
-    /// [`bit_image`](crate::Builder::bit_image).
     pub image: BitImage,
-    /// A dithered preview at single-density width with square pixels.
-    /// At double density, horizontal pixel pairs are min-pooled to
-    /// simulate the physical dot overlap, so the preview matches what
-    /// the paper will show.
+    /// For the screen: single-density width, square pixels. At double
+    /// density, pixel pairs are min-pooled to show the dot overlap.
     pub preview: Grayscale,
 }
 
@@ -216,7 +175,6 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
         });
     }
 
-    // Tone-mapping pipeline.
     let tone = options
         .tone
         .unwrap_or(ToneCurve::for_head(options.profile.head));
@@ -232,7 +190,6 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
         brightness(&mut gray, DOUBLE_DENSITY_BRIGHTNESS);
     }
 
-    // User adjustments (after the standard pipeline, before dithering).
     if options.brightness != 1.0 {
         brightness(&mut gray, options.brightness);
     }
@@ -243,8 +200,7 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
     let width = options.profile.max_width(options.density);
     let h_dpi = options.profile.horizontal_dpi_at(options.density);
 
-    // Print data: aspect-preserving width fit, then vertical compensation
-    // for the anisotropic dot pitch.
+    // Fit the width, then stretch the height for the anisotropic pitch.
     let aspect_h = ratio_round(src_h, width, src_w);
     let compensated_h =
         (f64::from(aspect_h) * options.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
@@ -253,15 +209,14 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
             reason: "image is too wide and short to print at this width".into(),
         });
     }
-    // Hand the tone-mapped pixels to the `image` crate once (no copy) and
-    // resample from it for both the print data and the preview.
+    // One source for both resamples.
     let full = image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
         .expect("buffer sized from dimensions");
     let print_gray = options.dither.apply(&resize(&full, width, compensated_h));
     let image = BitImage::with_profile(print_gray.to_bitmap(), options.density, &options.profile)?;
 
-    // Preview: dither at print width and display height (square pixels),
-    // then simulate double-density dot overlap by min-pooling pairs.
+    // Preview: print width at display height, then pool pairs at double
+    // density.
     let display_w = options.profile.width_dots_single;
     let display_h = ratio_round(src_h, display_w, src_w).max(1);
     let preview_gray = options.dither.apply(&resize(&full, width, display_h));
@@ -274,16 +229,12 @@ fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedIma
     Ok(PreparedImage { image, preview })
 }
 
-/// `round(a * b / c)` with Python's banker's rounding.
+/// `round(a * b / c)`, ties to even like Python.
 fn ratio_round(a: u32, b: u32, c: u32) -> u32 {
     (f64::from(a) * f64::from(b) / f64::from(c)).round_ties_even() as u32
 }
 
-/// Flattens transparency onto white and converts to grayscale with
-/// Pillow's "L" formula (rounded ITU-R 601-2 luma).
-///
-/// The common 8-bit layouts are read in place; anything else goes
-/// through an RGBA8 conversion first. All paths produce identical bytes.
+/// Pillow's "L" conversion (ITU-R 601-2 luma) over white.
 fn to_grayscale_on_white(source: &DynamicImage) -> Grayscale {
     fn over_white(c: u8, a: u8) -> u32 {
         (u32::from(c) * u32::from(a) + 255 * (255 - u32::from(a)) + 127) / 255
@@ -336,7 +287,7 @@ fn apply_lut(gray: &mut Grayscale, lut: &[u8; 256]) {
     }
 }
 
-/// Linear histogram stretch (Pillow `ImageOps.autocontrast`, cutoff 0).
+/// Pillow `ImageOps.autocontrast`, cutoff 0.
 fn autocontrast(gray: &mut Grayscale) {
     let h = histogram(gray.pixels());
     let Some(lo) = h.iter().position(|&c| c > 0) else {
@@ -356,7 +307,7 @@ fn autocontrast(gray: &mut Grayscale) {
     apply_lut(gray, &lut);
 }
 
-/// `out = (in / 255) ^ gamma * 255`, truncated like the reference LUT.
+/// `(in / 255) ^ gamma * 255`, truncated like the reference.
 fn gamma_lut(gamma: f64) -> [u8; 256] {
     let mut lut = [0u8; 256];
     for (i, out) in lut.iter_mut().enumerate() {
@@ -365,7 +316,7 @@ fn gamma_lut(gamma: f64) -> [u8; 256] {
     lut
 }
 
-/// Histogram equalisation (Pillow `ImageOps.equalize`).
+/// Pillow `ImageOps.equalize`.
 fn equalize(gray: &mut Grayscale) {
     let h = histogram(gray.pixels());
     let nonzero: Vec<u64> = h
@@ -389,16 +340,14 @@ fn equalize(gray: &mut Grayscale) {
     apply_lut(gray, &lut);
 }
 
-/// Pillow `ImageEnhance.Brightness`: blend towards black, i.e.
-/// `out = px * factor`, truncated and clipped like Pillow's C blend.
+/// Pillow `ImageEnhance.Brightness`: `px * factor`.
 fn brightness(gray: &mut Grayscale, factor: f64) {
     for p in gray.pixels_mut() {
         *p = blend_channel(0.0, f64::from(*p), factor);
     }
 }
 
-/// Pillow `ImageEnhance.Contrast`: blend away from the rounded image
-/// mean, i.e. `out = mean + factor * (px - mean)`.
+/// Pillow `ImageEnhance.Contrast`: `mean + factor * (px - mean)`.
 fn contrast(gray: &mut Grayscale, factor: f64) {
     let h = histogram(gray.pixels());
     let total: u64 = h.iter().map(|&c| u64::from(c)).sum();
@@ -413,8 +362,7 @@ fn contrast(gray: &mut Grayscale, factor: f64) {
     }
 }
 
-/// Pillow's C `ImagingBlend` per-channel arithmetic:
-/// `out = a + factor * (b - a)`, clipped to 0–255 and truncated.
+/// Pillow's `ImagingBlend`: `a + factor * (b - a)`, clipped, truncated.
 fn blend_channel(a: f64, b: f64, factor: f64) -> u8 {
     let out = a + factor * (b - a);
     if out <= 0.0 {
@@ -426,8 +374,8 @@ fn blend_channel(a: f64, b: f64, factor: f64) -> u8 {
     }
 }
 
-/// Unsharp mask matching Pillow's integer arithmetic, but over a true
-/// Gaussian blur (Pillow approximates one with box blurs).
+/// Pillow's unsharp arithmetic over a true Gaussian (Pillow uses box
+/// blurs).
 fn unsharp_mask(gray: &Grayscale, radius: f64, percent: i32, threshold: i32) -> Grayscale {
     let blurred = gaussian_blur(gray, radius);
     let pixels = gray
@@ -446,12 +394,8 @@ fn unsharp_mask(gray: &Grayscale, radius: f64, percent: i32, threshold: i32) -> 
     Grayscale::new(gray.width(), gray.height(), pixels).expect("same dimensions")
 }
 
-/// Separable Gaussian blur with `sigma = radius` and clamped edges.
-///
-/// Both passes run row by row over contiguous memory (the horizontal pass
-/// over an edge-padded copy of each row, the vertical pass by accumulating
-/// whole source rows into the output row), which keeps the inner loops
-/// cache-friendly and auto-vectorisable.
+/// Separable Gaussian blur with clamped edges. Both passes walk rows of
+/// contiguous memory so the inner loops vectorise.
 fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
     let taps = std::cmp::max(1, (sigma * 3.0).ceil() as usize);
     let kernel: Vec<f32> = {
@@ -468,8 +412,7 @@ fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
     let (w, h) = (gray.width() as usize, gray.height() as usize);
     let src = gray.pixels();
 
-    // Horizontal pass: each row is edge-padded by `taps` so every output
-    // pixel is a plain dot product with the kernel.
+    // Horizontal: pad each row by `taps` so every output is a dot product.
     let mut mid = vec![0f32; w * h];
     let mut padded = vec![0f32; w + 2 * taps];
     for (row, out_row) in src.chunks_exact(w).zip(mid.chunks_exact_mut(w)) {
@@ -487,7 +430,7 @@ fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
         }
     }
 
-    // Vertical pass: accumulate weighted (edge-clamped) source rows.
+    // Vertical: accumulate weighted rows.
     let mut out = vec![0u8; w * h];
     let mut acc = vec![0f32; w];
     for (y, out_row) in out.chunks_exact_mut(w).enumerate() {
@@ -506,16 +449,13 @@ fn gaussian_blur(gray: &Grayscale, sigma: f64) -> Grayscale {
     Grayscale::new(gray.width(), gray.height(), out).expect("same dimensions")
 }
 
-/// Lanczos3 resize via the `image` crate (the counterpart of Pillow's
-/// `LANCZOS` resampling).
 fn resize(source: &image::GrayImage, width: u32, height: u32) -> Grayscale {
     let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
     Grayscale::new(width, height, resized.into_raw()).expect("buffer sized from dimensions")
 }
 
-/// Collapses horizontal pixel pairs via MIN, simulating physical dot
-/// overlap in double density: if either dot in a pair is inked, the
-/// wider physical dot covers both positions.
+/// Halves the width, taking the darker of each pair: an inked dot at
+/// double density covers its neighbour's position too.
 fn min_pool_pairs(gray: &Grayscale) -> Grayscale {
     let (w, h) = (gray.width(), gray.height());
     let half_w = w / 2;

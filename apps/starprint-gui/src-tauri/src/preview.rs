@@ -1,22 +1,16 @@
-//! On-screen rendering of dithered images: a physical dot model for
-//! thermal heads and PNG encoding.
+//! A dot-gain model for thermal previews, and PNG encoding.
 
 use std::io::Cursor;
 
 use starprint::graphics::Grayscale;
 
-/// Dot diameter as a percentage of the dot pitch that the model accepts.
-/// Below 100 % dots would leave gaps in solids; above 300 % the 3×3
-/// neighbourhood would no longer hold the dot.
+/// Below 100 % solids would show gaps; above 300 % the 3×3 kernel no
+/// longer holds the dot.
 pub const DOT_SIZE_RANGE: std::ops::RangeInclusive<u32> = 100..=300;
 
-/// Simulates dot gain: every ink pixel becomes a disc `dot_size` percent
-/// of the pitch wide, so isolated dots bleed into their neighbours as a
-/// thermal head's do. The result is 8-bit coverage, not 1-bit.
-///
-/// The disc is rasterised once into a 3×3 kernel of per-cell coverage;
-/// each output pixel then combines the coverage that it and its eight
-/// neighbours' dots put on it, assuming independent overlap.
+/// Every ink pixel becomes a disc `dot_size` percent of the pitch wide.
+/// Each output pixel combines the coverage of its own and its eight
+/// neighbours' discs, assuming independent overlap.
 pub fn dot_gain(image: &Grayscale, dot_size: u32) -> Grayscale {
     let dot_size = dot_size.clamp(*DOT_SIZE_RANGE.start(), *DOT_SIZE_RANGE.end());
     let kernel = dot_kernel(f64::from(dot_size) / 100.0);
@@ -46,8 +40,8 @@ pub fn dot_gain(image: &Grayscale, dot_size: u32) -> Grayscale {
     Grayscale::new(width, height, out).expect("sized from the input")
 }
 
-/// Fraction of each cell in a 3×3 neighbourhood that a disc of the given
-/// diameter (in pitches) centred on the middle cell covers.
+/// How much of each cell a disc of `diameter` pitches on the middle cell
+/// covers.
 fn dot_kernel(diameter: f64) -> [[f64; 3]; 3] {
     const SAMPLES: u32 = 32;
     let r2 = (diameter / 2.0).powi(2);

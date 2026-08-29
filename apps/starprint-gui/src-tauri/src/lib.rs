@@ -1,6 +1,5 @@
-//! Tauri side of the Starprint desktop app: thin commands over the
-//! `starprint` crate. The frontend never sees printer bytes; it sends a
-//! form payload and a printer profile and gets back a layout or a result.
+//! Tauri commands over the `starprint` crate. The frontend sends a job and
+//! a printer profile and gets back a layout, a preview or a result.
 
 mod picture;
 mod preview;
@@ -22,9 +21,7 @@ use text::Text;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PrinterKind {
-    /// Star Line Mode thermal printer (TSP650II, TSP700II, TSP800II, …).
     Thermal,
-    /// SP700 series dot-impact printer, red/black ribbon.
     Impact,
 }
 
@@ -37,15 +34,14 @@ impl PrinterKind {
     }
 }
 
-/// Paper width of a thermal printer: it decides the raster width and the
-/// number of columns, so it belongs to the printer rather than to any one
-/// job. The SP700's carriage is fixed, so impact ignores it.
+/// Roll width of a thermal printer. The SP700's carriage is fixed, so
+/// impact ignores it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Paper {
-    /// 80 mm roll: 72 mm print region, 576 dots, 48 columns in Font A.
+    /// 72 mm print region, 576 dots.
     #[serde(rename = "80")]
     Mm80,
-    /// 112 mm roll: 104 mm print region, 832 dots, 69 columns in Font A.
+    /// 104 mm print region, 832 dots.
     #[serde(rename = "112")]
     Mm112,
 }
@@ -58,7 +54,7 @@ impl Paper {
         }
     }
 
-    /// Columns of Font A, which is 12 dots wide.
+    /// Font A is 12 dots wide.
     pub fn columns(self) -> usize {
         (self.dots() / 12) as usize
     }
@@ -83,21 +79,17 @@ impl From<Speed> for PrintSpeed {
     }
 }
 
-/// Where and how to print. Persisted by the frontend via the store plugin.
+/// A printer profile. `density`, `speed` and `paper` are thermal only.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Printer {
     pub kind: PrinterKind,
     pub host: String,
     pub port: u16,
-    /// Thermal only: print density, -3..=3.
     pub density: i8,
-    /// Thermal only: slow gives the best text quality.
     pub speed: Speed,
-    /// Thermal only: the roll loaded in the printer.
     #[serde(default = "default_paper")]
     pub paper: Paper,
-    /// Cut the paper after the card.
     pub cut: bool,
 }
 
@@ -105,7 +97,6 @@ fn default_paper() -> Paper {
     Paper::Mm80
 }
 
-/// What to print: one variant per workflow the app offers.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Job {
@@ -116,12 +107,9 @@ pub enum Job {
 }
 
 impl Printer {
-    /// A thermal builder with this profile's settings applied.
-    ///
-    /// The print mode is selected explicitly because it outlives both
-    /// `ESC @` and the job that set it: a picture printed in double
-    /// resolution would otherwise leave the printer there, and the next
-    /// job — a card, or another picture — would print at half height.
+    /// The print mode outlives `ESC @` and the job that set it, so a
+    /// double-resolution picture would otherwise leave the next job
+    /// printing at half height.
     fn thermal(&self) -> starprint::Builder<starprint::StarLine> {
         starprint::starline()
             .print_mode(starprint::PrintMode::SingleColor)
@@ -129,7 +117,6 @@ impl Printer {
             .print_speed(self.speed.into())
     }
 
-    /// Builds the job; fails when its input is missing or unreadable.
     fn document(&self, job: &Job, cache: &SourceCache) -> Result<Document, String> {
         match (job, self.kind) {
             (Job::TaskCard(card), _) if card.text.trim().is_empty() => {
@@ -180,7 +167,6 @@ fn task_card_layout(card: TaskCard, kind: PrinterKind, paper: Paper) -> Layout {
     kind.layout(&card, paper)
 }
 
-/// How the text will wrap on this printer's paper, for the preview.
 #[tauri::command]
 fn text_layout(text: Text, kind: PrinterKind, paper: Paper) -> text::Layout {
     match kind {
@@ -189,8 +175,6 @@ fn text_layout(text: Text, kind: PrinterKind, paper: Paper) -> text::Layout {
     }
 }
 
-/// The numbered sections of the test page for this printer, for the
-/// preview.
 #[tauri::command]
 fn test_page_sections(page: TestPage, kind: PrinterKind) -> Vec<Section> {
     match kind {
@@ -207,8 +191,8 @@ async fn print_job(
 ) -> Result<PrintReport, String> {
     let address = format!("{}:{}", printer.host.trim(), printer.port);
     let cache = Arc::clone(&cache);
-    // Image preparation is CPU-bound and the transport paces its writes
-    // with sleeps, so keep both off the async runtime's threads.
+    // Image preparation is CPU-bound and the transport sleeps between
+    // chunks; neither belongs on the async runtime.
     tauri::async_runtime::spawn_blocking(move || {
         let document = printer.document(&job, &cache)?;
         let mut transport = TcpTransport::connect(&address).map_err(|e| e.to_string())?;
@@ -221,15 +205,10 @@ async fn print_job(
     .map_err(|e| e.to_string())?
 }
 
-/// Whether the printer answers on its port.
-///
-/// The probe opens a connection and drops it without writing, so it
-/// cannot disturb a job: Star's Ethernet cards accept one job at a time
-/// and discard anything sent while the printer is busy.
+/// Connects and drops without writing, so it cannot disturb a job.
 #[tauri::command]
 async fn probe_printer(host: String, port: u16) -> bool {
-    // Printers on the LAN answer in single-digit milliseconds; this only
-    // bounds how long a missing one takes to show as offline.
+    // Only bounds how long a missing printer takes to show as offline.
     const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(400);
 
     let host = host.trim().to_owned();
@@ -256,8 +235,6 @@ pub struct HexDump {
     pub dump: String,
 }
 
-/// The bytes the job would send, as a hex dump, for checking without a
-/// printer.
 #[tauri::command]
 async fn job_hexdump(
     job: Job,
@@ -299,8 +276,7 @@ fn hexdump(bytes: &[u8]) -> HexDump {
     }
 }
 
-/// The dithered picture as it will print, encoded as a PNG. Returned as
-/// raw bytes, which the frontend shows through a blob URL.
+/// PNG bytes; the frontend shows them through a blob URL.
 #[tauri::command]
 async fn picture_preview(
     picture: Picture,
@@ -315,10 +291,8 @@ async fn picture_preview(
         .map(tauri::ipc::Response::new)
 }
 
-/// Colours the Windows title bar like the app's dark toolbar
-/// (shadcn's dark `--background`, `oklch(0.145 0 0)` ≈ `#0a0a0a`), so
-/// frame and toolbar read as one surface. Other platforms draw their
-/// own frames.
+/// Matches the title bar to the dark toolbar (shadcn's dark
+/// `--background`, `oklch(0.145 0 0)` ≈ `#0a0a0a`).
 #[cfg(windows)]
 fn colour_title_bar(window: &tauri::WebviewWindow) {
     use windows_sys::Win32::Graphics::Dwm::{
@@ -335,8 +309,7 @@ fn colour_title_bar(window: &tauri::WebviewWindow) {
         (DWMWA_BORDER_COLOR, BACKGROUND),
         (DWMWA_TEXT_COLOR, FOREGROUND),
     ] {
-        // SAFETY: the handle comes from the live window; the attribute
-        // takes a COLORREF-sized value.
+        // SAFETY: live window handle; the attribute takes a COLORREF.
         unsafe {
             DwmSetWindowAttribute(
                 hwnd.0 as _,
@@ -392,9 +365,6 @@ mod tests {
         }
     }
 
-    /// The print mode outlives `ESC @` and the job that selected it, so a
-    /// job that does not want double resolution has to say so rather than
-    /// inherit it from whatever printed last.
     #[test]
     fn thermal_jobs_select_the_print_mode_before_printing() {
         let printer = thermal();

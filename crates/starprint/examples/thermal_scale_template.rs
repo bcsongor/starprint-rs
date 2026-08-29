@@ -121,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut printer = TcpTransport::connect(&host)?;
     printer.print(&doc)?;
     println!(
-        "printed {width_mm:.1} x {height_mm:.1} mm as {} overlapping tile(s) — {} bytes sent",
+        "printed {width_mm:.1} x {height_mm:.1} mm as {} overlapping tile(s); {} bytes sent",
         starts.len(),
         doc.as_bytes().len()
     );

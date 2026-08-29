@@ -1,9 +1,5 @@
-//! The task card: a bold, quad-size task with an optional "HIGH PRIORITY"
-//! flag and a right-aligned due date above it. High priority prints red on
-//! an SP700 and inverse on a thermal printer.
-//!
-//! The layout mirrors the sibling Python GUI (and the `task_card` example
-//! in the library crate) byte for byte.
+//! A bold, quad-size task with an optional "HIGH PRIORITY" banner and a
+//! due date above it. Byte-identical to the Python GUI's card.
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -12,35 +8,29 @@ use starprint::{Builder, Cut, Document, Impact, Protocol, StarLine};
 use crate::Paper;
 use crate::text::{TextStyle, wrap_by_words};
 
-/// What the user typed into the form.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskCard {
     pub text: String,
     pub priority: bool,
-    /// An ISO date (`2026-08-28`), which is printed as `28 AUG 2026`, or
-    /// free text, which is printed as is.
+    /// An ISO date, printed as `28 AUG 2026`, or free text printed as is.
     pub due: Option<String>,
 }
 
-/// A print-ready description of the card, so the UI can show exactly what
-/// will come out of the printer: the same wrapping at the same widths.
+/// The card as it will print, for the preview.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
-    /// Characters per line at normal size.
     pub columns: usize,
-    /// The priority banner text when the flag is set, else `None`.
     pub priority: Option<String>,
-    /// The formatted due text, right-aligned to fill the header line.
+    /// Right-aligned to fill the header line.
     pub due: Option<String>,
-    /// The task text, word-wrapped at quad size (half the columns).
+    /// Wrapped at half the columns, for quad size.
     pub lines: Vec<String>,
 }
 
-/// What the card adds to [`TextStyle`]: the banner. Thermal prints it
-/// inverse, so it is padded with a space each side to give the black
-/// block some margin; impact prints plain red text, which wants none.
+/// Thermal prints the banner inverse, so it gets a space each side for
+/// margin; impact prints it in red and wants none.
 pub trait CardStyle: TextStyle {
     const PRIORITY_TEXT: &'static str;
 }
@@ -100,8 +90,7 @@ impl TaskCard {
         }
     }
 
-    /// Builds the print job. `cut` feeds and cuts after the card;
-    /// without it the card only feeds clear of the head.
+    /// Without `cut` the card only feeds clear of the head.
     pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
     where
         Builder<P>: CardStyle,
@@ -169,9 +158,7 @@ mod tests {
         assert_eq!(actual.as_bytes(), expected);
     }
 
-    /// The Python GUI pads the banner with a space each side on every
-    /// printer; on impact the banner is plain red text, so the padding
-    /// is dropped and the due date gains two columns.
+    /// Deliberately differs from the Python GUI, which pads on impact too.
     #[test]
     fn impact_priority_banner_is_unpadded() {
         let expected = bytes(
@@ -219,8 +206,7 @@ mod tests {
         let layout = card("x", true, Some("2025-01-15")).layout::<StarLine>(Paper::Mm80);
         assert_eq!(layout.columns, 48);
         assert_eq!(layout.priority.as_deref(), Some(" HIGH PRIORITY "));
-        // 48 columns minus the 15-character banner leaves 33, so the
-        // 11-character date gets 22 spaces of padding.
+        // 48 - 15 banner = 33; 33 - 11 date = 22 spaces.
         assert_eq!(
             layout.due.as_deref(),
             Some("                      15 JAN 2025")

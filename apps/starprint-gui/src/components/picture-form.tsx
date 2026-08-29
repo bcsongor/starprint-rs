@@ -42,13 +42,11 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-/** Choose a picture and how to dither it. */
 export function PictureForm({ picture, kind, onChange }: Props) {
   const set = <K extends keyof Picture>(key: K, value: Picture[K]) =>
     onChange({ ...picture, [key]: value });
   const thermal = kind === "thermal";
   const hasThreshold = picture.dither !== "bayer";
-  /** Whether anything but the picture itself is off its default. */
   const adjusted = (Object.keys(DEFAULT_PICTURE) as (keyof Picture)[]).some(
     (key) => key !== "path" && picture[key] !== DEFAULT_PICTURE[key],
   );

@@ -1,31 +1,26 @@
-//! Barcode and QR code definitions (Star Line Mode / thermal printers).
-//!
-//! The dot impact command set has no barcode or 2D-code commands, so these
-//! types are only accepted by `Builder<StarLine>`.
+//! Barcodes and QR codes. The impact command set has neither, so only
+//! `Builder<StarLine>` accepts these.
 
 use crate::error::{Error, Result};
 
-/// One-dimensional barcode symbologies supported by `ESC b`.
+/// Barcode symbologies of `ESC b`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Symbology {
-    /// UPC-E (6 digits).
+    /// 6 digits.
     UpcE,
-    /// UPC-A (11–12 digits).
+    /// 11–12 digits.
     UpcA,
-    /// EAN-8 / JAN-8 (7–8 digits).
+    /// 7–8 digits.
     Ean8,
-    /// EAN-13 / JAN-13 (12–13 digits).
+    /// 12–13 digits.
     Ean13,
-    /// Code 39.
     Code39,
-    /// Interleaved 2 of 5 (even number of digits).
+    /// Interleaved 2 of 5; an even number of digits.
     Itf,
-    /// Code 128.
     Code128,
-    /// Code 93.
     Code93,
-    /// NW-7 / Codabar.
+    /// Codabar.
     Nw7,
 }
 
@@ -44,9 +39,8 @@ impl Symbology {
         }
     }
 
-    /// Largest valid module-width mode (`n3`) for this symbology: the
-    /// fixed-ratio symbologies accept 1–3, the two-width symbologies
-    /// (Code 39, ITF, NW-7) accept 1–9.
+    /// Largest module-width mode (`n3`): the two-width symbologies take
+    /// 1–9, the rest 1–3.
     fn max_module(self) -> u8 {
         match self {
             Self::Code39 | Self::Itf | Self::Nw7 => 9,
@@ -54,8 +48,6 @@ impl Symbology {
         }
     }
 
-    /// Returns an error if `data` contains bytes this symbology cannot
-    /// encode.
     fn validate(self, data: &[u8]) -> Result<()> {
         let ok: fn(u8) -> bool = match self {
             Self::UpcE | Self::UpcA | Self::Ean8 | Self::Ean13 | Self::Itf => {
@@ -67,7 +59,6 @@ impl Symbology {
             Self::Nw7 => {
                 |b| matches!(b, b'0'..=b'9' | b'A'..=b'D' | b'a'..=b'd' | b'-' | b'$' | b':' | b'/' | b'.' | b'+')
             }
-            // Code 128 / Code 93 accept the full printable-ASCII range.
             Self::Code128 | Self::Code93 => |b| matches!(b, 0x20..=0x7E),
         };
         if let Some(&bad) = data.iter().find(|&&b| !ok(b)) {
@@ -82,10 +73,7 @@ impl Symbology {
     }
 }
 
-/// A one-dimensional barcode, printed with `ESC b n1 n2 n3 n4 … RS`.
-///
-/// Construct with [`Barcode::new`] (which validates the payload against the
-/// symbology's character set), then adjust the optional settings:
+/// A barcode for `ESC b`.
 ///
 /// ```
 /// use starprint::{Barcode, Symbology};
@@ -105,11 +93,8 @@ pub struct Barcode {
 }
 
 impl Barcode {
-    /// Creates a barcode, validating `data` against the symbology's
-    /// character set.
-    ///
-    /// Defaults: no human-readable text, module-width mode 2, height 80
-    /// dots (10 mm at 8 dots/mm).
+    /// Validates `data` against the symbology's character set. Defaults
+    /// to no human-readable text, module mode 2 and 80 dots (10 mm) high.
     pub fn new(symbology: Symbology, data: impl AsRef<[u8]>) -> Result<Self> {
         let data = data.as_ref();
         if data.is_empty() {
@@ -140,21 +125,16 @@ impl Barcode {
         self
     }
 
-    /// Sets the module-width mode (`n3` in the Star manual's
-    /// per-symbology width table).
-    ///
-    /// For UPC/EAN/Code 128/Code 93 the valid modes are 1–3 (minimum
-    /// module of 2, 3 or 4 dots); for Code 39/ITF/NW-7 modes 1–9 pick a
-    /// narrow:wide ratio. Out-of-range values are clamped — the printer
-    /// would otherwise discard the whole command.
+    /// Sets the module-width mode (`n3` in the manual's width table):
+    /// 1–3 for UPC/EAN/Code 128/Code 93, 1–9 for Code 39/ITF/NW-7.
+    /// Clamped, as the printer discards the whole command otherwise.
     #[must_use]
     pub fn module_width(mut self, mode: u8) -> Self {
         self.module = mode.clamp(1, self.symbology.max_module());
         self
     }
 
-    /// Sets the bar height in dots, 1–255 (8 dots ≈ 1 mm on 203 dpi
-    /// models).
+    /// Sets the bar height in dots (8 dots ≈ 1 mm), at least 1.
     #[must_use]
     pub fn height(mut self, dots: u8) -> Self {
         self.height = dots.max(1);
@@ -162,32 +142,29 @@ impl Barcode {
     }
 }
 
-/// QR code model, per the Star 2D-code commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum QrModel {
-    /// Model 1 — the original, smaller-capacity specification.
+    /// The original, with less capacity.
     Model1,
-    /// Model 2 — the common modern variant (printer/industry default).
     #[default]
     Model2,
 }
 
-/// QR error-correction level: the fraction of the symbol that can be
-/// damaged and still scan.
+/// How much of the symbol can be damaged and still scan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum QrErrorCorrection {
-    /// ~7% recovery.
+    /// ~7%.
     L,
-    /// ~15% recovery (a good receipt default).
+    /// ~15%.
     #[default]
     M,
-    /// ~25% recovery.
+    /// ~25%.
     Q,
-    /// ~30% recovery.
+    /// ~30%.
     H,
 }
 
-/// A QR code, printed with the `ESC GS y` 2D-code command family.
+/// A QR code for `ESC GS y`.
 ///
 /// ```
 /// use starprint::{QrCode, QrErrorCorrection};
@@ -206,11 +183,9 @@ pub struct QrCode {
 }
 
 impl QrCode {
-    /// Maximum payload accepted by the data command.
     pub const MAX_DATA: usize = 7089;
 
-    /// Creates a QR code with model 2, error-correction level M and a
-    /// 4-dot cell size.
+    /// Defaults to model 2, level M and 4-dot cells.
     pub fn new(data: impl AsRef<[u8]>) -> Result<Self> {
         let data = data.as_ref();
         if data.is_empty() {
@@ -232,21 +207,19 @@ impl QrCode {
         })
     }
 
-    /// Selects the QR model (default: model 2).
     #[must_use]
     pub fn model(mut self, model: QrModel) -> Self {
         self.model = model;
         self
     }
 
-    /// Selects the error-correction level (default: M).
     #[must_use]
     pub fn error_correction(mut self, level: QrErrorCorrection) -> Self {
         self.ec = level;
         self
     }
 
-    /// Sets the module (cell) size in dots, 1–8 (default: 4). Clamped.
+    /// Cell size in dots, clamped to 1–8.
     #[must_use]
     pub fn cell_size(mut self, dots: u8) -> Self {
         self.cell_size = dots.clamp(1, 8);

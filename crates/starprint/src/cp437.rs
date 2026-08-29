@@ -1,19 +1,8 @@
-//! Text encoding for code page 437 (the factory-default single-byte code
-//! page on Star receipt printers).
-//!
-//! Star printers do not understand UTF-8: each byte sent while printing text
-//! is looked up in the currently selected code page. This module converts
-//! Rust strings to CP437 so that common Western-European characters and the
-//! classic box-drawing set print correctly out of the box.
-//!
-//! Characters outside CP437 are substituted with `?` rather than dropped, so
-//! receipt layouts keep their alignment. Callers who select a different code
-//! page on the printer should pre-encode their text and use the raw-bytes
-//! escape hatch instead.
+//! CP437 encoding. Star printers read each text byte through the selected
+//! code page, so strings are encoded rather than sent as UTF-8. Unmappable
+//! characters become `?` so layouts keep their alignment.
 
-/// The upper half (0x80..=0xFF) of code page 437.
-///
-/// The lower half is identical to ASCII and is passed through untouched.
+/// 0x80..=0xFF of CP437; the lower half is ASCII.
 #[rustfmt::skip]
 const CP437_HIGH: [char; 128] = [
     'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', // 0x80
@@ -26,10 +15,8 @@ const CP437_HIGH: [char; 128] = [
     '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²', '■', '\u{A0}', // 0xF0
 ];
 
-/// Encodes a single character as CP437, or `None` if it has no mapping.
-///
-/// Printable ASCII maps to itself; `\n` maps to the line-feed control byte
-/// (`0x0A`), which prints and feeds the current line on Star printers.
+/// `None` if the character has no CP437 mapping. `\n` passes through as
+/// the line feed.
 pub(crate) fn encode_char(c: char) -> Option<u8> {
     match c {
         '\n' => Some(b'\n'),
@@ -41,8 +28,6 @@ pub(crate) fn encode_char(c: char) -> Option<u8> {
     }
 }
 
-/// Encodes a string as CP437, substituting `?` for unmappable characters,
-/// and appends it to `out`.
 pub(crate) fn encode_into(text: &str, out: &mut Vec<u8>) {
     out.extend(text.chars().map(|c| encode_char(c).unwrap_or(b'?')));
 }

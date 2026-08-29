@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut printer = TcpTransport::connect(&host)?;
     printer.print(&doc)?;
     println!(
-        "printed {}x{} dots ({density:?} density, preview height {bitmap_h}) — {} bytes sent",
+        "printed {}x{} dots ({density:?} density, preview height {bitmap_h}); {} bytes sent",
         prepared.preview.width(),
         bitmap_h,
         doc.as_bytes().len()

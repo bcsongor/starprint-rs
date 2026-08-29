@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { probePrinter } from "@/lib/api";
 import type { Profile } from "@/lib/settings";
 
-/** How often to re-check the printers. */
 const INTERVAL_MS = 10_000;
 /** Lets rapid profile changes settle into one round. */
 const DEBOUNCE_MS = 150;
-/** Gap before the retry below. */
 const RETRY_MS = 150;
 
 export type Status = "checking" | "online" | "offline";
@@ -14,16 +12,11 @@ export type Status = "checking" | "online" | "offline";
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 /**
- * Probes each profile's printer, keyed by profile id, updating a dot as
- * soon as its printer answers. The active profile is probed first.
+ * Status per profile id; the active profile is probed first.
  *
- * Probes run one at a time and a failure is retried once: Star's Ethernet
- * cards accept a single connection, so a probe arriving while the card is
- * busy — including one from an overlapping round — is refused, and taking
- * that at face value would show a live printer as offline.
- *
- * A probe opens a connection and drops it without writing, so it cannot
- * disturb a job; even so, probing is suspended while one is printing.
+ * Star's Ethernet cards accept one connection, so a probe that lands
+ * while the card is busy is refused. A failure is therefore retried once,
+ * and probing pauses while a job prints.
  */
 export function useProbes(
   profiles: Profile[],
@@ -48,8 +41,7 @@ export function useProbes(
         return { id, host, port: Number(port) };
       });
 
-    // One probe per endpoint, shared by the profiles that point at it:
-    // two connections to the same card at once would refuse each other.
+    // One probe per endpoint; two at once would refuse each other.
     const endpoints = new Map<
       string,
       { host: string; port: number; ids: string[] }
@@ -65,7 +57,6 @@ export function useProbes(
     const probe = (host: string, port: number) =>
       probePrinter(host, port).catch(() => false);
 
-    // Separate printers are separate devices, so they run concurrently.
     const round = () =>
       Promise.all(
         [...endpoints.values()].map(async ({ host, port, ids }) => {

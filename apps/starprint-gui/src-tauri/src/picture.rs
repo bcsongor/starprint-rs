@@ -1,6 +1,5 @@
-//! Picture printing: a photo from disk through the `starprint` image
-//! pipeline, previewed as a PNG and printed as a bit image (impact) or a
-//! raster (thermal).
+//! A photo from disk, previewed as a PNG and printed as a bit image
+//! (impact) or a raster (thermal).
 
 use std::sync::Mutex;
 
@@ -12,7 +11,7 @@ use starprint::{Alignment, Builder, Cut, Document, Impact, PrintMode, RasterQual
 
 use crate::{Paper, PrinterKind, preview};
 
-/// Mirrors [`Dithering`] without its threshold, which is a separate field.
+/// [`Dithering`] without its threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Dither {
@@ -33,32 +32,25 @@ impl Dither {
     }
 }
 
-/// The picture and how to render it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Picture {
-    /// Path of the image file on disk.
     pub path: String,
-    /// Impact: double horizontal density (420 dots). Thermal: the
-    /// double-resolution print mode (16 rows/mm).
+    /// Impact: double density. Thermal: double-resolution mode.
     pub double: bool,
     pub dither: Dither,
-    /// Black point for the dithers that take one, 1..=255.
     pub threshold: u8,
-    /// 1.0 leaves the picture as is.
     pub brightness: f64,
-    /// 1.0 leaves the picture as is.
     pub contrast: f64,
 }
 
-/// The pipeline sharpens and equalises at source resolution before it
-/// resizes, so a camera photo costs seconds per preview. Feeding it a
-/// copy at most this many times the head width keeps the sharpening
-/// comparable while making the preview follow the sliders.
+/// The pipeline sharpens at source resolution, so a camera photo costs
+/// seconds per preview. Shrinking it to this many times the head width
+/// first keeps the sharpening comparable and the sliders responsive.
 const SOURCE_OVERSAMPLE: u32 = 2;
 
-/// The last decoded picture, shrunk for one head width, so that slider
-/// changes do not decode and shrink the file again.
+/// The last decoded picture, shrunk for one head width, so slider
+/// changes do not decode the file again.
 #[derive(Default)]
 pub struct SourceCache(Mutex<Option<CachedSource>>);
 
@@ -109,7 +101,6 @@ impl Picture {
         }
     }
 
-    /// Decodes and prepares the picture for this head.
     pub fn prepare(
         &self,
         kind: PrinterKind,
@@ -135,10 +126,8 @@ impl Picture {
             .map_err(|e| e.to_string())
     }
 
-    /// The dithered preview as a PNG, at single-density width with square
-    /// pixels: what the paper will show. On thermal heads the dots are
-    /// widened as the head's own bloom widens them, see
-    /// [`preview::dot_gain`].
+    /// On thermal heads the dots are widened as the head's bloom widens
+    /// them; see [`preview::dot_gain`].
     pub fn preview_png(
         &self,
         kind: PrinterKind,
@@ -153,10 +142,9 @@ impl Picture {
         preview::png(&shown)
     }
 
-    /// Printed dot diameter as a percentage of the dot pitch, matched
-    /// against a step wedge on a TSP700II at slow speed, density +3. In
-    /// double-resolution mode the rows are half as far apart, so each dot
-    /// overlaps its neighbours far more and the paper prints darker.
+    /// Dot diameter as a percentage of the pitch, matched against a step
+    /// wedge on a TSP700II at slow speed, density +3. Rows are half as far
+    /// apart in double resolution, so the overlap is larger.
     fn thermal_dot_size(&self) -> u32 {
         if self.double { 200 } else { 150 }
     }
@@ -176,7 +164,7 @@ pub fn thermal(
     }
     doc = doc.raster(&prepared.image, RasterQuality::High);
     if picture.double {
-        // The mode outlives ESC @, so switch back explicitly.
+        // The mode outlives ESC @.
         doc = doc.print_mode(PrintMode::SingleColor);
     }
     Ok(finish(doc, cut))
@@ -188,7 +176,6 @@ pub fn impact(
     cut: bool,
     cache: &SourceCache,
 ) -> Result<Document, String> {
-    // The SP700 has one head width, so the roll does not come into it.
     let prepared = picture.prepare(PrinterKind::Impact, Paper::Mm80, cache)?;
     let doc = builder.align(Alignment::Center).bit_image(&prepared.image);
     Ok(finish(doc, cut))

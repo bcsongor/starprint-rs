@@ -4,12 +4,9 @@
 //!
 //! Usage: cargo run --example thermal_text_probe -- <printer-host> [80|112] [density=N]
 //!
-//! Rasters have to be prepared for double resolution — twice the rows for
-//! the same height — but internal fonts are the firmware's business, and
-//! the Line Mode specification does not say whether it doubles them or
-//! prints them at half height. Inverse lines are included because they
-//! are the one text style that lays down solid black, so they show the
-//! same darkening a raster does.
+//! The specification does not say whether the firmware doubles its fonts
+//! or prints them at half height. Inverse lines are the one text style
+//! that lays down solid black, so they show the darkening too.
 
 use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut, PrintMode, PrintSpeed, ThermalFont};

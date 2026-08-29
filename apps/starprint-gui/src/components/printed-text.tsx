@@ -1,21 +1,18 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-/** Size the strip is laid out at before it is scaled to the print
- * region; any size does, this one keeps the scaling factor small. */
+/** Any size does; this one keeps the scale factor small. */
 const BASE_PX = 16;
 
 interface Props {
-  /** Characters per line at normal size, which fill the print region. */
+  /** At normal size; a full line is the print region exactly. */
   columns: number;
   children: ReactNode;
 }
 
 /**
- * Text at the size it prints. A character of Font A is 12 dots wide, so
- * a full line of it is the print region exactly: the strip is laid out
- * at [`BASE_PX`] and then scaled to that width, whatever the monospace
- * font's own metrics. Sizes inside it are relative, so `2em` is what the
- * printer calls double.
+ * Lays the strip out at `columns` characters and scales it to the print
+ * region, whatever the font's metrics. Sizes inside are relative, so
+ * `2em` is the printer's double.
  */
 export function PrintedText({ columns, children }: Props) {
   const region = useRef<HTMLDivElement>(null);
@@ -29,8 +26,7 @@ export function PrintedText({ columns, children }: Props) {
     if (!outer || !inner) return;
 
     const fit = () => {
-      // Layout widths, not painted ones: the sheet around us is itself
-      // scaled, which offsetWidth ignores and a bounding rect would not.
+      // offsetWidth ignores the sheet's own scale; a bounding rect would not.
       const next = outer.clientWidth / inner.offsetWidth;
       setScale(next);
       setHeight(inner.offsetHeight * next);

@@ -16,9 +16,7 @@ export interface Printer {
   port: number;
   density: number;
   speed: Speed;
-  /** Thermal only: the roll loaded in the printer. */
   paper: Paper;
-  /** Cut the paper after the job. */
   cut: boolean;
 }
 
@@ -26,7 +24,7 @@ export interface Printer {
 export interface TaskCard {
   text: string;
   priority: boolean;
-  /** ISO date (`2026-08-28`) or free text; null for no due date. */
+  /** ISO date or free text. */
   due: string | null;
 }
 
@@ -42,22 +40,19 @@ export interface Layout {
 export interface Text {
   text: string;
   bold: boolean;
-  /** Double width, which halves the characters per line. */
   wide: boolean;
-  /** Double height. */
   tall: boolean;
-  /** Red on an impact head, inverse on a thermal one. */
+  /** Red on impact, inverse on thermal. */
   accent: boolean;
 }
 
 /** Mirrors `Layout` in src-tauri/src/text.rs. */
 export interface TextLayout {
-  /** Characters per line at normal size, whatever the chosen width. */
+  /** At normal size, whatever the chosen width. */
   columns: number;
   lines: string[];
 }
 
-/** Nothing typed and nothing styled. */
 export const DEFAULT_TEXT: Text = {
   text: "",
   bold: false,
@@ -82,20 +77,17 @@ export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
 
 /** Mirrors `Picture` in src-tauri/src/picture.rs. */
 export interface Picture {
-  /** Path of the image file on disk; empty until one is chosen. */
+  /** Empty until one is chosen. */
   path: string;
   /** Impact: double density. Thermal: double-resolution mode. */
   double: boolean;
   dither: Dither;
-  /** 1..255; ignored by Bayer. */
+  /** Ignored by Bayer. */
   threshold: number;
-  /** 1.0 leaves the picture as is. */
   brightness: number;
-  /** 1.0 leaves the picture as is. */
   contrast: number;
 }
 
-/** No picture and no adjustment: what Reset puts the settings back to. */
 export const DEFAULT_PICTURE: Picture = {
   path: "",
   double: false,
@@ -146,7 +138,7 @@ export function jobHexdump(job: Job, printer: Printer) {
   return invoke<HexDump>("job_hexdump", { job, printer });
 }
 
-/** The dithered picture as a PNG, through the dot model on thermal. */
+/** PNG bytes. */
 export function picturePreview(
   picture: Picture,
   kind: PrinterKind,
@@ -155,7 +147,6 @@ export function picturePreview(
   return invoke<ArrayBuffer>("picture_preview", { picture, kind, paper });
 }
 
-/** True when the printer answers on its port. */
 export function probePrinter(host: string, port: number) {
   return invoke<boolean>("probe_printer", { host, port });
 }

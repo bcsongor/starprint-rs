@@ -71,11 +71,7 @@ function emptyCard(): TaskCard {
 
 const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
 
-/**
- * Sliders fire on every pixel. A short debounce coalesces those, and
- * while a preview is being rendered further changes wait for it and
- * then render once: the preview is never more than one render behind.
- */
+/** Coalesces slider drags; the preview is never more than one render behind. */
 const PREVIEW_DEBOUNCE_MS = 30;
 
 export default function App() {
@@ -85,7 +81,6 @@ export default function App() {
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
-  /** How the text wraps on the paper the printer is loaded with. */
   const [wrap, setWrap] = useState<TextLayout | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
@@ -106,7 +101,6 @@ export default function App() {
   const profile = activeProfile(profiles);
   const printer = toPrinter(profile);
 
-  /** Per-job settings are remembered on the active profile. */
   const updatePrinter = (next: Printer) =>
     updateProfiles({
       ...profiles,
@@ -157,8 +151,7 @@ export default function App() {
     let cancelled = false;
     let url: string | null = null;
     const timer = setTimeout(() => {
-      // Chain onto the render in flight so the backend works on one
-      // preview at a time and a stale request is skipped, not rendered.
+      // One render at a time; a stale request is skipped.
       previewChain.current = previewChain.current.then(async () => {
         if (cancelled) return;
         try {
@@ -193,8 +186,7 @@ export default function App() {
         : workflow === "test-page"
           ? { kind: "test-page", ...testPage }
           : { kind: "picture", ...picture };
-  // Clearing the picture leaves the last preview in state, so what is
-  // shown, and what can be printed, follows the path rather than it.
+  // Clearing the picture leaves the last preview in state.
   const preview = picture.path
     ? { url: pictureUrl, error: pictureError }
     : { url: null, error: null };
@@ -206,7 +198,6 @@ export default function App() {
         : workflow === "picture"
           ? preview.url !== null
           : true;
-  /** What the preview is showing, in the printer's own terms. */
   const note =
     workflow === "task-card"
       ? layout && `${layout.columns} columns`
@@ -254,12 +245,10 @@ export default function App() {
   };
 
   return (
-    // `--col` is the width of the form column, shared by the toolbar so
-    // that the print options start where the preview does. It is wide
-    // enough for the due date row at its longest, a Wednesday.
+    // `--col` is shared with the toolbar so the print options start where
+    // the preview does. Wide enough for the due row on a Wednesday.
     <main className="flex h-screen flex-col [--col:27.5rem]">
-      {/* The toolbar is rendered in the dark theme so it reads as app
-          chrome; every control inside picks up the dark tokens. */}
+      {/* Dark so it reads as app chrome. */}
       <header className="dark grid grid-cols-[var(--col)_minmax(0,1fr)] items-end border-b bg-background py-3 text-foreground">
         <div className="pl-4">
           <ProfileToolbar
@@ -268,14 +257,12 @@ export default function App() {
             printing={printing}
           />
         </div>
-        {/* Three equal columns spanning the preview's content box, so the
-            Paper label starts where the Preview label does. */}
+        {/* Paper label starts where the Preview label does. */}
         <div className="grid grid-cols-3 items-end gap-3 px-4">
           <PrintOptions printer={printer} onChange={updatePrinter} />
         </div>
       </header>
 
-      {/* The form column is fixed; the preview takes whatever is left. */}
       <div className="grid min-h-0 flex-1 grid-cols-[var(--col)_minmax(0,1fr)]">
         <section className="flex flex-col gap-4 border-r p-4">
           <Tabs

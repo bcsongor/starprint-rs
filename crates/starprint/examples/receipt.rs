@@ -1,23 +1,9 @@
-//! Prints a till receipt on either a Star Line Mode (thermal) or an SP700
-//! (impact) printer.
-//!
-//! The default layout is the receipt from the Python starprint GUI: a
-//! header (first line quad-size), a right-aligned time stamp, line items
-//! with qty and price in two columns, subtotal, service charge, a
-//! double-wide total and a centred footer. Prices are in pounds; `£` is
-//! 0x9C in CP437, which is what `text()` encodes and the printer is set
-//! to.
-//!
-//! The receipt is built once, generic over the protocol; the `Magnify`
-//! trait below papers over the two builders' differing size APIs and
-//! column counts. Two alternative thermal-only styles (`style=a|b`) show
-//! what the built-in fonts, inverse printing and CP437 rules can do.
+//! Prints the Python GUI's till receipt on either printer. The `Magnify`
+//! trait papers over the two builders' size APIs and column counts. Two
+//! thermal-only styles (`style=a|b`) show off the fonts, inverse printing
+//! and CP437 rules.
 //!
 //! Usage: cargo run --example receipt -- <printer-host-or-ip> thermal|impact [slow] [density=N] [style=a|b]
-//!
-//! Thermal only: `slow` selects the slow print speed (best text quality),
-//! `density=N` (-3..=3) darkens or lightens the print; +2/+3 helps on
-//! cheap paper.
 
 use starprint::transport::TcpTransport;
 use starprint::{
@@ -67,11 +53,7 @@ const ITEMS: &[Item] = &[
     },
 ];
 
-/// Double-size text and line width, which the two protocols expose
-/// differently: Star Line Mode has ×1–×6 multipliers, Star Mode only an
-/// on/off double.
 trait Magnify: Sized {
-    /// Characters per line in the default font.
     const COLUMNS: usize;
 
     fn set_wide(self, on: bool) -> Self;

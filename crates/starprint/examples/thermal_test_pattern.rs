@@ -3,13 +3,13 @@
 //! Usage: cargo run --example thermal_test_pattern -- <printer-host> [80|112] [double] [slow] [density=N]
 //!
 //! Sections, top to bottom:
-//! 1. Solid black bar — any white vertical hairline is a dead head element.
-//! 2. Single-dot vertical lines every 8 dots — a missing or faint line is a
+//! 1. Solid black bar. Any white vertical hairline is a dead head element.
+//! 2. Single-dot vertical lines every 8 dots. A missing or faint line is a
 //!    weak element; uneven spacing means feed/platen trouble.
-//! 3. One-dot checkerboard — sharpness and dot gain.
-//! 4. Dithered grey ramp, dark to light — look for horizontal banding
+//! 3. One-dot checkerboard, for sharpness and dot gain.
+//! 4. Dithered grey ramp, dark to light. Look for horizontal banding
 //!    (platen / heat) and vertical streaks (element drift).
-//! 5. Text in both fonts, sizes and a barcode/QR — general sanity.
+//! 5. Text in both fonts, sizes and a barcode/QR, for general sanity.
 //!
 //! With `double`, the ramp is repeated in double-resolution mode. `slow`
 //! prints at slow speed; `density=N` sets print density from -3

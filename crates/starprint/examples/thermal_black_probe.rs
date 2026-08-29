@@ -4,17 +4,10 @@
 //!
 //! Usage: cargo run --example thermal_black_probe -- <printer-host> [80|112] [density=N]
 //!
-//! Both halves are the same picture at the same physical size, printed at
-//! the same density setting. Double-resolution mode feeds the paper at
-//! half pitch — 16 dot rows per millimetre instead of 8 — so the same
-//! picture needs twice the rows, and each dot lands close enough to its
-//! neighbour above to bleed into it.
-//!
-//! Star's density table gives that mode less energy per dot at the top of
-//! the scale (1.2 against 1.3), so the question the strip answers is
-//! whether twice the rows more than makes up for it. Print speed is fixed
-//! in double-resolution mode, so the slow setting only applies to the
-//! first half.
+//! Star's density table gives double resolution less energy per dot at
+//! the top of the scale (1.2 against 1.3); the strip shows whether twice
+//! the rows more than makes up for it. Print speed is fixed in that mode,
+//! so the slow setting only applies to the first half.
 
 use starprint::graphics::{Bitmap, Dithering, Grayscale};
 use starprint::transport::TcpTransport;

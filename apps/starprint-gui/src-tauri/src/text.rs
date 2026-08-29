@@ -1,24 +1,19 @@
-//! Plain text: what the user typed, printed as it stands in the
-//! character styles the head offers, wrapped to the paper.
-//!
-//! This is the `simple_text` workflow of the sibling Python GUI: bold,
-//! double width, double height and the head's second colour.
+//! Plain text in the styles the head offers, wrapped to the paper. The
+//! Python GUI's `simple_text` workflow.
 
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
 use crate::Paper;
 
-/// The protocol-specific parts of laying out characters, so text is
-/// prepared once for both printers.
+/// What differs between the two builders when laying out characters.
 pub trait TextStyle: Sized {
-    /// Characters per line at normal size.
+    /// At normal size.
     fn columns(paper: Paper) -> usize;
 
     fn set_wide(self, on: bool) -> Self;
     fn set_tall(self, on: bool) -> Self;
-    /// The second colour: red on an impact head. A thermal one has none,
-    /// so it prints inverse instead.
+    /// Red on impact; thermal has no second colour, so inverse.
     fn set_accent(self, on: bool) -> Self;
 }
 
@@ -41,7 +36,7 @@ impl TextStyle for Builder<StarLine> {
 }
 
 impl TextStyle for Builder<Impact> {
-    /// The SP700's carriage is 210 dots wide whatever the roll.
+    /// The SP700's carriage is fixed.
     fn columns(_paper: Paper) -> usize {
         42
     }
@@ -59,7 +54,7 @@ impl TextStyle for Builder<Impact> {
     }
 }
 
-/// Wraps at whole words, keeping the line breaks the user typed.
+/// Keeps the line breaks the user typed.
 pub fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     let raw_lines: Vec<&str> = if text.is_empty() {
         vec![""]
@@ -88,28 +83,23 @@ pub fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     lines
 }
 
-/// What the user typed into the form.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Text {
     pub text: String,
     pub bold: bool,
-    /// Double width, which halves the characters per line.
     pub wide: bool,
-    /// Double height.
     pub tall: bool,
-    /// Red on an impact head, inverse on a thermal one.
+    /// Red on impact, inverse on thermal.
     pub accent: bool,
 }
 
-/// A print-ready description of the text, so the UI can wrap it exactly
-/// as the printer will.
+/// The text as it will print, for the preview.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
-    /// Characters per line at normal size, whatever the chosen width.
+    /// At normal size, whatever the chosen width.
     pub columns: usize,
-    /// The text, word-wrapped at the width it will print at.
     pub lines: Vec<String>,
 }
 
@@ -128,9 +118,8 @@ impl Text {
         }
     }
 
-    /// Builds the print job. `cut` feeds and cuts after the text;
-    /// without it nothing moves the paper beyond the line just printed,
-    /// so the next job starts on the line under this one.
+    /// Without `cut` nothing feeds the paper, so the next job starts on
+    /// the line under this one.
     pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
     where
         Builder<P>: TextStyle,
@@ -152,8 +141,7 @@ impl Text {
 
         doc = doc.text(&layout.lines.join("\n"));
 
-        // Put the styles back, so a hex dump of the job stands on its own
-        // and nothing carries over to whatever is printed next.
+        // Nothing carries over to the next job.
         if self.accent {
             doc = doc.set_accent(false);
         }
@@ -167,16 +155,12 @@ impl Text {
             doc = doc.bold(false);
         }
 
-        // A line feed ends the last line and nothing more: the cut
-        // command feeds to the cutter by itself, so anything here would
-        // only be blank paper. The feed is emitted after the styles are
-        // put back so that it advances one normal line, not a tall one.
+        // After the styles are put back, so the feed is one normal line.
+        // The cut feeds to the cutter itself; anything more is blank paper.
         let doc = doc.raw([b'\n']);
         if cut {
             doc.cut(Cut::FeedThenPartial).build()
         } else {
-            // Nothing else: the paper stops on the next line, so several
-            // jobs printed without a cut read as one block of text.
             doc.build()
         }
     }
@@ -277,8 +261,6 @@ mod tests {
         );
     }
 
-    /// Printing "hello" without a cut and then "world" with one has to
-    /// read as two lines of one block: nothing may feed the paper on.
     #[test]
     fn jobs_without_a_cut_run_into_the_next() {
         let first = plain("hello").document(starprint::starline(), Paper::Mm80, false);

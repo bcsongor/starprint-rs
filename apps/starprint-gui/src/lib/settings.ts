@@ -3,10 +3,9 @@ import type { Printer } from "./api";
 
 const FILE = "settings.json";
 const KEY = "profiles";
-/** Key used before profiles existed; migrated on first load. */
+/** From before profiles existed; migrated on first load. */
 const LEGACY_KEY = "printer";
 
-/** A named printer configuration. */
 export interface Profile extends Printer {
   id: string;
   name: string;
@@ -48,7 +47,6 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
-/** The printer settings of a profile, without its identity. */
 export function toPrinter(profile: Profile): Printer {
   const { id: _id, name: _name, ...printer } = profile;
   return printer;
@@ -65,7 +63,7 @@ export async function loadProfiles(): Promise<Profiles> {
   const saved = await store.get<Profiles>(KEY);
   if (saved?.profiles?.length) {
     return {
-      // Profiles saved before paper moved to the printer get the default.
+      // Profiles saved before paper existed.
       profiles: saved.profiles.map((p) => ({ ...p, paper: p.paper ?? "80" })),
       activeId: saved.profiles.some((p) => p.id === saved.activeId)
         ? saved.activeId
@@ -73,8 +71,7 @@ export async function loadProfiles(): Promise<Profiles> {
     };
   }
 
-  // First run after the single-printer version: keep those settings as
-  // the matching seed profile.
+  // First run after the single-printer version.
   const legacy = await store.get<Partial<Printer>>(LEGACY_KEY);
   if (legacy?.kind) {
     const target = legacy.kind === "impact" ? "sp743" : "tsp800ii";

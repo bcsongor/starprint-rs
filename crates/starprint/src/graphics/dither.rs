@@ -1,19 +1,10 @@
-//! Grayscale buffers and dithering.
-//!
-//! Impact printers put ink down or they don't — there are no gray dots —
-//! so continuous-tone images must be reduced to 1 bit per pixel. This
-//! module holds the 8-bit [`Grayscale`] buffer and the [`Dithering`]
-//! algorithms that perform that reduction, ported byte-for-byte from the
-//! reference implementation that was tuned on real SP700 hardware.
-//!
-//! Pixels follow the usual convention: `0` is black (ink), `255` is
-//! white (paper).
+//! Grayscale buffers and the dithering that reduces them to 1 bit, ported
+//! byte-for-byte from the Python reference. `0` is black, `255` white.
 
 use crate::error::{Error, Result};
 use crate::graphics::Bitmap;
 
-/// An 8-bit grayscale raster (`0` = black, `255` = white), stored row by
-/// row.
+/// 8-bit grayscale, row-major.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grayscale {
     width: u32,
@@ -22,8 +13,6 @@ pub struct Grayscale {
 }
 
 impl Grayscale {
-    /// Wraps row-major 8-bit pixels; `pixels.len()` must equal
-    /// `width * height`.
     pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Result<Self> {
         if pixels.len() != (width as usize) * (height as usize) {
             return Err(Error::InvalidData {
@@ -41,41 +30,32 @@ impl Grayscale {
         })
     }
 
-    /// Width in pixels.
     #[must_use]
     pub fn width(&self) -> u32 {
         self.width
     }
 
-    /// Height in pixels.
     #[must_use]
     pub fn height(&self) -> u32 {
         self.height
     }
 
-    /// The row-major pixel data.
     #[must_use]
     pub fn pixels(&self) -> &[u8] {
         &self.pixels
     }
 
-    /// Consumes the image, returning the row-major pixel data.
     #[must_use]
     pub fn into_pixels(self) -> Vec<u8> {
         self.pixels
     }
 
-    /// Mutable access for in-place pipeline stages.
     #[cfg(feature = "image")]
     pub(crate) fn pixels_mut(&mut self) -> &mut [u8] {
         &mut self.pixels
     }
 
-    /// Converts to a 1-bit [`Bitmap`]: pixels darker than mid-gray
-    /// (`< 128`) become ink.
-    ///
-    /// On dithered output (exactly `0` or `255` per pixel) this is a
-    /// lossless reinterpretation.
+    /// Pixels below 128 become ink.
     #[must_use]
     pub fn to_bitmap(&self) -> Bitmap {
         Bitmap::from_fn(self.width, self.height, |x, y| {
@@ -84,46 +64,29 @@ impl Grayscale {
     }
 }
 
-/// A dithering algorithm reducing 8-bit grayscale to pure black/white.
-///
-/// The `threshold` fields set the gray level below which a pixel leans
-/// black (128 in the hardware-tuned reference); [`Bayer8x8`](Self::Bayer8x8)
-/// uses its own matrix instead of a threshold.
+/// Reduces 8-bit grayscale to black and white. `threshold` is the level
+/// below which a pixel leans black; the reference uses 128.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Dithering {
-    /// Plain thresholding — crisp for text and line art, poor for photos.
-    Threshold {
-        /// Gray level below which a pixel becomes black.
-        threshold: u8,
-    },
-    /// Floyd–Steinberg error diffusion — the all-round default for
-    /// photographs.
-    FloydSteinberg {
-        /// Quantisation threshold.
-        threshold: u8,
-    },
-    /// Atkinson error diffusion — diffuses only 6/8 of the error, giving
-    /// a lighter, higher-contrast look.
-    Atkinson {
-        /// Quantisation threshold.
-        threshold: u8,
-    },
-    /// Ordered dithering with an 8×8 Bayer matrix — regular patterning;
-    /// not recommended for photos.
+    /// Crisp for line art, poor for photos.
+    Threshold { threshold: u8 },
+    /// The default for photos.
+    FloydSteinberg { threshold: u8 },
+    /// Spreads only 6/8 of the error: lighter, more contrast.
+    Atkinson { threshold: u8 },
+    /// Ordered; the pattern shows, so not for photos.
     Bayer8x8,
 }
 
 impl Default for Dithering {
-    /// Floyd–Steinberg at the reference threshold of 128.
     fn default() -> Self {
         Self::FloydSteinberg { threshold: 128 }
     }
 }
 
-/// `(dx, dy, weight)` error-diffusion taps.
+/// `(dx, dy, weight)` taps.
 type Kernel = &'static [(i64, i64, f64)];
 
-/// Floyd–Steinberg distributes the full error over four neighbours.
 const FLOYD_STEINBERG: Kernel = &[
     (1, 0, 7.0 / 16.0),
     (-1, 1, 3.0 / 16.0),
@@ -131,8 +94,7 @@ const FLOYD_STEINBERG: Kernel = &[
     (1, 1, 1.0 / 16.0),
 ];
 
-/// Atkinson distributes 1/8 to six neighbours (deliberately dropping the
-/// remaining 2/8).
+/// Six taps of 1/8; the remaining 2/8 is dropped on purpose.
 const ATKINSON: Kernel = &[
     (1, 0, 1.0 / 8.0),
     (2, 0, 1.0 / 8.0),
@@ -155,8 +117,7 @@ const BAYER_8X8: [[u8; 8]; 8] = [
 ];
 
 impl Dithering {
-    /// Applies the algorithm, producing an image whose pixels are all
-    /// exactly `0` or `255`.
+    /// Every output pixel is exactly `0` or `255`.
     #[must_use]
     pub fn apply(self, image: &Grayscale) -> Grayscale {
         let pixels = match self {
@@ -192,8 +153,7 @@ impl Dithering {
     }
 }
 
-/// Generic error diffusion over a `(dx, dy, weight)` kernel, in f64 like
-/// the reference implementation so rounding behaviour matches exactly.
+/// In f64 like the reference, so rounding matches.
 fn error_diffuse(image: &Grayscale, threshold: u8, kernel: Kernel) -> Vec<u8> {
     let (w, h) = (image.width as i64, image.height as i64);
     let mut buf: Vec<f64> = image.pixels.iter().map(|&p| f64::from(p)).collect();

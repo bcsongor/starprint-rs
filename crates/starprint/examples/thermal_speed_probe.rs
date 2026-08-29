@@ -9,28 +9,20 @@
 //! how. [`PrintSpeed`](starprint::PrintSpeed) stops at slow, so the
 //! command is written out by hand here.
 //!
-//! Speed shows up in how long a block takes, not in how it looks, so each
-//! block is timed rather than eyeballed: the printer is asked for its
-//! status with `ENQ`, whose bit 5 says whether the reception buffer has
-//! drained. The blocks are rasters, both because that is what photos use
-//! and because they are far bigger than the few-kilobyte buffer — a page
-//! of text would be swallowed whole and report itself finished while the
-//! head was still printing it.
+//! Each block is timed by polling `ENQ`, whose bit 5 says whether the
+//! reception buffer has drained. The blocks are rasters because they are
+//! far bigger than the few-kilobyte buffer; a page of text would report
+//! itself finished while the head was still printing it.
 //!
-//! Two things can hide a difference: the pacing the Ethernet cards need
-//! (~70 KB/s) can be slower than the head, in which case every speed
-//! measures the same because the data is the bottleneck; and the setting
-//! is ignored outright in two-colour, low-peak-current and
-//! double-resolution modes, which is why single-colour mode is selected
-//! first — double resolution outlives `ESC @`.
+//! Two things can hide a difference: the Ethernet pacing (~70 KB/s) can
+//! be slower than the head, and the setting is ignored in two-colour,
+//! low-power and double-resolution modes, which is why single colour is
+//! selected first.
 //!
-//! Read the numbers with care. `ENQ` is documented as unusable while ASB
-//! (automatic status back) is on, and the IFBD-HE07 answers with ASB
-//! frames rather than a bare status byte, so the single byte read here
-//! can be a frame byte that happens to have bit 5 set. Measurements on a
-//! TSP700II repeated to within a millisecond, so they track something
-//! real, but an interface with ASB enabled wants `ESC RS a` switched off
-//! for the run, or the frames parsed, before the numbers are trusted.
+//! `ENQ` is documented as unusable while ASB is on, and the IFBD-HE07
+//! answers with ASB frames, so the byte read here can be a frame byte
+//! with bit 5 set. Measurements on a TSP700II repeated to the
+//! millisecond, but with ASB enabled switch it off (`ESC RS a`) first.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;

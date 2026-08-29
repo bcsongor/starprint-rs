@@ -1,9 +1,6 @@
-//! Diagnostic test pages: one per head technology.
-//!
-//! The thermal page is the `thermal_test_pattern` example from the library
-//! crate; the impact page is its counterpart for a 9-pin head, where the
-//! things that fail are pins (horizontal gaps), the ribbon (faint or
-//! missing red) and dot registration between densities.
+//! Head-check pages. The thermal one is the `thermal_test_pattern`
+//! example; the impact one checks pins, ribbon and registration between
+//! densities.
 
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, Dithering, Grayscale};
@@ -14,20 +11,19 @@ use starprint::{
     RasterQuality, StarLine, Symbology, ThermalFont,
 };
 
-/// Options for the test page. Impact ignores it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPage {
-    /// Thermal: repeat the grey ramp in double-resolution mode.
+    /// Thermal only: repeat the grey ramp in double resolution.
     pub double_resolution: bool,
 }
 
-/// One numbered section of the page, for the preview.
+/// A numbered section, for the preview.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Section {
     pub title: String,
-    /// What a fault looks like in this section.
+    /// What a fault looks like.
     pub check: String,
 }
 
@@ -139,7 +135,7 @@ pub fn thermal(builder: Builder<StarLine>, page: &TestPage, paper: Paper, cut: b
 pub fn impact(builder: Builder<Impact>, cut: bool) -> Document {
     const SINGLE: u32 = 210;
     const DOUBLE: u32 = 420;
-    // Nine pins per stripe; four stripes make a block tall enough to see.
+    // Four 9-pin stripes.
     const ROWS: u32 = 36;
 
     let image = |bitmap: Bitmap, density: Density| {

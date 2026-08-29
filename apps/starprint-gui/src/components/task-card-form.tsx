@@ -59,8 +59,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         </div>
         <Textarea
           id="task"
-          // Same fill, border and text as the date button below, and the
-          // 5px padding puts an empty box at that button's 32px height.
+          // 5px padding makes an empty box the date button's 32px height.
           className="min-h-0 border-border bg-background py-[0.3125rem] text-sm"
           value={card.text}
           placeholder="What needs doing?"
@@ -78,8 +77,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
 
       <Field>
         <FieldLabel htmlFor="due">Due</FieldLabel>
-        {/* No clear button: pressing the active shortcut, or the selected
-            day in the calendar, unsets the date. */}
+        {/* Pressing the active shortcut or selected day unsets the date. */}
         <div className="flex items-center gap-2">
           <Popover>
             <PopoverTrigger
@@ -114,7 +112,6 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
               <Button
                 key={label}
                 variant={active ? "default" : "secondary"}
-                // Same height and padding as the date button beside it.
                 className="px-2.5"
                 aria-pressed={active}
                 onClick={() => setDate(active ? undefined : date)}

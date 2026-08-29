@@ -10,11 +10,8 @@ interface Props {
 }
 
 /**
- * Draws the text as it will print: wrapped where the printer wraps it,
- * in the styles the head is being asked for. Double width and height are
- * separate on these printers, so the size comes from the font for the
- * height and a horizontal scale makes up the difference — which is what
- * the head does to the glyph too.
+ * Width and height are independent on these printers, so the font size
+ * carries the height and a horizontal scale makes up the width.
  */
 export function TextPreview({ layout, text, kind }: Props) {
   const lines = layout?.lines ?? [];
@@ -25,8 +22,7 @@ export function TextPreview({ layout, text, kind }: Props) {
   return (
     <PrintedText columns={layout?.columns ?? 48}>
       <div
-        // Only as wide as the longest line: a full-width box stretched
-        // by `scaleX` would paint past the paper and scroll the window.
+        // A full-width box under `scaleX` would paint past the paper.
         className={cn(
           "w-fit",
           text.bold && "font-bold",

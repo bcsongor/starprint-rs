@@ -13,7 +13,6 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import type { PrinterKind, Text } from "@/lib/api";
 
-/** The style flags of [`Text`], which are all the boolean ones. */
 type Style = "bold" | "wide" | "tall" | "accent";
 
 interface Props {
@@ -24,12 +23,10 @@ interface Props {
   onSubmit: () => void;
 }
 
-/** Type something and choose how the head should print it. */
 export function TextForm({ text, kind, onChange, onSubmit }: Props) {
   const set = <K extends keyof Text>(key: K, value: Text[K]) =>
     onChange({ ...text, [key]: value });
 
-  /** The character styles a head can apply, in the order they show. */
   const styles: { key: Style; label: string; Icon: LucideIcon }[] = [
     { key: "bold", label: "Bold", Icon: BoldIcon },
     { key: "wide", label: "Wide", Icon: UnfoldHorizontalIcon },
@@ -57,9 +54,7 @@ export function TextForm({ text, kind, onChange, onSubmit }: Props) {
         </div>
         <Textarea
           id="text"
-          // Same fill, border and text as the task field, but tall
-          // enough to write in. It grows with what is typed, up to what
-          // the shortest window has room for, and then scrolls.
+          // Grows with the text up to what the shortest window fits.
           className="max-h-48 min-h-28 border-border bg-background text-sm"
           value={text.text}
           placeholder="Anything you want on paper"
@@ -76,8 +71,7 @@ export function TextForm({ text, kind, onChange, onSubmit }: Props) {
 
       <Field>
         <FieldLabel render={<span />}>Style</FieldLabel>
-        {/* Filled when on, like the due date shortcuts on the task card:
-            a toggle's tint is too quiet to read at a glance. */}
+        {/* Buttons, not toggles: a toggle's tint is too quiet to read. */}
         <div className="flex items-center gap-2">
           {styles.map(({ key, label, Icon }) => (
             <Button
