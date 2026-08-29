@@ -11,6 +11,8 @@ import { ProfileToolbar } from "@/components/profile-toolbar";
 import { TaskCardForm } from "@/components/task-card-form";
 import { TestPageForm } from "@/components/test-page-form";
 import { TestPagePreview } from "@/components/test-page-preview";
+import { TextForm } from "@/components/text-form";
+import { TextPreview } from "@/components/text-preview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,11 +28,13 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DEFAULT_PICTURE,
+  DEFAULT_TEXT,
   jobHexdump,
   picturePreview,
   printJob,
   taskCardLayout,
   testPageSections,
+  textLayout,
   type HexDump,
   type Job,
   type Layout,
@@ -39,6 +43,8 @@ import {
   type Section,
   type TaskCard,
   type TestPage,
+  type Text,
+  type TextLayout,
 } from "@/lib/api";
 import { roll } from "@/lib/paper";
 import {
@@ -54,6 +60,7 @@ type Workflow = Job["kind"];
 
 const WORKFLOWS: { value: Workflow; label: string }[] = [
   { value: "task-card", label: "Task card" },
+  { value: "text", label: "Text" },
   { value: "picture", label: "Picture" },
   { value: "test-page", label: "Test page" },
 ];
@@ -75,8 +82,11 @@ export default function App() {
   const [profiles, setProfiles] = useState<Profiles>(DEFAULT_PROFILES);
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
   const [card, setCard] = useState<TaskCard>(emptyCard);
+  const [text, setText] = useState<Text>(DEFAULT_TEXT);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
+  /** How the text wraps on the paper the printer is loaded with. */
+  const [wrap, setWrap] = useState<TextLayout | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [pictureUrl, setPictureUrl] = useState<string | null>(null);
@@ -116,6 +126,18 @@ export default function App() {
       cancelled = true;
     };
   }, [card, printer.kind, printer.paper]);
+
+  useEffect(() => {
+    let cancelled = false;
+    textLayout(text, printer.kind, printer.paper)
+      .then((result) => {
+        if (!cancelled) setWrap(result);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [text, printer.kind, printer.paper]);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,9 +188,11 @@ export default function App() {
   const job: Job =
     workflow === "task-card"
       ? { kind: "task-card", ...card }
-      : workflow === "test-page"
-        ? { kind: "test-page", ...testPage }
-        : { kind: "picture", ...picture };
+      : workflow === "text"
+        ? { kind: "text", ...text }
+        : workflow === "test-page"
+          ? { kind: "test-page", ...testPage }
+          : { kind: "picture", ...picture };
   // Clearing the picture leaves the last preview in state, so what is
   // shown, and what can be printed, follows the path rather than it.
   const preview = picture.path
@@ -177,16 +201,20 @@ export default function App() {
   const ready =
     workflow === "task-card"
       ? card.text.trim().length > 0
-      : workflow === "picture"
-        ? preview.url !== null
-        : true;
+      : workflow === "text"
+        ? text.text.trim().length > 0
+        : workflow === "picture"
+          ? preview.url !== null
+          : true;
   /** What the preview is showing, in the printer's own terms. */
   const note =
     workflow === "task-card"
       ? layout && `${layout.columns} columns`
-      : workflow === "picture"
-        ? `${roll(printer.kind, printer.paper).dots} dots`
-        : null;
+      : workflow === "text"
+        ? wrap && `${wrap.columns} columns`
+        : workflow === "picture"
+          ? `${roll(printer.kind, printer.paper).dots} dots`
+          : null;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -265,6 +293,13 @@ export default function App() {
 
           {workflow === "task-card" ? (
             <TaskCardForm card={card} onChange={setCard} onSubmit={print} />
+          ) : workflow === "text" ? (
+            <TextForm
+              text={text}
+              kind={printer.kind}
+              onChange={setText}
+              onSubmit={print}
+            />
           ) : workflow === "test-page" ? (
             <TestPageForm
               page={testPage}
@@ -322,6 +357,8 @@ export default function App() {
             <PaperSheet kind={printer.kind} paper={printer.paper}>
               {workflow === "task-card" ? (
                 <CardPreview layout={layout} kind={printer.kind} />
+              ) : workflow === "text" ? (
+                <TextPreview layout={wrap} text={text} kind={printer.kind} />
               ) : (
                 <PicturePreview url={preview.url} error={preview.error} />
               )}

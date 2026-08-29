@@ -6,6 +6,7 @@ mod picture;
 mod preview;
 mod task_card;
 mod test_page;
+mod text;
 
 use std::sync::Arc;
 
@@ -16,6 +17,7 @@ use starprint::{Document, PrintSpeed};
 use picture::{Picture, SourceCache};
 use task_card::{Layout, TaskCard};
 use test_page::{Section, TestPage};
+use text::Text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -108,6 +110,7 @@ fn default_paper() -> Paper {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Job {
     TaskCard(TaskCard),
+    Text(Text),
     TestPage(TestPage),
     Picture(Picture),
 }
@@ -130,6 +133,15 @@ impl Printer {
             }
             (Job::TaskCard(card), PrinterKind::Impact) => {
                 Ok(card.document(starprint::impact(), self.paper, self.cut))
+            }
+            (Job::Text(text), _) if text.text.trim().is_empty() => {
+                Err("The text is empty.".to_owned())
+            }
+            (Job::Text(text), PrinterKind::Thermal) => {
+                Ok(text.document(self.thermal(), self.paper, self.cut))
+            }
+            (Job::Text(text), PrinterKind::Impact) => {
+                Ok(text.document(starprint::impact(), self.paper, self.cut))
             }
             (Job::TestPage(page), PrinterKind::Thermal) => Ok(test_page::thermal(
                 self.thermal(),
@@ -159,6 +171,15 @@ pub struct PrintReport {
 #[tauri::command]
 fn task_card_layout(card: TaskCard, kind: PrinterKind, paper: Paper) -> Layout {
     kind.layout(&card, paper)
+}
+
+/// How the text will wrap on this printer's paper, for the preview.
+#[tauri::command]
+fn text_layout(text: Text, kind: PrinterKind, paper: Paper) -> text::Layout {
+    match kind {
+        PrinterKind::Thermal => text.layout::<starprint::StarLine>(paper),
+        PrinterKind::Impact => text.layout::<starprint::Impact>(paper),
+    }
 }
 
 /// The numbered sections of the test page for this printer, for the
@@ -337,6 +358,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             task_card_layout,
+            text_layout,
             test_page_sections,
             print_job,
             job_hexdump,

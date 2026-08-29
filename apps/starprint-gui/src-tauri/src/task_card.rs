@@ -7,9 +7,10 @@
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
-use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
+use starprint::{Builder, Cut, Document, Impact, Protocol, StarLine};
 
 use crate::Paper;
+use crate::text::{TextStyle, wrap_by_words};
 
 /// What the user typed into the form.
 #[derive(Debug, Clone, Deserialize)]
@@ -37,89 +38,19 @@ pub struct Layout {
     pub lines: Vec<String>,
 }
 
-/// The protocol-specific pieces of the card, so the card itself is built
-/// once for both printers.
-pub trait CardStyle: Sized {
-    /// The priority banner. Thermal prints it inverse, so it is padded
-    /// with a space each side to give the black block some margin;
-    /// impact prints plain red text, which wants no padding.
+/// What the card adds to [`TextStyle`]: the banner. Thermal prints it
+/// inverse, so it is padded with a space each side to give the black
+/// block some margin; impact prints plain red text, which wants none.
+pub trait CardStyle: TextStyle {
     const PRIORITY_TEXT: &'static str;
-
-    /// Characters per line at normal size.
-    fn columns(paper: Paper) -> usize;
-
-    fn set_wide(self, on: bool) -> Self;
-    fn set_tall(self, on: bool) -> Self;
-    fn set_accent(self, on: bool) -> Self;
 }
 
 impl CardStyle for Builder<StarLine> {
     const PRIORITY_TEXT: &'static str = " HIGH PRIORITY ";
-
-    fn columns(paper: Paper) -> usize {
-        paper.columns()
-    }
-
-    fn set_wide(self, on: bool) -> Self {
-        self.wide(if on { 2 } else { 1 })
-    }
-
-    fn set_tall(self, on: bool) -> Self {
-        self.tall(if on { 2 } else { 1 })
-    }
-
-    fn set_accent(self, on: bool) -> Self {
-        self.invert(on)
-    }
 }
 
 impl CardStyle for Builder<Impact> {
     const PRIORITY_TEXT: &'static str = "HIGH PRIORITY";
-
-    /// The SP700's carriage is 210 dots wide whatever the roll.
-    fn columns(_paper: Paper) -> usize {
-        42
-    }
-
-    fn set_wide(self, on: bool) -> Self {
-        self.double_wide(on)
-    }
-
-    fn set_tall(self, on: bool) -> Self {
-        self.double_tall(on)
-    }
-
-    fn set_accent(self, on: bool) -> Self {
-        self.color(if on { Color::Red } else { Color::Black })
-    }
-}
-
-fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
-    let raw_lines: Vec<&str> = if text.is_empty() {
-        vec![""]
-    } else {
-        text.lines().collect()
-    };
-    let mut lines = Vec::new();
-
-    for raw_line in raw_lines {
-        let words: Vec<&str> = raw_line.split_whitespace().collect();
-        let mut current = String::new();
-        for word in &words {
-            let word_len = word.chars().count();
-            if current.is_empty() {
-                current.push_str(word);
-            } else if current.chars().count() + 1 + word_len <= max_len {
-                current.push(' ');
-                current.push_str(word);
-            } else {
-                lines.push(current);
-                current = (*word).to_owned();
-            }
-        }
-        lines.push(current);
-    }
-    lines
 }
 
 fn format_date(date: NaiveDate) -> String {
@@ -153,7 +84,7 @@ impl TaskCard {
     where
         Builder<P>: CardStyle,
     {
-        let columns = <Builder<P> as CardStyle>::columns(paper);
+        let columns = <Builder<P> as TextStyle>::columns(paper);
         let priority = self
             .priority
             .then(|| <Builder<P> as CardStyle>::PRIORITY_TEXT.to_owned());

@@ -38,6 +38,34 @@ export interface Layout {
   lines: string[];
 }
 
+/** Mirrors `Text` in src-tauri/src/text.rs. */
+export interface Text {
+  text: string;
+  bold: boolean;
+  /** Double width, which halves the characters per line. */
+  wide: boolean;
+  /** Double height. */
+  tall: boolean;
+  /** Red on an impact head, inverse on a thermal one. */
+  accent: boolean;
+}
+
+/** Mirrors `Layout` in src-tauri/src/text.rs. */
+export interface TextLayout {
+  /** Characters per line at normal size, whatever the chosen width. */
+  columns: number;
+  lines: string[];
+}
+
+/** Nothing typed and nothing styled. */
+export const DEFAULT_TEXT: Text = {
+  text: "",
+  bold: false,
+  wide: false,
+  tall: false,
+  accent: false,
+};
+
 /** Mirrors `TestPage` in src-tauri/src/test_page.rs. */
 export interface TestPage {
   doubleResolution: boolean;
@@ -80,6 +108,7 @@ export const DEFAULT_PICTURE: Picture = {
 /** Mirrors `Job` in src-tauri/src/lib.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
+  | ({ kind: "text" } & Text)
   | ({ kind: "test-page" } & TestPage)
   | ({ kind: "picture" } & Picture);
 
@@ -99,6 +128,10 @@ export function taskCardLayout(
   paper: Paper,
 ) {
   return invoke<Layout>("task_card_layout", { card, kind, paper });
+}
+
+export function textLayout(text: Text, kind: PrinterKind, paper: Paper) {
+  return invoke<TextLayout>("text_layout", { text, kind, paper });
 }
 
 export function testPageSections(page: TestPage, kind: PrinterKind) {
