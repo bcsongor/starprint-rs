@@ -18,9 +18,9 @@ A Cargo workspace: `crates/starprint` is the library and default member,
 
 ## Conventions
 
-- Run `cargo test --all-targets` and `cargo test --features image`, plus
-  clippy with `-D warnings` and `cargo fmt --check`, in both feature
-  configurations before committing. CI does the same.
+- Before committing, run `cargo test --all-targets`, clippy with
+  `-D warnings` and `cargo fmt --check`, both with and without
+  `--features image`. CI does the same.
 - `rust-toolchain.toml` pins the compiler, so those checks give the same
   answer here as on CI. Bumping it can turn up new lints; do it on its
   own commit.
@@ -29,53 +29,33 @@ A Cargo workspace: `crates/starprint` is the library and default member,
 - British English. Commits are subject-only, imperative, at most 72
   characters.
 
-## Hardware facts learnt on real printers
+## Hardware
 
-Test printers: a Star TSP800II (thermal, 80 mm paper via a spacer, print
-width set to 80 mm) and a Star SP700 (impact).
+Test printers, named by series: Star TSP700II and TSP800II (thermal; the
+TSP800II runs 80 mm paper via a spacer, print width memory switch set to
+80 mm) and a Star SP700 (impact). Nothing here can be checked without
+them, so do not retune these values from a screen:
 
-- **Ethernet cards drop data.** The IFBD-HE07/08 cards do not apply TCP
-  back-pressure: fed a large job at once, or a job while busy, they
-  discard it. Hence `TcpTransport` paces writes (1400 bytes every 20 ms,
-  the rate that never lost a job) and callers send one job at a time.
-  Status back (ASB) is the proper fix and is not implemented.
-- **Raster image buffer.** The TSP800II buffers roughly 2,560 raster rows
-  and pauses to print them when full, leaving a faint line across a long
-  image: ~320 mm at normal resolution, ~160 mm in double.
-- **Thermal photo settings that printed best:** normal resolution, slow
-  speed (`print_speed(PrintSpeed::Slow)`), density +3
-  (`print_density(3)`), `RasterQuality::High`, with the thermal tone
-  curve (`ToneCurve::THERMAL`, gamma 0.55, no equalisation). Double
-  resolution (`PrintMode::DoubleResolution` plus a
-  `*_DOUBLE_RESOLUTION` profile) is smoother on short images but subject
-  to the buffer limit above.
-- **Tone curves differ by head.** The impact curve (gamma 1.8 +
-  equalise) is the hardware-tuned reference and must not change; on a
-  thermal head it crushes shadows, hence `HeadKind`.
-- **Cheap thermal paper** pinholes in solid black at default speed and
-  density; slow speed and +2/+3 density cure it.
-- **Narrow paper on the TSP800II.** Set the print width memory switch to
-  80 mm before printing on 80 mm rolls, or the head fires onto bare
-  platen. Star warns of head wear from long narrow use; irrelevant at
-  hobby volumes.
-- **Thermal dot gain.** Each fired element blooms past its pitch, so a
-  1-bit dither looks lighter on screen than on paper. Against printed
-  step wedges on the TSP700II (slow, density +3), dots are about 150 % of
-  the pitch at normal resolution and 200 % in double. The GUI preview
-  draws them at those sizes.
-- **Double resolution is vertical only:** 16 rows/mm at the same 8
-  dots/mm across. The mode outlives `ESC @` *and the job that set it*, so
-  select the mode you want at the start of a job and switch back at the
-  end. Within a job the printer flushes the line buffer before changing,
-  so both halves of one document come out as asked.
-- **Double resolution is what darkens a raster, and it is for rasters
-  only.** Twice the rows lay down about 1.85× the energy even though
-  Star's density table gives that mode a lower ceiling (`+3` is 1.2×
-  standard there against 1.3×). The printer's fonts are *not* doubled:
-  text prints at half height.
-- **Print speed has a fourth value.** `ESC RS r 3` ("option speed") is
-  not slower than slow on the TSP700II; slow is the floor. Low peak
-  current mode ignores the density command.
+- `ToneCurve::IMPACT` (gamma 1.8, equalise) is the hardware-tuned
+  reference and must not change. `ToneCurve::THERMAL` (gamma 0.55, no
+  equalise) was dialled in at slow speed, density +3, `RasterQuality::High`;
+  those are the settings photos print best with.
+- The GUI preview draws thermal dots at 150 % of the pitch at normal
+  resolution and 200 % in double, measured against printed step wedges.
+- `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
+  the IFBD-HE07/08 cards never dropped a job. They also drop a job sent
+  while busy, so callers send one at a time; status back (ASB) would be
+  the proper fix and is not implemented.
+
+Behaviour that shapes how jobs are written:
+
+- `PrintMode::DoubleResolution` outlives `ESC @` and the job that set
+  it, so select the mode at the start of a job and switch back at the
+  end. It doubles rows only (16 rows/mm at 8 dots/mm across), darkens
+  rasters, and prints the printer's fonts at half height.
+- The TSP800II buffers about 2,560 raster rows and pauses to print them,
+  leaving a faint line across a long image (~320 mm at normal
+  resolution, ~160 mm in double).
 
 ## Diagnostics
 
