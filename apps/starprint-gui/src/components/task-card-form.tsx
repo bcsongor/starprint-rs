@@ -1,4 +1,4 @@
-import { addDays, format, nextSunday, parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { CalendarIcon, CornerDownLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -36,10 +36,11 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
 
   const today = new Date();
   const selected = toDate(card.due);
+  const dayAfter = addDays(today, 2);
   const shortcuts: [string, Date][] = [
     ["Today", today],
     ["Tomorrow", addDays(today, 1)],
-    ["Sunday", nextSunday(today)],
+    [format(dayAfter, "EEEE"), dayAfter],
   ];
 
   return (
