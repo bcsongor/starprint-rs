@@ -42,9 +42,14 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   gui:
-    # The desktop app only ships for Windows for now; WebView2 is
-    # preinstalled there, so no extra system packages are needed.
-    runs-on: windows-latest
+    # The two platforms the app is released for. Neither needs extra
+    # system packages: WebView2 ships with Windows, WebKit with macOS.
+    # Linux would, so it is left out until the app ships there.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: apps/starprint-gui

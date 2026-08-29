@@ -294,7 +294,8 @@ async fn picture_preview(
 /// Matches the title bar to the dark toolbar (shadcn's dark
 /// `--background`, `oklch(0.145 0 0)` ≈ `#0a0a0a`).
 #[cfg(windows)]
-fn colour_title_bar(window: &tauri::WebviewWindow) {
+fn colour_title_bar(app: &tauri::App) {
+    use tauri::Manager;
     use windows_sys::Win32::Graphics::Dwm::{
         DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
     };
@@ -303,6 +304,9 @@ fn colour_title_bar(window: &tauri::WebviewWindow) {
     const BACKGROUND: u32 = 0x000a0a0a;
     const FOREGROUND: u32 = 0x00fafafa;
 
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     let Ok(hwnd) = window.hwnd() else { return };
     for (attribute, colour) in [
         (DWMWA_CAPTION_COLOR, BACKGROUND),
@@ -321,19 +325,17 @@ fn colour_title_bar(window: &tauri::WebviewWindow) {
     }
 }
 
+/// macOS draws its own, and matches the dark theme without help.
+#[cfg(not(windows))]
+fn colour_title_bar(_app: &tauri::App) {}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(SourceCache::default()))
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            #[cfg(windows)]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    colour_title_bar(&window);
-                }
-            }
+            colour_title_bar(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
