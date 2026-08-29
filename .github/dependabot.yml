@@ -1,0 +1,14 @@
+version: 2
+
+updates:
+  # The workflows pin actions by commit hash, so nothing short of a bot
+  # will notice a new release. Dependabot rewrites the hash and the
+  # `# vX.Y.Z` comment beside it together, keeping the comment honest.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # One pull request covering every action, rather than one each.
+    groups:
+      actions:
+        patterns: ["*"]
