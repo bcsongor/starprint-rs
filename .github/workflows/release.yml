@@ -30,7 +30,9 @@ jobs:
           fi
 
       # Idempotent, so re-running a failed release reuses the draft
-      # rather than colliding with it.
+      # rather than colliding with it. It stays a draft until the
+      # installers are attached, so nobody is told about an empty
+      # release; the publish job flips it live at the end.
       - name: Open the draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,22 +41,30 @@ jobs:
             echo "Draft already exists, reusing it"
             exit 0
           fi
-          notes=$(cat <<'EOF'
+          # The section runs from its own heading to the next `## `,
+          # which the `###` subheadings inside it do not match.
+          changelog=$(awk -v h="## ${GITHUB_REF_NAME#v}" \
+            '$0==h{f=1;next} /^## /{f=0} f' CHANGELOG.md)
+          if [ -z "$changelog" ]; then
+            echo "::error::CHANGELOG.md has no '## ${GITHUB_REF_NAME#v}' section"
+            exit 1
+          fi
+          install=$(cat <<'EOF'
           ### Install
 
-          **Windows, installed** — run `Starprint_*_x64-setup.exe`.
+          **Windows, installed.** Run `Starprint_*_x64-setup.exe`.
 
-          **Windows, portable** — `Starprint_*_x64-portable.exe` is the
-          whole app in one file; put it anywhere and run it. It still
+          **Windows, portable.** `Starprint_*_x64-portable.exe` is the
+          whole app in one file. Put it anywhere and run it. It still
           keeps printer profiles in `%APPDATA%\com.csongorbokay.starprint`,
           so it travels between folders, not between machines.
 
-          Both are unsigned, so SmartScreen will say the publisher is
-          unknown: choose **More info**, then **Run anyway**.
+          Neither is signed, so SmartScreen will say the publisher is
+          unknown. Choose **More info**, then **Run anyway**.
 
-          **macOS (Apple silicon)** — open the `.dmg` and drag Starprint to
-          Applications. Unsigned too, so macOS quarantines it and reports
-          it as damaged until you clear the flag once:
+          **macOS (Apple silicon).** Open the `.dmg` and drag Starprint to
+          Applications. This build is unsigned too, so macOS quarantines
+          it and reports it as damaged until you clear the flag once.
 
           ```
           xattr -d com.apple.quarantine /Applications/Starprint.app
@@ -64,7 +74,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --title "Starprint $GITHUB_REF_NAME" \
-            --notes "$notes"
+            --notes "$changelog
+
+          $install"
 
   build:
     needs: draft
@@ -117,3 +129,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" ${{ matrix.artefacts }} --clobber
+
+  # `needs: build` covers the whole matrix, so a platform that failed to
+  # build leaves the release a draft rather than publishing half of it.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish now the installers are attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest
