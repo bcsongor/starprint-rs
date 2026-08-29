@@ -51,7 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .to_bitmap()
     };
 
-    let mut doc = starprint::starline();
+    // The mode outlives ESC @ and the job that set it, so start from a
+    // known one rather than from whatever printed last.
+    let mut doc = starprint::starline().print_mode(PrintMode::SingleColor);
     if slow {
         doc = doc.print_speed(PrintSpeed::Slow);
     }

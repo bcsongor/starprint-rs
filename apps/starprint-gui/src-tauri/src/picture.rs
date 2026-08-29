@@ -279,7 +279,12 @@ mod tests {
             .filter(|w| w[..3] == [0x1b, 0x1e, b'C'])
             .map(|w| w[3])
             .collect();
-        assert!(modes.len() >= 2, "sets the mode twice: {modes:?}");
+        assert!(modes.contains(&32), "selects double resolution: {modes:?}");
+        assert_eq!(
+            modes.last(),
+            Some(&0),
+            "and leaves the printer in single colour: {modes:?}"
+        );
         assert!(!bytes.ends_with(&[0x1b, b'd', 3]));
     }
 

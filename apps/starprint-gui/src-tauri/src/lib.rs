@@ -116,8 +116,15 @@ pub enum Job {
 }
 
 impl Printer {
+    /// A thermal builder with this profile's settings applied.
+    ///
+    /// The print mode is selected explicitly because it outlives both
+    /// `ESC @` and the job that set it: a picture printed in double
+    /// resolution would otherwise leave the printer there, and the next
+    /// job — a card, or another picture — would print at half height.
     fn thermal(&self) -> starprint::Builder<starprint::StarLine> {
         starprint::starline()
+            .print_mode(starprint::PrintMode::SingleColor)
             .print_density(self.density)
             .print_speed(self.speed.into())
     }
@@ -367,4 +374,56 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn thermal() -> Printer {
+        Printer {
+            kind: PrinterKind::Thermal,
+            host: "printer.invalid".to_owned(),
+            port: 9100,
+            density: 3,
+            speed: Speed::Slow,
+            paper: Paper::Mm80,
+            cut: true,
+        }
+    }
+
+    /// The print mode outlives `ESC @` and the job that selected it, so a
+    /// job that does not want double resolution has to say so rather than
+    /// inherit it from whatever printed last.
+    #[test]
+    fn thermal_jobs_select_the_print_mode_before_printing() {
+        let printer = thermal();
+        let cache = SourceCache::default();
+        let jobs = [
+            Job::TaskCard(TaskCard {
+                text: "Task".to_owned(),
+                priority: false,
+                due: None,
+            }),
+            Job::Text(Text {
+                text: "Text".to_owned(),
+                bold: false,
+                wide: false,
+                tall: false,
+                accent: false,
+            }),
+            Job::TestPage(TestPage {
+                double_resolution: false,
+            }),
+        ];
+        for job in jobs {
+            let document = printer.document(&job, &cache).expect("builds");
+            let bytes = document.as_bytes();
+            let first = bytes
+                .windows(4)
+                .find(|w| w[..3] == [0x1b, 0x1e, b'C'])
+                .expect("selects a print mode");
+            assert_eq!(first[3], 0, "starts in single colour: {job:?}");
+        }
+    }
 }

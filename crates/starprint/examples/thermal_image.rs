@@ -77,12 +77,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(level) = density {
         doc = doc.print_density(level);
     }
-    if double {
-        doc = doc.print_mode(PrintMode::DoubleResolution);
-    }
+    // Selected either way: the mode outlives ESC @ and the job that set
+    // it, so without this a previous `double` run would print this one at
+    // half height.
+    doc = doc.print_mode(if double {
+        PrintMode::DoubleResolution
+    } else {
+        PrintMode::SingleColor
+    });
     doc = doc.raster(&prepared.image, RasterQuality::High);
     if double {
-        doc = doc.print_mode(PrintMode::SingleColor); // the mode outlives ESC @
+        doc = doc.print_mode(PrintMode::SingleColor);
     }
     let doc = doc
         .feed(2)

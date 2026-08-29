@@ -341,9 +341,18 @@ impl Builder<StarLine> {
     /// two-colour paper, low power, or the TSP700II's double-resolution
     /// mode.
     ///
-    /// The setting is applied after the current print job and **survives
-    /// `ESC @`**, so switch back to [`PrintMode::SingleColor`] at the end of
-    /// a document that changed it.
+    /// The printer prints whatever is left in the line buffer first and
+    /// applies the mode once that has finished, so a document may change
+    /// mode part-way through and have both halves come out as asked.
+    ///
+    /// The setting **survives `ESC @`** and a job boundary, so switch back
+    /// to [`PrintMode::SingleColor`] at the end of a document that changed
+    /// it — and select the mode explicitly at the start of one that cares,
+    /// rather than trusting whatever the last job left behind.
+    ///
+    /// Double resolution halves the vertical dot pitch without changing
+    /// the printer's fonts, which come out half height; it is for rasters
+    /// prepared at twice the rows, not for text.
     #[must_use]
     pub fn print_mode(self, mode: PrintMode) -> Self {
         self.raw([ESC, 0x1E, b'C', mode.code()])
@@ -366,6 +375,12 @@ impl Builder<StarLine> {
     /// Heavier density darkens dithered graphics and fills solid areas
     /// that pinhole at the default; lighter density tames heat-related
     /// banding in dense areas.
+    ///
+    /// Like [`print_mode`](Self::print_mode) and
+    /// [`print_speed`](Self::print_speed), the printer stops printing
+    /// before the new density takes effect, and the setting survives
+    /// `ESC @`. Double-resolution mode has its own, lower ceiling: `+3`
+    /// there is 1.2× the standard energy rather than 1.3×.
     #[must_use]
     pub fn print_density(self, level: i8) -> Self {
         // The command counts the other way: n = 0 is +3, n = 3 is standard,
