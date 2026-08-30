@@ -77,7 +77,12 @@ fn ramp(width: u32, height: u32) -> Bitmap {
         .to_bitmap()
 }
 
-pub fn thermal(builder: Builder<StarLine>, page: &TestPage, paper: Paper, cut: bool) -> Document {
+pub(crate) fn thermal(
+    builder: Builder<StarLine>,
+    page: &TestPage,
+    paper: Paper,
+    cut: bool,
+) -> Document {
     let width = paper.dots();
     let black_bar = Bitmap::from_fn(width, 64, |_, _| true);
     let hairlines = Bitmap::from_fn(width, 48, |x, _| x % 8 == 0);
@@ -132,7 +137,7 @@ pub fn thermal(builder: Builder<StarLine>, page: &TestPage, paper: Paper, cut: b
     finish(doc, cut)
 }
 
-pub fn impact(builder: Builder<Impact>, cut: bool) -> Document {
+pub(crate) fn impact(builder: Builder<Impact>, cut: bool) -> Document {
     const SINGLE: u32 = 210;
     const DOUBLE: u32 = 420;
     // Four 9-pin stripes.

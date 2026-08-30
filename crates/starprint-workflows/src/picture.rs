@@ -144,7 +144,7 @@ pub fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
     image::load_from_memory(bytes).map_err(|e| format!("The image could not be decoded: {e}"))
 }
 
-pub fn thermal(
+pub(crate) fn thermal(
     builder: Builder<StarLine>,
     picture: &Picture,
     paper: Paper,
@@ -164,7 +164,7 @@ pub fn thermal(
     Ok(finish(doc, cut))
 }
 
-pub fn impact(
+pub(crate) fn impact(
     builder: Builder<Impact>,
     picture: &Picture,
     cut: bool,

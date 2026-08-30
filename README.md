@@ -85,12 +85,12 @@ let doc = starprint::impact().bit_image(&prepared.image).build();
 
 ## Examples
 
-Run with `cargo run --example <name> -- <printer-ip>`; the photo examples also need `--features image`.
+Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the photo examples also need `--features image`.
 
 - `thermal_receipt`: a receipt with a Code 128 barcode and a QR code.
 - `impact_kitchen_ticket`: a red/black ticket for an SP700.
 - `receipt`: a till receipt for either printer; pass `thermal` or `impact`.
-- `task_card`: the desktop GUI's task card, for either printer.
+- `task_card`: the desktop GUI's task card, for either printer; run with `cargo run -p starprint-workflows --example task_card -- …`.
 - `thermal_test_pattern`: a head-check page.
 - `thermal_image`, `impact_image`: a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 

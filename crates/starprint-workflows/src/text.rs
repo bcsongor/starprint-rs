@@ -55,7 +55,7 @@ impl TextStyle for Builder<Impact> {
 }
 
 /// Keeps the line breaks the user typed.
-pub fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
+pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     let raw_lines: Vec<&str> = if text.is_empty() {
         vec![""]
     } else {
