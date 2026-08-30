@@ -118,7 +118,17 @@ $ curl -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
 
 It binds the loopback interface by default and has no authentication, so `--listen` anywhere the network can reach hands your printers to whoever asks.
 
-`GET /v1/printers` lists what the profile file named. `POST /v1/printers/<name>/jobs` prints a `task-card`, `text`, `note`, `picture` or `test-page`, taking `cut`, `density` and `speed` overrides; a picture goes as `multipart/form-data` with the image in an `image` part. `POST /v1/printers/<name>/raw` takes bytes that already carry their own commands. Both return `{"bytesSent": N}`, which reports a completed socket write and nothing more.
+| Endpoint | Purpose |
+|---|---|
+| `GET /v1/printers` | The printers the profile file named, and which options apply to each |
+| `POST /v1/printers/<name>/jobs` | Prints a `task-card`, `text`, `note`, `picture` or `test-page` |
+| `POST /v1/printers/<name>/raw` | Sends bytes that already carry their own commands |
+
+- A job takes `cut`, `density` and `speed` overrides. Anything omitted comes from the profile.
+- A picture goes as `multipart/form-data`, with the image in an `image` part.
+- Both print endpoints return `{"bytesSent": N}`, a completed socket write and nothing more.
+
+[`docs/rest-api.md`](docs/rest-api.md) is the full reference.
 
 ## Notes
 
