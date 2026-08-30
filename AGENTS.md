@@ -5,22 +5,36 @@ For contributors; the README is for users.
 ## Layout
 
 A Cargo workspace: `crates/starprint` is the library and default member,
-`apps/starprint-gui` a Tauri app on it.
+with two front ends on the jobs in `crates/starprint-workflows`.
 
 - `crates/starprint/src/document.rs`: `Builder<P>` and the command
   encoding. Every command cites the manual it comes from.
 - `crates/starprint/tests/fixtures/`: golden output from the Python
   reference in the sibling `starprint` repo (`generate.py`). The impact
   pipeline, dithering and `ESC ^` serialisation must stay byte-identical.
+- `crates/starprint-workflows/`: the printer profile, the tagged `Job`
+  and the five jobs both front ends print: task cards, text, note slips,
+  pictures and test pages. It reads no files and opens no sockets, so a
+  picture job is handed its image. Job behaviour belongs here, not in a
+  front end, or the two drift.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
-  `src-tauri/`. Run with `bun tauri dev` from that directory.
+  `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
+  file selection, the source cache and the previews.
+- `apps/starprint-api/`: an HTTP server over the same jobs, for other
+  local programs. The README covers the endpoints. One concern per
+  module: `body` reads a request, `job` turns it into printable bytes,
+  `printers` writes them and takes each printer's turn, `config` reads
+  the profile file, `problem` is the only error shape and `app` wires
+  them together. Anything new goes in whichever of those owns it.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
 
 ## Conventions
 
 - Before committing, run `cargo test --all-targets`, clippy with
-  `-D warnings` and `cargo fmt --check`, both with and without
-  `--features image`. CI does the same.
+  `-D warnings` and `cargo fmt --all --check`, both with and without
+  `--features image`, then the same for
+  `-p starprint-workflows -p starprint-api`. CI does the same. The
+  desktop app is checked with `-p starprint-gui`.
 - `rust-toolchain.toml` pins the compiler, so those checks give the same
   answer here as on CI. Bumping it can turn up new lints; do it on its
   own commit.
@@ -45,7 +59,8 @@ them, so do not retune these values from a screen:
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job. They also drop a job sent
   while busy, so callers send one at a time; status back (ASB) would be
-  the proper fix and is not implemented.
+  the proper fix and is not implemented. The API holds a lock per
+  printer for this reason, and cannot help callers it does not serve.
 
 Behaviour that shapes how jobs are written:
 

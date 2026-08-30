@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### HTTP API
+
+- `starprint-api` serves the desktop app's jobs to other local programs
+  over HTTP. It reads named printer profiles from a TOML file at
+  startup, prints task cards, text, note slips, pictures and test pages
+  to them, and takes raw bytes for anything else.
+- A response reports a completed socket write and nothing more. Without
+  status back the server cannot tell whether the printer accepted or
+  printed the job, so a `502` does not prove that nothing printed.
+- It binds the loopback interface by default and has no authentication,
+  so `--listen` past it is a decision, not a default. It reaches only
+  the printers its profile file names.
+- One request writes to a printer at a time, because these printers drop
+  a job sent while they are busy.
+
+### Shared jobs
+
+- The jobs both front ends print moved from the desktop app into
+  `starprint-workflows`, so a card printed from either is byte for byte
+  the same. The crate reads no files: a picture job is handed its image.
+- Every job now takes defaults for the settings a caller does not care
+  about, so a job can be as short as its content.
+
 ## 0.1.0
 
 First release. `starprint` is the library, Starprint the desktop app

@@ -98,6 +98,28 @@ Run with `cargo run --example <name> -- <printer-ip>`; the photo examples also n
 
 `apps/starprint-gui` is a Tauri app that prints task cards, text, pictures and test pages. Run it with `bun install && bun tauri dev` from that directory, or `bun tauri build` for an installer.
 
+## HTTP API
+
+`apps/starprint-api` serves the same jobs to other local programs, mostly AI agents. Name your printers in a TOML file and post jobs to them:
+
+```console
+$ cp apps/starprint-api/printers.toml.example printers.toml
+$ cargo run -p starprint-api
+starprint-api: tsp800ii, sp743 from printers.toml
+starprint-api: listening on http://127.0.0.1:9110
+```
+
+```console
+$ curl -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
+    -H 'Content-Type: application/json' \
+    -d '{"job":{"kind":"task-card","text":"Renew passport","due":"2026-09-15"}}'
+{"bytesSent":284}
+```
+
+It binds the loopback interface by default and has no authentication, so `--listen` anywhere the network can reach hands your printers to whoever asks.
+
+`GET /v1/printers` lists what the profile file named. `POST /v1/printers/<name>/jobs` prints a `task-card`, `text`, `note`, `picture` or `test-page`, taking `cut`, `density` and `speed` overrides; a picture goes as `multipart/form-data` with the image in an `image` part. `POST /v1/printers/<name>/raw` takes bytes that already carry their own commands. Both return `{"bytesSent": N}`, which reports a completed socket write and nothing more.
+
 ## Notes
 
 - Star's Ethernet cards drop a large job sent at once, so `TcpTransport` writes 1400 bytes every 20 ms. Send one job at a time.

@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** Mirrors `PrinterKind` in src-tauri/src/lib.rs. */
+/** Mirrors `PrinterKind` in starprint-workflows/src/lib.rs. */
 export type PrinterKind = "thermal" | "impact";
 
-/** Mirrors `Speed` in src-tauri/src/lib.rs. */
+/** Mirrors `Speed` in starprint-workflows/src/lib.rs. */
 export type Speed = "high" | "medium" | "slow";
 
-/** Mirrors `Paper` in src-tauri/src/lib.rs. */
+/** Mirrors `Paper` in starprint-workflows/src/lib.rs. */
 export type Paper = "80" | "112";
 
-/** Mirrors `Printer` in src-tauri/src/lib.rs. */
+/** Mirrors `Printer` in starprint-workflows/src/lib.rs. */
 export interface Printer {
   kind: PrinterKind;
   host: string;
@@ -20,7 +20,7 @@ export interface Printer {
   cut: boolean;
 }
 
-/** Mirrors `TaskCard` in src-tauri/src/task_card.rs. */
+/** Mirrors `TaskCard` in starprint-workflows/src/task_card.rs. */
 export interface TaskCard {
   text: string;
   priority: boolean;
@@ -28,7 +28,7 @@ export interface TaskCard {
   due: string | null;
 }
 
-/** Mirrors `Layout` in src-tauri/src/task_card.rs. */
+/** Mirrors `Layout` in starprint-workflows/src/task_card.rs. */
 export interface Layout {
   columns: number;
   priority: string | null;
@@ -36,7 +36,7 @@ export interface Layout {
   lines: string[];
 }
 
-/** Mirrors `Text` in src-tauri/src/text.rs. */
+/** Mirrors `Text` in starprint-workflows/src/text.rs. */
 export interface Text {
   text: string;
   bold: boolean;
@@ -46,7 +46,7 @@ export interface Text {
   accent: boolean;
 }
 
-/** Mirrors `Layout` in src-tauri/src/text.rs. */
+/** Mirrors `Layout` in starprint-workflows/src/text.rs. */
 export interface TextLayout {
   /** At normal size, whatever the chosen width. */
   columns: number;
@@ -61,10 +61,10 @@ export const DEFAULT_TEXT: Text = {
   accent: false,
 };
 
-/** Mirrors `Rule` in src-tauri/src/note.rs. */
+/** Mirrors `Rule` in starprint-workflows/src/note.rs. */
 export type Rule = "blank" | "dots" | "lines" | "squares";
 
-/** Mirrors `Note` in src-tauri/src/note.rs. */
+/** Mirrors `Note` in starprint-workflows/src/note.rs. */
 export interface Note {
   rule: Rule;
   /** Rows to write in. */
@@ -73,7 +73,7 @@ export interface Note {
   pitch: number;
 }
 
-/** Mirrors `Layout` in src-tauri/src/note.rs. */
+/** Mirrors `Layout` in starprint-workflows/src/note.rs. */
 export interface NoteLayout {
   columns: number;
   /** Right-aligned to fill the header line. */
@@ -97,21 +97,25 @@ export const NOTEBOOK_RULING: Record<Rule, { rows: number; pitch: number }> = {
 
 export const DEFAULT_NOTE: Note = { rule: "lines", ...NOTEBOOK_RULING.lines };
 
-/** Mirrors `TestPage` in src-tauri/src/test_page.rs. */
+/** Mirrors `TestPage` in starprint-workflows/src/test_page.rs. */
 export interface TestPage {
   doubleResolution: boolean;
 }
 
-/** Mirrors `Section` in src-tauri/src/test_page.rs. */
+/** Mirrors `Section` in starprint-workflows/src/test_page.rs. */
 export interface Section {
   title: string;
   check: string;
 }
 
-/** Mirrors `Dither` in src-tauri/src/picture.rs. */
+/** Mirrors `Dither` in starprint-workflows/src/picture.rs. */
 export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
 
-/** Mirrors `Picture` in src-tauri/src/picture.rs. */
+/**
+ * Mirrors `Picture` in starprint-workflows/src/picture.rs, with the
+ * `path` that `PicturePath` in src-tauri/src/source.rs adds. The shared
+ * crate takes image data, so choosing a file is the app's own business.
+ */
 export interface Picture {
   /** Empty until one is chosen. */
   path: string;
@@ -133,7 +137,7 @@ export const DEFAULT_PICTURE: Picture = {
   contrast: 1,
 };
 
-/** Mirrors `Job` in src-tauri/src/lib.rs. */
+/** Mirrors `JobRequest` in src-tauri/src/source.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
   | ({ kind: "text" } & Text)

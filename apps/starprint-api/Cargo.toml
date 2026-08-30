@@ -1,0 +1,27 @@
+[package]
+name = "starprint-api"
+version = "0.1.0"
+description = "Local HTTP server that prints starprint jobs to profiled Star printers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "multipart", "tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+starprint = { path = "../../crates/starprint", features = ["image"] }
+starprint-workflows = { path = "../../crates/starprint-workflows" }
+# `preserve_order` keeps GET /v1/printers in the order the file lists.
+toml = { version = "0.9", default-features = false, features = ["parse", "serde", "preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal"] }
+
+[dev-dependencies]
+# A sample PNG to post, a stand-in printer to write to, and the router
+# driven without a socket. `macros` is for `#[tokio::test]`; startup
+# builds its runtime by hand.
+image = { version = "0.25", default-features = false, features = ["png"] }
+tokio = { version = "1", features = ["io-util", "macros"] }
+tower = { version = "0.5", features = ["util"] }

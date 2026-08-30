@@ -29,14 +29,26 @@ pub enum Rule {
     Squares,
 }
 
+/// A caller that supplies none of this gets the ruling notebooks are
+/// sold at: ten rows, 7 mm apart, which tears off at 70 mm.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Note {
     pub rule: Rule,
     /// Rows to write in.
     pub rows: u8,
     /// Millimetres between the rules, across and down.
     pub pitch: u8,
+}
+
+impl Default for Note {
+    fn default() -> Self {
+        Self {
+            rule: Rule::Lines,
+            rows: 10,
+            pitch: 7,
+        }
+    }
 }
 
 /// The slip as it will print, for the preview. The ruling is geometry
@@ -201,15 +213,13 @@ fn ruling(rule: Rule, rows: u32, pitch_mm: f32, profile: &DeviceProfile) -> Bitm
 
     // Squared paper is a closed block, so its rules stop at the
     // outermost sides; running on to the edge of the paper would leave
-    // them sticking out past the grid.
-    let sides = match (
-        vertical.iter().position(|&on| on),
-        vertical.iter().rposition(|&on| on),
-    ) {
-        (Some(first), Some(last)) => first..=last,
-        // Only when nothing is drawn, which is every rule but these two.
-        _ => 1..=0,
-    };
+    // them sticking out past the grid. `None` when nothing is drawn
+    // across, which is every rule but these two.
+    let sides = vertical
+        .iter()
+        .position(|&on| on)
+        .zip(vertical.iter().rposition(|&on| on))
+        .map(|(first, last)| first..=last);
 
     Bitmap::from_fn(width, height, |x, y| {
         let (x, y) = (x as usize, y as usize);
@@ -217,7 +227,9 @@ fn ruling(rule: Rule, rows: u32, pitch_mm: f32, profile: &DeviceProfile) -> Bitm
             Rule::Blank => false,
             Rule::Dots => ruled[y] && vertical[x],
             Rule::Lines => ruled[y],
-            Rule::Squares => (ruled[y] && sides.contains(&x)) || vertical[x],
+            Rule::Squares => {
+                (ruled[y] && sides.as_ref().is_some_and(|sides| sides.contains(&x))) || vertical[x]
+            }
         }
     })
 }

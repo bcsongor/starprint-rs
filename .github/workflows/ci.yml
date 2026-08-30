@@ -24,6 +24,9 @@ jobs:
       - run: cargo test --all-targets
       - run: cargo test --all-targets --features image
       - run: cargo test --doc --features image
+      # The jobs both front ends build, and the HTTP server over them.
+      # The desktop app needs a webview, so it has its own job below.
+      - run: cargo test -p starprint-workflows -p starprint-api --all-targets
 
   lint:
     runs-on: ubuntu-latest
@@ -31,13 +34,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo fmt --check
+      # `--all` so the members outside `default-members` are covered.
+      - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo clippy --all-targets --features image -- -D warnings
+      - run: cargo clippy -p starprint-workflows -p starprint-api --all-targets -- -D warnings
       - run: cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
       - run: cargo doc --no-deps --features image
+        env:
+          RUSTDOCFLAGS: -D warnings
+      # The shared crate only: the two apps are binaries nobody reads
+      # rustdoc for.
+      - run: cargo doc -p starprint-workflows --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 

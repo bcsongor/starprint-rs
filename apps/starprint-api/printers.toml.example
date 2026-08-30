@@ -1,0 +1,29 @@
+# Printer profiles for starprint-api. Copy to printers.toml, or point
+# the server at it with `--config`.
+#
+# `host`, `port`, `kind` and, for thermal printers, `paper` are fixed; a
+# job request cannot override them. `cut` and, for thermal printers,
+# `density` and `speed` are defaults a request may override.
+#
+# All applicable fields are required. Unknown fields, invalid values and
+# thermal-only fields on an impact profile stop the server. The file is
+# read once, so changing it means a restart.
+
+[printers.tsp800ii]
+host = "192.168.1.180"
+port = 9100
+kind = "thermal"
+# 80 or 112, matching the print width memory switch.
+paper = 80
+cut = true
+# The printer's own -3 to +3 scale. Cheap paper pinholes in solid black
+# below +2 at the default speed.
+density = 3
+# "high", "medium" or "slow".
+speed = "slow"
+
+[printers.sp743]
+host = "192.168.1.141"
+port = 9100
+kind = "impact"
+cut = true

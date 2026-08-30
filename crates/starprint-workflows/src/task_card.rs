@@ -8,12 +8,18 @@ use starprint::{Builder, Cut, Document, Impact, Protocol, StarLine};
 use crate::Paper;
 use crate::text::{TextStyle, wrap_by_words};
 
-#[derive(Debug, Clone, Deserialize)]
+/// `text` is the only part a caller must supply. As with [`Text`], the
+/// [`Default`] derive leaves `text` required.
+///
+/// [`Text`]: crate::Text
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskCard {
     pub text: String,
+    #[serde(default)]
     pub priority: bool,
     /// An ISO date, printed as `28 AUG 2026`, or free text printed as is.
+    #[serde(default)]
     pub due: Option<String>,
 }
 
