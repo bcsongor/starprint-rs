@@ -13,16 +13,17 @@ Printing is physical and cannot be undone. It spends paper, and ribbon
 on the impact printer. Ask before printing anything the user did not
 ask for, and never retry a failed print in a loop.
 
-In PowerShell, `curl` is an alias for `Invoke-WebRequest` and will not
-take these flags. Use `curl.exe`.
+On Windows PowerShell, `curl` is an alias for `Invoke-WebRequest` and
+takes none of these flags. Use `curl.exe` and backticks to continue
+lines.
 
 ## Start here
 
 Every job goes to a printer named in the server's profile file, so find
 out what exists before printing:
 
-```
-curl.exe -s http://127.0.0.1:9110/v1/printers
+```bash
+curl -s http://127.0.0.1:9110/v1/printers
 ```
 
 ```json
@@ -43,10 +44,10 @@ everything else has a default.
 
 Task card, the common case:
 
-```
-curl.exe -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs ^
-  -H "Content-Type: application/json" ^
-  -d "{\"job\":{\"kind\":\"task-card\",\"text\":\"Renew passport\",\"priority\":true,\"due\":\"2026-09-15\"}}"
+```bash
+curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"job":{"kind":"task-card","text":"Renew passport","priority":true,"due":"2026-09-15"}}'
 ```
 
 `priority` defaults to false and `due` may be left out.
@@ -77,10 +78,10 @@ Test page, which takes nothing:
 A picture must go as a form, with the image in its own part. Sent as
 plain JSON it is a `400`:
 
-```
-curl.exe -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs ^
-  -F "job={\"job\":{\"kind\":\"picture\",\"double\":true}}" ^
-  -F "image=@photo.jpg"
+```bash
+curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
+  -F 'job={"job":{"kind":"picture","double":true}}' \
+  -F 'image=@photo.jpg'
 ```
 
 PNG, JPEG, WebP and BMP decode. The server will not read a path, so the
