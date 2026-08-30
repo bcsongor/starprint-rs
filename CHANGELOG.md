@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 ### HTTP API
 
@@ -14,6 +14,13 @@
 - It binds the loopback interface by default and has no authentication,
   so `--listen` past it is a decision, not a default. It reaches only
   the printers its profile file names.
+
+### For agents
+
+- A skill at `.agents/skills/starprint-print/` tells an agent how to
+  print through the API: which printers exist, what each job takes and
+  what `bytesSent` does not promise. It stands on its own, so it can be
+  copied into any agent that reads the format.
 
 ### Shared jobs
 

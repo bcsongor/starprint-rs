@@ -1,6 +1,6 @@
 [package]
 name = "starprint-gui"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop app for printing to Star receipt printers"
 edition.workspace = true
 rust-version.workspace = true
