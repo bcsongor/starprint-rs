@@ -21,12 +21,14 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache and the previews.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. The README covers the endpoints. One concern per
-  module: `body` reads a request, `job` turns it into printable bytes,
-  `printers` writes them, `config` reads the profile file, `problem` is
-  the only error shape and `app` wires them together. Anything new goes
-  in whichever of those owns it.
+  local programs. `docs/rest-api.md` covers the endpoints. One concern
+  per module: `body` reads a request, `job` turns it into printable
+  bytes, `printers` writes them, `config` reads the profile file,
+  `problem` is the only error shape and `app` wires them together.
+  Anything new goes in whichever of those owns it.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
+- `docs/`: `rest-api.md` is the API reference; the rest is design notes
+  for work that is not built yet.
 
 ## Conventions
 
