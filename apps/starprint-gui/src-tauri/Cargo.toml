@@ -19,7 +19,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 # PNG encoding for the picture preview; decoding lives in starprint.
 image = { version = "0.25", default-features = false, features = ["png"] }
 starprint = { path = "../../../crates/starprint", features = ["image"] }
@@ -29,6 +28,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 
 [dev-dependencies]
+serde_json = "1"
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
