@@ -96,7 +96,7 @@ Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the p
 
 ## Desktop app
 
-`apps/starprint-gui` is a Tauri app that prints task cards, text, pictures and test pages. Run it with `bun install && bun tauri dev` from that directory, or `bun tauri build` for an installer.
+`apps/starprint-gui` is a Tauri app that prints task cards, text, pictures and test pages. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
 
 ## HTTP API
 
@@ -104,7 +104,7 @@ Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the p
 
 ```console
 $ cp apps/starprint-api/printers.toml.example printers.toml
-$ cargo run -p starprint-api
+$ bun run api
 starprint-api: tsp800ii, sp743 from printers.toml
 starprint-api: listening on http://127.0.0.1:9110
 ```

@@ -1,0 +1,9 @@
+{
+  "name": "starprint",
+  "private": true,
+  "scripts": {
+    "api": "cargo run -p starprint-api --",
+    "gui": "bun --cwd apps/starprint-gui tauri dev",
+    "gui-setup": "bun install --cwd apps/starprint-gui"
+  }
+}
