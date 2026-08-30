@@ -29,8 +29,12 @@ with two front ends on the jobs in `crates/starprint-workflows`.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
 - `docs/`: `rest-api.md` is the API reference; the rest is design notes
   for work that is not built yet.
-- `.claude/skills/starprint-print/`: how an agent prints through the
-  API. Keep it in step with `docs/rest-api.md`.
+- `.agents/skills/starprint-print/`: the skill we publish for callers
+  of the API. It ships on its own, so it repeats what `docs/rest-api.md`
+  says rather than linking to it. Keep the two in step.
+  `.claude/skills/starprint-print` symlinks here, because Claude Code
+  reads only that path. Windows needs an elevated shell to check the
+  symlink out.
 
 ## Conventions
 
