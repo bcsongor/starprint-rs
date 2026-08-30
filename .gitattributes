@@ -1,0 +1,10 @@
+# LF in the repository whatever the contributor's `core.autocrlf`.
+* text=auto eol=lf
+
+# Detection is reliable for these, but saying so is cheaper than finding
+# out it was not.
+*.pdf binary
+*.png binary
+*.ico binary
+*.icns binary
+*.bin binary
