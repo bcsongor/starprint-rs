@@ -6,7 +6,7 @@
 //!        <printer-host> <image-path> <width-mm> <height-mm>
 
 use image::imageops::FilterType;
-use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile, Dithering, Grayscale};
+use starprint::graphics::{Bitmap, Dithering, Grayscale};
 use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut, PrintSpeed, RasterQuality};
 
@@ -100,7 +100,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             TILE_WIDTH_DOTS
         });
         let bitmap = page(&bitmap, start, content_width);
-        let image = BitImage::with_profile(bitmap, Density::Single, &DeviceProfile::THERMAL_80MM)?;
         let from_mm = f64::from(start) / DOTS_PER_MM;
         let to_mm = f64::from(start + content_width) / DOTS_PER_MM;
 
@@ -112,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 starts.len()
             ))
             .align(Alignment::Left)
-            .raster(&image, RasterQuality::High)
+            .raster(&bitmap, RasterQuality::High)
             .feed(2)
             .cut(Cut::FeedThenPartial);
     }
