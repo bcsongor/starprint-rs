@@ -23,9 +23,9 @@ with two front ends on the jobs in `crates/starprint-workflows`.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs. The README covers the endpoints. One concern per
   module: `body` reads a request, `job` turns it into printable bytes,
-  `printers` writes them and takes each printer's turn, `config` reads
-  the profile file, `problem` is the only error shape and `app` wires
-  them together. Anything new goes in whichever of those owns it.
+  `printers` writes them, `config` reads the profile file, `problem` is
+  the only error shape and `app` wires them together. Anything new goes
+  in whichever of those owns it.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
 
 ## Conventions
@@ -57,10 +57,7 @@ them, so do not retune these values from a screen:
 - The GUI preview draws thermal dots at 150 % of the pitch at normal
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
-  the IFBD-HE07/08 cards never dropped a job. They also drop a job sent
-  while busy, so callers send one at a time; status back (ASB) would be
-  the proper fix and is not implemented. The API holds a lock per
-  printer for this reason, and cannot help callers it does not serve.
+  the IFBD-HE07/08 cards never dropped a job.
 
 Behaviour that shapes how jobs are written:
 

@@ -12,13 +12,9 @@ pub struct Printers {
     entries: Vec<Entry>,
 }
 
-/// One printer, and the turn-taking that goes with it.
+/// One printer from the profile file.
 pub struct Entry {
     profile: Profile,
-    /// These printers drop a job sent while they are busy, and callers
-    /// do not know about each other, so only one request writes at a
-    /// time. A request for a busy printer waits for its turn; there is
-    /// no queue beyond that.
     turn: Mutex<()>,
 }
 
@@ -53,7 +49,7 @@ impl Entry {
         &self.profile
     }
 
-    /// Waits its turn, writes `payload` and reports how much went out.
+    /// Writes `payload` and reports how much went out.
     ///
     /// A completed write is all this can promise. Without automatic
     /// status back there is no way to ask whether the printer accepted

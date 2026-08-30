@@ -12,11 +12,8 @@ export type Status = "checking" | "online" | "offline";
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 /**
- * Status per profile id; the active profile is probed first.
- *
- * Star's Ethernet cards accept one connection, so a probe that lands
- * while the card is busy is refused. A failure is therefore retried once,
- * and probing pauses while a job prints.
+ * Status per profile id; the active profile is probed first. A failed
+ * probe is retried once, and probing pauses while a job prints.
  */
 export function useProbes(
   profiles: Profile[],

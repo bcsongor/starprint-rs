@@ -122,7 +122,7 @@ It binds the loopback interface by default and has no authentication, so `--list
 
 ## Notes
 
-- Star's Ethernet cards drop a large job sent at once, so `TcpTransport` writes 1400 bytes every 20 ms. Send one job at a time.
+- Star's Ethernet cards drop a large job sent at once, so `TcpTransport` writes 1400 bytes every 20 ms.
 - `PrintMode::DoubleResolution` prints 16 rows/mm. Pair it with a `*_DOUBLE_RESOLUTION` profile and switch back afterwards; the mode survives `ESC @`.
 - The TSP800II buffers about 2,560 raster rows and pauses to print them, leaving a faint line past roughly 320 mm (160 mm at double resolution).
 - `text()` encodes CP437; unmappable characters print as `?`. For other code pages call `code_page()` and pass encoded bytes to `raw()`.

@@ -486,10 +486,9 @@ mod tests {
         );
     }
 
-    /// These printers drop a job sent while they are busy, so the second
-    /// request waits rather than writing over the first.
+    /// Overlapping requests each write a whole job.
     #[tokio::test(flavor = "multi_thread")]
-    async fn one_request_writes_to_a_printer_at_a_time() {
+    async fn overlapping_requests_each_write_a_whole_job() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         // Reads each job to its end before accepting the next, so an

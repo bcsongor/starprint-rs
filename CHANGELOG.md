@@ -14,8 +14,6 @@
 - It binds the loopback interface by default and has no authentication,
   so `--listen` past it is a decision, not a default. It reaches only
   the printers its profile file names.
-- One request writes to a printer at a time, because these printers drop
-  a job sent while they are busy.
 
 ### Shared jobs
 
@@ -67,8 +65,7 @@ built on it.
 Printing on a TSP800II and an SP700 set these defaults.
 
 - Star's Ethernet cards drop a large job sent in one go, so
-  `TcpTransport` writes 1400 bytes every 20 ms and callers send one job
-  at a time.
+  `TcpTransport` writes 1400 bytes every 20 ms.
 - Thermal and impact heads want different tone curves. The impact curve
   crushes shadows on a thermal head, so the profile picks the curve by
   head kind.
