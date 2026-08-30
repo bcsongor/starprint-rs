@@ -29,6 +29,8 @@ with two front ends on the jobs in `crates/starprint-workflows`.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
 - `docs/`: `rest-api.md` is the API reference; the rest is design notes
   for work that is not built yet.
+- `.claude/skills/starprint-print/`: how an agent prints through the
+  API. Keep it in step with `docs/rest-api.md`.
 
 ## Conventions
 
