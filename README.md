@@ -81,7 +81,7 @@ let prepared = ImagePipeline::new()
 let doc = starprint::impact().bit_image(&prepared.image).build();
 ```
 
-`prepared.preview` is a grayscale for the screen. Without the feature, `graphics::Bitmap` prints your own pixels.
+`prepared.preview` is a `Grayscale` for the screen. Without the feature, `graphics::Bitmap` prints your own pixels.
 
 ## Examples
 
