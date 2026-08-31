@@ -119,6 +119,13 @@ export interface Qr {
   errorCorrection: Ecc;
   /** The symbol's width in millimetres, quiet zone excluded. */
   size: number;
+  /**
+   * How far a module's corners are taken off, as a percentage of half
+   * the module: 100 draws a lone module as a circle, 0 leaves it
+   * square. Rounded down to whole dots, so a coarse head prints square
+   * whatever this asks for.
+   */
+  radius: number;
   /** Carries the caption with it. */
   align: Align;
 }
@@ -127,11 +134,15 @@ export interface Qr {
 export const MIN_QR_MM = 10;
 export const MAX_QR_MM = 80;
 
+/** `MAX_RADIUS` in the same file; the floor is a square module. */
+export const MAX_QR_RADIUS = 100;
+
 export const DEFAULT_QR: Qr = {
   data: "",
   caption: null,
   errorCorrection: "m",
   size: 30,
+  radius: MAX_QR_RADIUS,
   align: "center",
 };
 
@@ -145,6 +156,13 @@ export interface QrLayout {
   modules: number;
   /** Row-major, `true` is dark. `modules * modules` long. */
   matrix: boolean[];
+  /**
+   * The corner radius a module is drawn with, as a fraction of the
+   * module across and down. Zero where the head's dots are too coarse
+   * to round, which is the SP700 at the sizes it is usually asked for.
+   */
+  radiusX: number;
+  radiusY: number;
   /** What the block measures on paper, quiet zone included. */
   widthMm: number;
   heightMm: number;

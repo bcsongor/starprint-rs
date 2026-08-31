@@ -13,6 +13,7 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_QR_MM,
+  MAX_QR_RADIUS,
   MIN_QR_MM,
   RECOVERY,
   type Align,
@@ -83,7 +84,7 @@ export function QrForm({ code, onChange, onSubmit }: Props) {
         />
       </Field>
 
-      {/* One row: the slider takes what the two button groups leave. */}
+      {/* The sliders share one row, the two button groups the next. */}
       <div className="flex items-end gap-3">
         <SliderField
           id="size"
@@ -92,12 +93,26 @@ export function QrForm({ code, onChange, onSubmit }: Props) {
           display={`${code.size} mm`}
           min={MIN_QR_MM}
           max={MAX_QR_MM}
-          // Pads the 4 px track out to the height of a button, so all
-          // three labels in the row sit on one line.
-          className="min-w-0 flex-1 [&>[data-slot=slider]]:my-3.5"
+          className="min-w-0 flex-1"
           onChange={(value) => set("size", value)}
         />
 
+        {/* Full draws a lone module as a circle. A head with too few
+            dots to a module prints square regardless, as the preview
+            shows. */}
+        <SliderField
+          id="radius"
+          label="Corners"
+          value={code.radius}
+          display={code.radius === 0 ? "Square" : `${code.radius}%`}
+          min={0}
+          max={MAX_QR_RADIUS}
+          className="min-w-0 flex-1"
+          onChange={(value) => set("radius", value)}
+        />
+      </div>
+
+      <div className="flex items-end gap-3">
         <Field className="w-auto shrink-0">
           <FieldLabel render={<span />}>Align</FieldLabel>
           {/* Buttons, not toggles: a toggle's tint is too quiet to read. */}

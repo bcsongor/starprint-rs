@@ -14,24 +14,47 @@ const ROW: Record<Align, string> = {
   right: "justify-end",
 };
 
+/** Short enough to keep the path string of a dense symbol sane. */
+const round = (value: number) => +value.toFixed(3);
+
 /**
- * The dark modules as horizontal runs, so a symbol is tens of rects
- * rather than the better part of a thousand.
+ * The dark modules as a single path, one rounded rectangle each, so a
+ * symbol is one element rather than the better part of a thousand.
+ *
+ * A corner is curved only where both of the modules it faces are light,
+ * which is the rule the printer draws its dots with: a run of dark
+ * modules stays joined and it is the outside of the run that curves.
  */
-function runs(matrix: boolean[], modules: number) {
-  const out: { x: number; y: number; width: number }[] = [];
+function path(matrix: boolean[], modules: number, rx: number, ry: number) {
+  const dark = (x: number, y: number) =>
+    x >= 0 && x < modules && y >= 0 && y < modules && matrix[y * modules + x];
+  // Elliptical, the radii differing as a module's dots do.
+  const arc = (sx: number, sy: number) =>
+    `a${round(rx)} ${round(ry)} 0 0 1 ${round(sx * rx)} ${round(sy * ry)}`;
+
+  let d = "";
   for (let y = 0; y < modules; y++) {
-    let start = -1;
-    for (let x = 0; x <= modules; x++) {
-      const dark = x < modules && matrix[y * modules + x];
-      if (dark && start < 0) start = x;
-      if (!dark && start >= 0) {
-        out.push({ x: start, y, width: x - start });
-        start = -1;
-      }
+    for (let x = 0; x < modules; x++) {
+      if (!dark(x, y)) continue;
+
+      const curved = (hx: number, hy: number) =>
+        rx > 0 && !dark(x + hx, y) && !dark(x, y + hy);
+      const [tl, tr, br, bl] = [
+        curved(-1, -1),
+        curved(1, -1),
+        curved(1, 1),
+        curved(-1, 1),
+      ];
+      // Clockwise from the top-left, cutting each curved corner.
+      d +=
+        `M${round(x + (tl ? rx : 0))} ${y}` +
+        `H${round(x + 1 - (tr ? rx : 0))}${tr ? arc(1, 1) : ""}` +
+        `V${round(y + 1 - (br ? ry : 0))}${br ? arc(-1, 1) : ""}` +
+        `H${round(x + (bl ? rx : 0))}${bl ? arc(-1, -1) : ""}` +
+        `V${round(y + (tl ? ry : 0))}${tl ? arc(1, -1) : ""}Z`;
     }
   }
-  return out;
+  return d;
 }
 
 /**
@@ -64,12 +87,17 @@ export function QrPreview({ layout, error }: Props) {
           height={layout.heightMm * PX_PER_MM}
           viewBox={`0 0 ${layout.modules} ${layout.modules}`}
           preserveAspectRatio="none"
-          shapeRendering="crispEdges"
+          shapeRendering={layout.radiusX > 0 ? "geometricPrecision" : "crispEdges"}
           fill="currentColor"
         >
-          {runs(layout.matrix, layout.modules).map(({ x, y, width }) => (
-            <rect key={`${x}-${y}`} x={x} y={y} width={width} height={1} />
-          ))}
+          <path
+            d={path(
+              layout.matrix,
+              layout.modules,
+              layout.radiusX,
+              layout.radiusY,
+            )}
+          />
         </svg>
       </div>
     </>

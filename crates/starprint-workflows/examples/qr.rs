@@ -5,15 +5,19 @@
 //! smallest that has been printed here.
 //!
 //! Usage: cargo run -p starprint-workflows --example qr --
-//!        <printer-host> thermal|impact "<data>" [size=MM]
+//!        <printer-host> thermal|impact "<data>" [size=MM] [radius=PCT]
 //!        [ecc=l|m|q|h] [align=left|center|right] [caption=TEXT]
+//!
+//! `radius` is worth a scan of its own. It takes ink off the corner of
+//! every module, and nobody has yet measured how much of that a phone
+//! will forgive on either head.
 
 use starprint::transport::TcpTransport;
 use starprint_workflows::qr::{Align, Ecc};
 use starprint_workflows::{Job, Paper, Printer, Qr, Speed};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const USAGE: &str = "usage: qr <printer-host> thermal|impact \"<data>\" [size=MM] [ecc=l|m|q|h] [align=left|center|right] [caption=TEXT]";
+    const USAGE: &str = "usage: qr <printer-host> thermal|impact \"<data>\" [size=MM] [radius=PCT] [ecc=l|m|q|h] [align=left|center|right] [caption=TEXT]";
     let mut args = std::env::args().skip(1);
     let host = args.next().ok_or(USAGE)?;
     let kind = args.next().ok_or(USAGE)?;
@@ -21,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let flags: Vec<String> = args.collect();
     if let Some(bad) = flags.iter().find(|flag| {
-        !["size=", "ecc=", "align=", "caption="]
+        !["size=", "radius=", "ecc=", "align=", "caption="]
             .iter()
             .any(|prefix| flag.starts_with(prefix))
     }) {
@@ -40,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(bad) => return Err(format!("unknown error correction {bad:?}").into()),
         },
         size: value("size=").map(str::parse).transpose()?.unwrap_or(30),
+        radius: value("radius=").map(str::parse).transpose()?.unwrap_or(100),
         align: match value("align=") {
             None | Some("center") => Align::Center,
             Some("left") => Align::Left,

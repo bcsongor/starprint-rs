@@ -125,7 +125,7 @@ whole jobs.
 | `task-card` | `text` | `priority` false, no `due` |
 | `text` | `text` | `bold`, `wide`, `tall`, `accent` all false |
 | `note` | nothing | `rule` `lines`, `rows` 10, `pitch` 7 |
-| `qr` | `data` | no `caption`, `errorCorrection` `m`, `size` 30, `align` `center` |
+| `qr` | `data` | no `caption`, `errorCorrection` `m`, `size` 30, `radius` 100, `align` `center` |
 | `test-page` | nothing | `doubleResolution` false |
 | `picture` | the `image` part | `double` false, `dither` `floyd-steinberg`, `threshold` 128, `brightness` and `contrast` 1.0 |
 
@@ -135,7 +135,12 @@ the paper. `errorCorrection` is `l`, `m`, `q` or `h`, in rising order of
 how much of the symbol can be lost and still scan. `align` is `left`,
 `center` or `right`, and takes the caption with it. The symbol is encoded
 by the server rather than by the printer, so an impact printer prints one
-as readily as a thermal one; data too long to encode is a `400`.
+as readily as a thermal one; data too long to encode is a `400`. `radius`
+rounds the corners of every module, as a percentage of half a module. At
+100 a module with nothing beside it is a circle, at 0 it is the plain
+square. The server rounds the radius down to whole dots, so a head with
+few dots to a module prints square whatever it is given, which is the
+SP700 at the usual sizes.
 
 The same endpoint accepts `multipart/form-data`: a `job` part containing the
 whole JSON object above, and an `image` part containing the image bytes in

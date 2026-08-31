@@ -22,7 +22,15 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   by `qrcodegen`, and printed as dots on both heads. The SP700 has no QR
   command, and giving the thermal head the same bitmap rather than
   `ESC GS y` keeps one path and one known version. Owning the modules is
-  also what lets the GUI preview draw the symbol that actually prints.
+  also what lets the GUI preview draw the symbol that actually prints,
+  and lets a module be rounded, which `ESC GS y` would not have done.
+  `inked` holds that rule. A corner curves only where both of the
+  modules it faces are light, so a run stays joined and only its outside
+  curves. Every module obeys it, finder patterns included. `Layout`
+  carries the radius so the preview can apply the same rule in modules.
+  Change one without the other and the preview draws a symbol that does
+  not print, which is how squared finder patterns went unnoticed until
+  they came off the printer.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache and the previews.
@@ -76,6 +84,16 @@ them, so do not retune these values from a screen:
   dots to the inch across against 72 down, which comes within 1 % of
   square. A 30 mm symbol printed that way scans off the ribbon, so the
   default size stands and the ratio is not to be adjusted by eye.
+- A module's corners are rounded by a share of half the module, taken on
+  each axis, so the arc is round on paper rather than in dots. The share
+  is whole dots. Three rows have none to give up, so the SP700 prints
+  square at the sizes it is usually asked for, while a thermal module of
+  8 or 10 dots rounds. A `qr` job's `radius` sets the share, 0 for the
+  plain square. No rounded symbol has been scanned yet on either head,
+  so check one against a phone before trusting it.
+- Finder patterns round with everything else. Keeping them square was
+  tried and looks like an oversight in print. They are the largest
+  blocks on the symbol, so a corner shows there most.
 
 Behaviour that shapes how jobs are written:
 
@@ -86,6 +104,9 @@ Behaviour that shapes how jobs are written:
 - The TSP800II buffers about 2,560 raster rows and pauses to print them,
   leaving a faint line across a long image (~320 mm at normal
   resolution, ~160 mm in double).
+- `ESC GS a` places a bit image on the SP700, not only text: left, centre
+  and right all move an `ESC ^` graphic as they move a line of type.
+  Pictures and QR codes both rely on it.
 
 ## Diagnostics
 
