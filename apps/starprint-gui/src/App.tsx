@@ -10,6 +10,8 @@ import { PictureForm } from "@/components/picture-form";
 import { PicturePreview } from "@/components/picture-preview";
 import { PrintOptions } from "@/components/print-options";
 import { ProfileToolbar } from "@/components/profile-toolbar";
+import { QrForm } from "@/components/qr-form";
+import { QrPreview } from "@/components/qr-preview";
 import { TaskCardForm } from "@/components/task-card-form";
 import { TestPageForm } from "@/components/test-page-form";
 import { TestPagePreview } from "@/components/test-page-preview";
@@ -31,11 +33,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DEFAULT_NOTE,
   DEFAULT_PICTURE,
+  DEFAULT_QR,
   DEFAULT_TEXT,
+  QUIET_MODULES,
   jobHexdump,
   noteLayout,
   picturePreview,
   printJob,
+  qrLayout,
   taskCardLayout,
   testPageSections,
   textLayout,
@@ -46,6 +51,8 @@ import {
   type NoteLayout,
   type Picture,
   type Printer,
+  type Qr,
+  type QrLayout,
   type Section,
   type TaskCard,
   type TestPage,
@@ -69,6 +76,7 @@ const WORKFLOWS: { value: Workflow; label: string }[] = [
   { value: "task-card", label: "Task" },
   { value: "text", label: "Text" },
   { value: "note", label: "Note" },
+  { value: "qr", label: "QR" },
   { value: "picture", label: "Picture" },
 ];
 
@@ -87,6 +95,9 @@ export default function App() {
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
   const [note, setNote] = useState<Note>(DEFAULT_NOTE);
+  const [code, setCode] = useState<Qr>(DEFAULT_QR);
+  const [symbol, setSymbol] = useState<QrLayout | null>(null);
+  const [symbolError, setSymbolError] = useState<string | null>(null);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [wrap, setWrap] = useState<TextLayout | null>(null);
@@ -154,6 +165,28 @@ export default function App() {
     };
   }, [note, printer.kind, printer.paper]);
 
+  // An empty string encodes to a perfectly valid symbol, which is not
+  // one the preview should show.
+  const hasData = code.data.trim().length > 0;
+  useEffect(() => {
+    if (!hasData) return;
+    let cancelled = false;
+    qrLayout(code, printer.kind, printer.paper)
+      .then((result) => {
+        if (cancelled) return;
+        setSymbol(result);
+        setSymbolError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSymbol(null);
+        setSymbolError(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code, hasData, printer.kind, printer.paper]);
+
   useEffect(() => {
     let cancelled = false;
     testPageSections(testPage, printer.kind)
@@ -206,21 +239,29 @@ export default function App() {
         ? { kind: "text", ...text }
         : workflow === "note"
           ? { kind: "note", ...note }
-          : workflow === "test-page"
-            ? { kind: "test-page", ...testPage }
-            : { kind: "picture", ...picture };
+          : workflow === "qr"
+            ? { kind: "qr", ...code }
+            : workflow === "test-page"
+              ? { kind: "test-page", ...testPage }
+              : { kind: "picture", ...picture };
   // Clearing the picture leaves the last preview in state.
   const preview = picture.path
     ? { url: pictureUrl, error: pictureError }
     : { url: null, error: null };
+  // As does clearing the data.
+  const qr = hasData
+    ? { layout: symbol, error: symbolError }
+    : { layout: null, error: null };
   const ready =
     workflow === "task-card"
       ? card.text.trim().length > 0
       : workflow === "text"
         ? text.text.trim().length > 0
-        : workflow === "picture"
-          ? preview.url !== null
-          : true;
+        : workflow === "qr"
+          ? qr.layout !== null
+          : workflow === "picture"
+            ? preview.url !== null
+            : true;
   const hint =
     workflow === "task-card"
       ? layout && `${layout.columns} columns`
@@ -228,9 +269,14 @@ export default function App() {
         ? wrap && `${wrap.columns} columns`
         : workflow === "note"
           ? `${note.rows} rows, ${note.rows * note.pitch} mm`
-          : workflow === "picture"
-            ? `${roll(printer.kind, printer.paper).dots} dots`
-            : null;
+          : workflow === "qr"
+            ? qr.layout &&
+              // The slider sets the symbol; the block on paper is that
+              // plus the quiet zone, which is what this measures.
+              `${qr.layout.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.layout.widthMm)} mm`
+            : workflow === "picture"
+              ? `${roll(printer.kind, printer.paper).dots} dots`
+              : null;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -320,6 +366,8 @@ export default function App() {
             />
           ) : workflow === "note" ? (
             <NoteForm note={note} onChange={setNote} />
+          ) : workflow === "qr" ? (
+            <QrForm code={code} onChange={setCode} onSubmit={print} />
           ) : workflow === "test-page" ? (
             <TestPageForm
               page={testPage}
@@ -386,6 +434,8 @@ export default function App() {
                   kind={printer.kind}
                   paper={printer.paper}
                 />
+              ) : workflow === "qr" ? (
+                <QrPreview layout={qr.layout} error={qr.error} />
               ) : (
                 <PicturePreview url={preview.url} error={preview.error} />
               )}

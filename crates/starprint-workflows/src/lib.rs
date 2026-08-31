@@ -12,6 +12,7 @@ mod printer;
 
 pub mod note;
 pub mod picture;
+pub mod qr;
 pub mod task_card;
 pub mod test_page;
 pub mod text;
@@ -21,11 +22,16 @@ use serde::Deserialize;
 pub use note::Note;
 pub use picture::Picture;
 pub use printer::{Head, Paper, Printer, PrinterKind, Speed, check_density};
+pub use qr::Qr;
 pub use task_card::TaskCard;
 pub use test_page::TestPage;
 pub use text::Text;
 
-/// The five jobs, as one tagged enum. `kind` picks the variant and the
+/// Both heads place dots on a pitch of their own, so anything with a
+/// size in millimetres converts through this rather than a dot count.
+pub(crate) const MM_PER_INCH: f32 = 25.4;
+
+/// The six jobs, as one tagged enum. `kind` picks the variant and the
 /// rest of the object is that job's own settings.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -33,6 +39,7 @@ pub enum Job {
     TaskCard(TaskCard),
     Text(Text),
     Note(Note),
+    Qr(Qr),
     TestPage(TestPage),
     Picture(Picture),
 }
@@ -50,6 +57,7 @@ mod tests {
     use super::*;
     use crate::note::Rule;
     use crate::picture::Dither;
+    use crate::qr::Ecc;
 
     /// A caller leaves out whatever it does not care about.
     #[test]
@@ -79,6 +87,14 @@ mod tests {
             panic!("picture")
         };
         assert_eq!(picture, Picture::default());
+
+        let job: Job = serde_json::from_str(r#"{"kind":"qr","data":"https://x.test"}"#).unwrap();
+        let Job::Qr(code) = job else { panic!("qr") };
+        assert_eq!(code.data, "https://x.test");
+        assert_eq!(
+            (code.caption, code.error_correction, code.size),
+            (None, Ecc::M, 30)
+        );
     }
 
     #[test]
@@ -96,17 +112,23 @@ mod tests {
 
     #[test]
     fn only_a_picture_needs_an_image() {
-        let kinds = ["task-card", "text", "note", "test-page", "picture"];
-        let needs: Vec<bool> = kinds
+        let jobs = [
+            r#"{"kind":"task-card","text":"x"}"#,
+            r#"{"kind":"text","text":"x"}"#,
+            r#"{"kind":"note"}"#,
+            r#"{"kind":"qr","data":"x"}"#,
+            r#"{"kind":"test-page"}"#,
+            r#"{"kind":"picture"}"#,
+        ];
+        let needs: Vec<bool> = jobs
             .iter()
-            .map(|kind| {
-                let json = format!(r#"{{"kind":"{kind}","text":"x"}}"#);
-                serde_json::from_str::<Job>(&json)
+            .map(|json| {
+                serde_json::from_str::<Job>(json)
                     .expect("parses")
                     .needs_image()
             })
             .collect();
-        assert_eq!(needs, [false, false, false, false, true]);
+        assert_eq!(needs, [false, false, false, false, false, true]);
     }
 
     #[test]

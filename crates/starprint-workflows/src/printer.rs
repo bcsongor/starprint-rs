@@ -182,6 +182,9 @@ impl Printer {
             Job::Text(text) if text.text.trim().is_empty() => {
                 return Err("The text is empty.".to_owned());
             }
+            Job::Qr(code) if code.data.trim().is_empty() => {
+                return Err("The QR data is empty.".to_owned());
+            }
             Job::Picture(_) if image.is_none() => {
                 return Err("No picture supplied.".to_owned());
             }
@@ -205,6 +208,7 @@ impl Printer {
                     Job::TaskCard(card) => Ok(card.document(head, paper, cut)),
                     Job::Text(text) => Ok(text.document(head, paper, cut)),
                     Job::Note(note) => Ok(note.document(head, paper, cut)),
+                    Job::Qr(code) => code.document(head, paper, cut),
                     Job::TestPage(page) => Ok(test_page::thermal(head, page, paper, cut)),
                     Job::Picture(pic) => {
                         picture::thermal(head, pic, paper, cut, image.expect("checked above"))
@@ -220,6 +224,7 @@ impl Printer {
                     Job::TaskCard(card) => Ok(card.document(head, paper, cut)),
                     Job::Text(text) => Ok(text.document(head, paper, cut)),
                     Job::Note(note) => Ok(note.document(head, paper, cut)),
+                    Job::Qr(code) => code.document(head, paper, cut),
                     Job::TestPage(_) => Ok(test_page::impact(head, cut)),
                     Job::Picture(pic) => {
                         picture::impact(head, pic, cut, image.expect("checked above"))
@@ -234,7 +239,7 @@ impl Printer {
 mod tests {
     use super::*;
     use crate::note::Rule;
-    use crate::{Note, Picture, TaskCard, TestPage, Text};
+    use crate::{Note, Picture, Qr, TaskCard, TestPage, Text};
 
     fn thermal() -> Printer {
         Printer::thermal(
@@ -291,6 +296,11 @@ mod tests {
         assert_eq!(
             printer.document(&text, None).unwrap_err(),
             "The text is empty."
+        );
+        let code = Job::Qr(Qr::default());
+        assert_eq!(
+            printer.document(&code, None).unwrap_err(),
+            "The QR data is empty."
         );
     }
 

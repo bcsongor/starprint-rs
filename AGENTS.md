@@ -13,10 +13,16 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   reference in the sibling `starprint` repo (`generate.py`). The impact
   pipeline, dithering and `ESC ^` serialisation must stay byte-identical.
 - `crates/starprint-workflows/`: the printer profile, the tagged `Job`
-  and the five jobs both front ends print: task cards, text, note slips,
-  pictures and test pages. It reads no files and opens no sockets, so a
-  picture job is handed its image. Job behaviour belongs here, not in a
-  front end, or the two drift.
+  and the six jobs the front ends print: task cards, text, note slips,
+  QR codes, pictures and test pages. It reads no files and opens no
+  sockets, so a picture job is handed its image. Job behaviour belongs
+  here, not in a front end, or the two drift. The desktop app keeps a
+  `JobRequest` of its own, differing in one place: a picture names a file.
+- `crates/starprint-workflows/src/qr.rs`: QR symbols are encoded here,
+  by `qrcodegen`, and printed as dots on both heads. The SP700 has no QR
+  command, and giving the thermal head the same bitmap rather than
+  `ESC GS y` keeps one path and one known version. Owning the modules is
+  also what lets the GUI preview draw the symbol that actually prints.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache and the previews.
@@ -66,6 +72,10 @@ them, so do not retune these values from a screen:
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job.
+- A QR module is drawn 7 dots by 3 on the SP700, at double density: 169
+  dots to the inch across against 72 down, which comes within 1 % of
+  square. A 30 mm symbol printed that way scans off the ribbon, so the
+  default size stands and the ratio is not to be adjusted by eye.
 
 Behaviour that shapes how jobs are written:
 
@@ -81,6 +91,9 @@ Behaviour that shapes how jobs are written:
 
 - `cargo run --example thermal_test_pattern -- <host> 80 slow density=3`
   prints a head-check page.
+- `cargo run -p starprint-workflows --example qr -- <host> thermal|impact
+  "<data>" [size=MM] [ecc=l|m|q|h] [caption=TEXT]` prints a QR code, for
+  checking a module size against a phone.
 - `cargo run --example thermal_image --features image -- <host> photo.jpg
   slow density=3 [double] [rotate] [gamma=F] [equalize=0|1]` for photos.
 - `cargo run --example impact_image --features image -- <host> photo.jpg

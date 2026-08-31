@@ -1,5 +1,6 @@
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -10,6 +11,8 @@ interface Props {
   min: number;
   max: number;
   disabled?: boolean;
+  /** For sharing a row; the slider takes whatever width is left. */
+  className?: string;
   onChange: (value: number) => void;
 }
 
@@ -21,10 +24,11 @@ export function SliderField({
   min,
   max,
   disabled,
+  className,
   onChange,
 }: Props) {
   return (
-    <Field data-disabled={disabled}>
+    <Field data-disabled={disabled} className={cn(className)}>
       <div className="flex items-center justify-between">
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">

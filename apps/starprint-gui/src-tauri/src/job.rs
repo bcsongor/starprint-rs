@@ -4,7 +4,7 @@
 
 use image::DynamicImage;
 use serde::Deserialize;
-use starprint_workflows::{Job, Note, Paper, PrinterKind, TaskCard, TestPage, Text};
+use starprint_workflows::{Job, Note, Paper, PrinterKind, Qr, TaskCard, TestPage, Text};
 
 use crate::picture::{PicturePath, SourceCache};
 
@@ -14,6 +14,7 @@ pub enum JobRequest {
     TaskCard(TaskCard),
     Text(Text),
     Note(Note),
+    Qr(Qr),
     TestPage(TestPage),
     Picture(PicturePath),
 }
@@ -31,6 +32,7 @@ impl JobRequest {
             Self::TaskCard(card) => (Job::TaskCard(card), None),
             Self::Text(text) => (Job::Text(text), None),
             Self::Note(note) => (Job::Note(note), None),
+            Self::Qr(code) => (Job::Qr(code), None),
             Self::TestPage(page) => (Job::TestPage(page), None),
             Self::Picture(picture) => {
                 let source = picture.source(kind, paper, cache)?;
@@ -69,6 +71,10 @@ mod tests {
                 ..Text::default()
             }),
             JobRequest::Note(Note::default()),
+            JobRequest::Qr(Qr {
+                data: "https://example.com".to_owned(),
+                ..Qr::default()
+            }),
             JobRequest::TestPage(TestPage::default()),
         ];
         for job in jobs {

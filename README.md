@@ -91,12 +91,13 @@ Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the p
 - `impact_kitchen_ticket`: a red/black ticket for an SP700.
 - `receipt`: a till receipt for either printer; pass `thermal` or `impact`.
 - `task_card`: the desktop GUI's task card, for either printer; run with `cargo run -p starprint-workflows --example task_card -- …`.
+- `qr`: a QR code on either printer, with `size=MM`, `ecc=` and `caption=` flags; run with `-p starprint-workflows` too.
 - `thermal_test_pattern`: a head-check page.
 - `thermal_image`, `impact_image`: a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 
 ## Desktop app
 
-`apps/starprint-gui` is a Tauri app that prints task cards, text, pictures and test pages. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
+`apps/starprint-gui` is a Tauri app that prints task cards, text, note slips, QR codes, pictures and test pages. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
 
 ## HTTP API
 
@@ -121,7 +122,7 @@ It binds the loopback interface by default and has no authentication, so `--list
 | Endpoint | Purpose |
 |---|---|
 | `GET /v1/printers` | The printers the profile file named, and which options apply to each |
-| `POST /v1/printers/<name>/jobs` | Prints a `task-card`, `text`, `note`, `picture` or `test-page` |
+| `POST /v1/printers/<name>/jobs` | Prints a `task-card`, `text`, `note`, `qr`, `picture` or `test-page` |
 | `POST /v1/printers/<name>/raw` | Sends bytes that already carry their own commands |
 
 - A job takes `cut`, `density` and `speed` overrides. Anything omitted comes from the profile.

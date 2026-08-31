@@ -313,6 +313,29 @@ mod tests {
         assert!(bytes.ends_with(&[0x1b, b'd', 3]), "and the profile's cut");
     }
 
+    /// The impact printers have no QR command, so the symbol is encoded
+    /// here and sent as a bit image like any other picture.
+    #[tokio::test]
+    async fn a_qr_job_prints_on_the_impact_printer_too() {
+        let (port, received) = fake_printer().await;
+        let reply = call(
+            printers(port),
+            json_job(
+                "/v1/printers/sp743/jobs",
+                json!({ "job": { "kind": "qr", "data": "https://example.com/r/42", "caption": "Order 42" } }),
+            ),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{:?}", reply.json);
+
+        let bytes = received.await.unwrap();
+        assert!(bytes.windows(8).any(|w| w == b"Order 42"), "the caption");
+        assert!(
+            bytes.windows(3).any(|w| w == [0x1b, b'^', 1]),
+            "and the symbol as a double-density bit image"
+        );
+    }
+
     #[tokio::test]
     async fn raw_bytes_go_through_untouched() {
         let (port, received) = fake_printer().await;

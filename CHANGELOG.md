@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### QR codes
+
+- A `qr` job prints a QR code, with an optional caption above it, a size
+  in millimetres, an alignment and a choice of error correction. Both
+  heads print one.
+- The symbol is encoded by `starprint-workflows` and drawn as dots
+  rather than handed to `ESC GS y`. The SP700 has no QR command at all,
+  and one bitmap for both heads means one code path, the same square on
+  either printer, and a version known here rather than chosen inside the
+  firmware. `Builder::qr_code` is untouched for callers of the library.
+- The SP700's dots are 169 to the inch across and 72 down, so a module
+  is drawn 7 dots by 3 at double density, within 1 % of square. A symbol
+  too wide for the paper shrinks until it fits. A 30 mm code printed
+  this way scans off the ribbon, which is what set the default size.
+- The desktop app has a QR tab. Because the modules are ours rather than
+  the firmware's, its preview draws the symbol that will print, at the
+  millimetres it will measure, rather than an approximation of one.
+
 ## 0.2.0
 
 ### HTTP API

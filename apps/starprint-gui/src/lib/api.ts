@@ -97,6 +97,62 @@ export const NOTEBOOK_RULING: Record<Rule, { rows: number; pitch: number }> = {
 
 export const DEFAULT_NOTE: Note = { rule: "lines", ...NOTEBOOK_RULING.lines };
 
+/** Mirrors `Align` in starprint-workflows/src/qr.rs. */
+export type Align = "left" | "center" | "right";
+
+/** Mirrors `Ecc` in starprint-workflows/src/qr.rs. */
+export type Ecc = "l" | "m" | "q" | "h";
+
+/** How much of a symbol each level can lose and still scan. */
+export const RECOVERY: Record<Ecc, string> = {
+  l: "7%",
+  m: "15%",
+  q: "25%",
+  h: "30%",
+};
+
+/** Mirrors `Qr` in starprint-workflows/src/qr.rs. */
+export interface Qr {
+  data: string;
+  /** Printed above the symbol. */
+  caption: string | null;
+  errorCorrection: Ecc;
+  /** The symbol's width in millimetres, quiet zone excluded. */
+  size: number;
+  /** Carries the caption with it. */
+  align: Align;
+}
+
+/** `MIN_SIZE_MM` and `MAX_SIZE_MM` in starprint-workflows/src/qr.rs. */
+export const MIN_QR_MM = 10;
+export const MAX_QR_MM = 80;
+
+export const DEFAULT_QR: Qr = {
+  data: "",
+  caption: null,
+  errorCorrection: "m",
+  size: 30,
+  align: "center",
+};
+
+/** Mirrors `Layout` in starprint-workflows/src/qr.rs. */
+export interface QrLayout {
+  columns: number;
+  /** Wrapped to the paper; empty when there is no caption. */
+  caption: string[];
+  align: Align;
+  /** Modules across the block, quiet zone included. */
+  modules: number;
+  /** Row-major, `true` is dark. `modules * modules` long. */
+  matrix: boolean[];
+  /** What the block measures on paper, quiet zone included. */
+  widthMm: number;
+  heightMm: number;
+}
+
+/** The quiet zone each side; `QUIET_MODULES` in the same file. */
+export const QUIET_MODULES = 4;
+
 /** Mirrors `TestPage` in starprint-workflows/src/test_page.rs. */
 export interface TestPage {
   doubleResolution: boolean;
@@ -142,6 +198,7 @@ export type Job =
   | ({ kind: "task-card" } & TaskCard)
   | ({ kind: "text" } & Text)
   | ({ kind: "note" } & Note)
+  | ({ kind: "qr" } & Qr)
   | ({ kind: "test-page" } & TestPage)
   | ({ kind: "picture" } & Picture);
 
@@ -169,6 +226,11 @@ export function textLayout(text: Text, kind: PrinterKind, paper: Paper) {
 
 export function noteLayout(note: Note, kind: PrinterKind, paper: Paper) {
   return invoke<NoteLayout>("note_layout", { note, kind, paper });
+}
+
+/** Rejects data too long to encode. */
+export function qrLayout(code: Qr, kind: PrinterKind, paper: Paper) {
+  return invoke<QrLayout>("qr_layout", { code, kind, paper });
 }
 
 export function testPageSections(page: TestPage, kind: PrinterKind) {

@@ -1,6 +1,6 @@
 ---
 name: starprint-print
-description: Print task cards, text, note slips, pictures and test pages on a Star receipt printer through the local starprint-api server. Use when the user asks to print something, or mentions a receipt printer, task card, note slip or test page.
+description: Print task cards, text, note slips, QR codes, pictures and test pages on a Star receipt printer through the local starprint-api server. Use when the user asks to print something, or mentions a receipt printer, task card, note slip, QR code or test page.
 ---
 
 # Printing with starprint
@@ -68,6 +68,20 @@ Note slip, for handwriting on:
 
 `rule` is `blank`, `dots`, `lines` or `squares`. `rows` is how many
 rows to write in and `pitch` the millimetres between rules.
+
+QR code, for handing a link or a password to a phone:
+
+```json
+{ "job": { "kind": "qr", "data": "https://example.com/r/42", "caption": "Order 42" } }
+```
+
+`data` is whatever the code should carry, so a Wi-Fi network is
+`WIFI:T:WPA;S:<ssid>;P:<password>;;` and a phone number is `tel:+44…`.
+`caption` prints above the symbol and may be left out, though a code with
+nothing written on it is unidentifiable an hour later. `size` is the
+symbol's width in millimetres (10 to 80, 30 by default),
+`errorCorrection` is `l`, `m`, `q` or `h`, and `align` is `left`,
+`center` or `right`. Both printers can print one.
 
 Test page, which takes nothing:
 

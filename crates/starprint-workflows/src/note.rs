@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
 use starprint::{Builder, Cut, Document, Impact, LineSpacing, Protocol, RasterQuality, StarLine};
 
-use crate::Paper;
 use crate::task_card::{align_right, format_date};
 use crate::text::TextStyle;
+use crate::{MM_PER_INCH, Paper};
 
 /// What is drawn for the hand to follow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -70,8 +70,6 @@ const MAX_PITCH_MM: u8 = 12;
 /// A grid dot, in millimetres. A rule is a single dot thick, which the
 /// thermal head blooms to about 0.19 mm.
 const DOT_MM: f32 = 0.3;
-
-const MM_PER_INCH: f32 = 25.4;
 
 /// What differs between the heads when ruling paper.
 pub trait NoteStyle: TextStyle + Sized {

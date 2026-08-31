@@ -13,8 +13,8 @@ use std::sync::Arc;
 use serde::Serialize;
 use starprint::transport::TcpTransport;
 use starprint::{Impact, StarLine};
-use starprint_workflows::{Note, Paper, Printer, PrinterKind, TaskCard, TestPage, Text};
-use starprint_workflows::{note, task_card, test_page, text};
+use starprint_workflows::{Note, Paper, Printer, PrinterKind, Qr, TaskCard, TestPage, Text};
+use starprint_workflows::{note, qr, task_card, test_page, text};
 
 use hexdump::HexDump;
 use job::JobRequest;
@@ -49,6 +49,16 @@ fn note_layout(note: Note, kind: PrinterKind, paper: Paper) -> note::Layout {
     match kind {
         PrinterKind::Thermal => note.layout::<StarLine>(paper),
         PrinterKind::Impact => note.layout::<Impact>(paper),
+    }
+}
+
+/// Fails on data too long to encode, which the preview reports rather
+/// than leaving the last good symbol on screen.
+#[tauri::command]
+fn qr_layout(code: Qr, kind: PrinterKind, paper: Paper) -> Result<qr::Layout, String> {
+    match kind {
+        PrinterKind::Thermal => code.layout::<StarLine>(paper),
+        PrinterKind::Impact => code.layout::<Impact>(paper),
     }
 }
 
@@ -162,6 +172,7 @@ pub fn run() {
             task_card_layout,
             text_layout,
             note_layout,
+            qr_layout,
             test_page_sections,
             print_job,
             job_hexdump,

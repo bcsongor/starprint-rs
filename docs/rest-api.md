@@ -28,7 +28,7 @@ see the trust model below before reaching past the loopback interface.
 builders live in `crates/starprint-workflows`:
 
 - `Job`, `PrinterKind`, `Paper`, `Speed` and the document-building settings
-- task cards, text, notes, pictures and test pages
+- task cards, text, notes, QR codes, pictures and test pages
 - layout, validation and golden byte tests for those jobs
 
 The shared crate does not depend on a GUI file path. Picture processing takes
@@ -107,7 +107,7 @@ Content-Type: application/json
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| `job` | yes | The shared tagged `Job` enum; `kind` selects `task-card`, `text`, `note`, `picture` or `test-page` |
+| `job` | yes | The shared tagged `Job` enum; `kind` selects `task-card`, `text`, `note`, `qr`, `picture` or `test-page` |
 | `cut` | no | Overrides the profile |
 | `density` | no | Thermal override, from `-3` to `3` |
 | `speed` | no | Thermal override: `high`, `medium` or `slow` |
@@ -125,8 +125,17 @@ whole jobs.
 | `task-card` | `text` | `priority` false, no `due` |
 | `text` | `text` | `bold`, `wide`, `tall`, `accent` all false |
 | `note` | nothing | `rule` `lines`, `rows` 10, `pitch` 7 |
+| `qr` | `data` | no `caption`, `errorCorrection` `m`, `size` 30, `align` `center` |
 | `test-page` | nothing | `doubleResolution` false |
 | `picture` | the `image` part | `double` false, `dither` `floyd-steinberg`, `threshold` 128, `brightness` and `contrast` 1.0 |
+
+A `qr` job's `size` is the symbol's width in millimetres, quiet zone
+excluded, clamped to 10–80 and reduced further if the symbol will not fit
+the paper. `errorCorrection` is `l`, `m`, `q` or `h`, in rising order of
+how much of the symbol can be lost and still scan. `align` is `left`,
+`center` or `right`, and takes the caption with it. The symbol is encoded
+by the server rather than by the printer, so an impact printer prints one
+as readily as a thermal one; data too long to encode is a `400`.
 
 The same endpoint accepts `multipart/form-data`: a `job` part containing the
 whole JSON object above, and an `image` part containing the image bytes in
