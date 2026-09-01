@@ -129,7 +129,7 @@ It binds the loopback interface by default and has no authentication, so `--list
 - A picture goes as `multipart/form-data`, with the image in an `image` part.
 - Both print endpoints return `{"bytesSent": N}`, a completed socket write and nothing more.
 
-[`docs/rest-api.md`](docs/rest-api.md) is the full reference.
+The skill in [`.agents/skills/starprint-print`](.agents/skills/starprint-print/SKILL.md) is the full reference, written for the agents that call it.
 
 ## Notes
 

@@ -37,17 +37,15 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache and the previews.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. `docs/rest-api.md` covers the endpoints. One concern
-  per module: `body` reads a request, `job` turns it into printable
+  local programs. The skill below is its reference. One concern per
+  module: `body` reads a request, `job` turns it into printable
   bytes, `printers` writes them, `config` reads the profile file,
   `problem` is the only error shape and `app` wires them together.
   Anything new goes in whichever of those owns it.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
-- `docs/`: `rest-api.md` is the API reference; the rest is design notes
-  for work that is not built yet.
 - `.agents/skills/starprint-print/`: the skill we publish for callers
-  of the API. It ships on its own, so it repeats what `docs/rest-api.md`
-  says rather than linking to it. Keep the two in step.
+  of the API, and the only reference to its endpoints and job fields.
+  Anything the API gains goes in here.
   `.claude/skills/starprint-print` symlinks here, because Claude Code
   reads only that path. Windows needs an elevated shell to check the
   symlink out.
