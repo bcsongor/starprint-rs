@@ -8,9 +8,9 @@
 //!        <printer-host> thermal|impact "<data>" [size=MM] [radius=PCT]
 //!        [ecc=l|m|q|h] [align=left|center|right] [caption=TEXT]
 //!
-//! `radius` is worth a scan of its own. It takes ink off the corner of
-//! every module, and nobody has yet measured how much of that a phone
-//! will forgive on either head.
+//! `radius` is worth a scan of its own. It takes ink off the corners of
+//! the symbol and adds it inside them, and nobody has yet measured how
+//! much of that a phone will forgive on either head.
 
 use starprint::transport::TcpTransport;
 use starprint_workflows::qr::{Align, Ecc};

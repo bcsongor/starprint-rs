@@ -136,11 +136,10 @@ how much of the symbol can be lost and still scan. `align` is `left`,
 `center` or `right`, and takes the caption with it. The symbol is encoded
 by the server rather than by the printer, so an impact printer prints one
 as readily as a thermal one; data too long to encode is a `400`. `radius`
-rounds the corners of every module, as a percentage of half a module. At
-100 a module with nothing beside it is a circle, at 0 it is the plain
-square. The server rounds the radius down to whole dots, so a head with
-few dots to a module prints square whatever it is given, which is the
-SP700 at the usual sizes.
+rounds the corners of the symbol. At 0 every one is square. At 100 each
+goes as far as its shape allows, a module and a half on the largest, so
+a lone module is a circle a third of the way along and stays one while
+the finder patterns keep rounding to the top.
 
 The same endpoint accepts `multipart/form-data`: a `job` part containing the
 whole JSON object above, and an `image` part containing the image bytes in

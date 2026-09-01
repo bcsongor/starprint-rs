@@ -81,10 +81,10 @@ QR code, for handing a link or a password to a phone:
 nothing written on it is unidentifiable an hour later. `size` is the
 symbol's width in millimetres (10 to 80, 30 by default),
 `errorCorrection` is `l`, `m`, `q` or `h`, and `align` is `left`,
-`center` or `right`. `radius` rounds the corners of every module, as a
-percentage of half a module. It defaults to 100, as round as the dots
-allow, and 0 gives the plain square. Both printers can print one, though
-only a thermal head has enough dots to a module for a radius to show.
+`center` or `right`. `radius` rounds the corners of the symbol. 0 is
+square. 100, the default, rounds each corner as far as its shape allows,
+so a lone module becomes a circle early on and the finder patterns keep
+going. Both printers can print one.
 
 Test page, which takes nothing:
 

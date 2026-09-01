@@ -120,10 +120,9 @@ export interface Qr {
   /** The symbol's width in millimetres, quiet zone excluded. */
   size: number;
   /**
-   * How far a module's corners are taken off, as a percentage of half
-   * the module: 100 draws a lone module as a circle, 0 leaves it
-   * square. Rounded down to whole dots, so a coarse head prints square
-   * whatever this asks for.
+   * How far the corners of the symbol are rounded: 0 leaves every one
+   * square, 100 rounds each as far as its shape allows. A lone module
+   * is a circle a third of the way along; larger blocks keep going.
    */
   radius: number;
   /** Carries the caption with it. */
@@ -154,15 +153,6 @@ export interface QrLayout {
   align: Align;
   /** Modules across the block, quiet zone included. */
   modules: number;
-  /** Row-major, `true` is dark. `modules * modules` long. */
-  matrix: boolean[];
-  /**
-   * The corner radius a module is drawn with, as a fraction of the
-   * module across and down. Zero where the head's dots are too coarse
-   * to round, which is the SP700 at the sizes it is usually asked for.
-   */
-  radiusX: number;
-  radiusY: number;
   /** What the block measures on paper, quiet zone included. */
   widthMm: number;
   heightMm: number;
@@ -249,6 +239,11 @@ export function noteLayout(note: Note, kind: PrinterKind, paper: Paper) {
 /** Rejects data too long to encode. */
 export function qrLayout(code: Qr, kind: PrinterKind, paper: Paper) {
   return invoke<QrLayout>("qr_layout", { code, kind, paper });
+}
+
+/** PNG bytes of the symbol as it will print, dot for dot. */
+export function qrPreview(code: Qr, kind: PrinterKind, paper: Paper) {
+  return invoke<ArrayBuffer>("qr_preview", { code, kind, paper });
 }
 
 export function testPageSections(page: TestPage, kind: PrinterKind) {

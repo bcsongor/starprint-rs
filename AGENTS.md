@@ -24,13 +24,15 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   `ESC GS y` keeps one path and one known version. Owning the modules is
   also what lets the GUI preview draw the symbol that actually prints,
   and lets a module be rounded, which `ESC GS y` would not have done.
-  `inked` holds that rule. A corner curves only where both of the
-  modules it faces are light, so a run stays joined and only its outside
-  curves. Every module obeys it, finder patterns included. `Layout`
-  carries the radius so the preview can apply the same rule in modules.
-  Change one without the other and the preview draws a symbol that does
-  not print, which is how squared finder patterns went unnoticed until
-  they came off the printer.
+  `corners` finds them at the grid vertices. A dark module among three
+  light ones is a convex corner and loses ink; a light one among three
+  dark is concave and gains it. Each takes a radius up to a module and
+  a half, or half the shorter edge that meets it if that is less, so a
+  lone module stops at its circle while the eye's ring keeps rounding.
+  The GUI preview draws the resulting bitmap as a PNG, the way the
+  picture preview does, rather than keeping a rule of its own. It once
+  did, and the two drifted. Squared finder patterns went unnoticed
+  until they came off the printer.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache and the previews.
@@ -84,15 +86,14 @@ them, so do not retune these values from a screen:
   dots to the inch across against 72 down, which comes within 1 % of
   square. A 30 mm symbol printed that way scans off the ribbon, so the
   default size stands and the ratio is not to be adjusted by eye.
-- A module's corners are rounded by a share of half the module, taken on
-  each axis, so the arc is round on paper rather than in dots. The share
-  is whole dots. Three rows have none to give up, so the SP700 prints
-  square at the sizes it is usually asked for, while a thermal module of
-  8 or 10 dots rounds. A `qr` job's `radius` sets the share, 0 for the
-  plain square. No rounded symbol has been scanned yet on either head,
-  so check one against a phone before trusting it.
-- Finder patterns round with everything else. Keeping them square was
-  tried and looks like an oversight in print. They are the largest
+- A corner's arc is an ellipse in dots, so that it is a circle on
+  paper. A `qr` job's `radius` sets it, 0 for the plain square, 100 for
+  a module and a half. Past about 1.7 modules an arc reaches the centre
+  of the module in the corner, which is the point a scanner samples, so
+  do not raise the top. No rounded symbol has been scanned yet on either
+  head, so check one against a phone before trusting it.
+- The finder patterns round with everything else. Keeping them square
+  was tried and looks like an oversight in print. They are the largest
   blocks on the symbol, so a corner shows there most.
 
 Behaviour that shapes how jobs are written:
@@ -113,8 +114,8 @@ Behaviour that shapes how jobs are written:
 - `cargo run --example thermal_test_pattern -- <host> 80 slow density=3`
   prints a head-check page.
 - `cargo run -p starprint-workflows --example qr -- <host> thermal|impact
-  "<data>" [size=MM] [ecc=l|m|q|h] [caption=TEXT]` prints a QR code, for
-  checking a module size against a phone.
+  "<data>" [size=MM] [radius=PCT] [ecc=l|m|q|h] [caption=TEXT]` prints a
+  QR code, for checking a module size or a radius against a phone.
 - `cargo run --example thermal_image --features image -- <host> photo.jpg
   slow density=3 [double] [rotate] [gamma=F] [equalize=0|1]` for photos.
 - `cargo run --example impact_image --features image -- <host> photo.jpg

@@ -41,6 +41,7 @@ import {
   picturePreview,
   printJob,
   qrLayout,
+  qrPreview,
   taskCardLayout,
   testPageSections,
   textLayout,
@@ -97,6 +98,7 @@ export default function App() {
   const [note, setNote] = useState<Note>(DEFAULT_NOTE);
   const [code, setCode] = useState<Qr>(DEFAULT_QR);
   const [symbol, setSymbol] = useState<QrLayout | null>(null);
+  const [symbolUrl, setSymbolUrl] = useState<string | null>(null);
   const [symbolError, setSymbolError] = useState<string | null>(null);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -168,22 +170,37 @@ export default function App() {
   // An empty string encodes to a perfectly valid symbol, which is not
   // one the preview should show.
   const hasData = code.data.trim().length > 0;
+  const previewChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     if (!hasData) return;
     let cancelled = false;
-    qrLayout(code, printer.kind, printer.paper)
-      .then((result) => {
+    let url: string | null = null;
+    const timer = setTimeout(() => {
+      // One render at a time; a stale request is skipped.
+      previewChain.current = previewChain.current.then(async () => {
         if (cancelled) return;
-        setSymbol(result);
-        setSymbolError(null);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setSymbol(null);
-        setSymbolError(String(error));
+        try {
+          const [layout, png] = await Promise.all([
+            qrLayout(code, printer.kind, printer.paper),
+            qrPreview(code, printer.kind, printer.paper),
+          ]);
+          if (cancelled) return;
+          url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+          setSymbol(layout);
+          setSymbolUrl(url);
+          setSymbolError(null);
+        } catch (error) {
+          if (cancelled) return;
+          setSymbol(null);
+          setSymbolUrl(null);
+          setSymbolError(String(error));
+        }
       });
+    }, PREVIEW_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      if (url) URL.revokeObjectURL(url);
     };
   }, [code, hasData, printer.kind, printer.paper]);
 
@@ -199,7 +216,6 @@ export default function App() {
     };
   }, [testPage, printer.kind]);
 
-  const previewChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     if (!picture.path) return;
     let cancelled = false;
@@ -250,8 +266,8 @@ export default function App() {
     : { url: null, error: null };
   // As does clearing the data.
   const qr = hasData
-    ? { layout: symbol, error: symbolError }
-    : { layout: null, error: null };
+    ? { layout: symbol, url: symbolUrl, error: symbolError }
+    : { layout: null, url: null, error: null };
   const ready =
     workflow === "task-card"
       ? card.text.trim().length > 0
@@ -435,7 +451,7 @@ export default function App() {
                   paper={printer.paper}
                 />
               ) : workflow === "qr" ? (
-                <QrPreview layout={qr.layout} error={qr.error} />
+                <QrPreview layout={qr.layout} url={qr.url} error={qr.error} />
               ) : (
                 <PicturePreview url={preview.url} error={preview.error} />
               )}

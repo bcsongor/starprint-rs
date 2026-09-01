@@ -89,7 +89,8 @@ pub struct Qr {
     pub align: Align,
 }
 
-/// The code as it will print, for the preview.
+/// Where the code sits and what it measures, for the preview. The dots
+/// themselves come from [`Qr::bitmap`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
@@ -99,14 +100,6 @@ pub struct Layout {
     pub align: Align,
     /// Modules across the block, quiet zone included.
     pub modules: u32,
-    /// Row-major, `true` is dark. `modules * modules` long.
-    pub matrix: Vec<bool>,
-    /// The corner radius a module is drawn with, as a fraction of the
-    /// module across and down, for a preview that works in modules
-    /// rather than dots. Zero where the head's dots are too coarse to
-    /// round, which is the SP700 at the sizes it is usually asked for.
-    pub radius_x: f32,
-    pub radius_y: f32,
     /// What the block measures on paper, quiet zone included. The two
     /// differ by under a percent, and only because a module is a whole
     /// number of dots on a head whose dots are not square.
@@ -120,7 +113,7 @@ fn default_size() -> u8 {
     30
 }
 
-/// As round as the dots allow.
+/// As round as it goes.
 fn default_radius() -> u8 {
     MAX_RADIUS
 }
@@ -146,8 +139,7 @@ const QUIET_MODULES: u32 = 4;
 const MIN_SIZE_MM: u8 = 10;
 const MAX_SIZE_MM: u8 = 80;
 
-/// A whole half-module of radius, past which a corner would eat into
-/// the module beside it rather than round any further.
+/// The dial's top, as a percentage of [`MAX_RADIUS_MODULES`].
 const MAX_RADIUS: u8 = 100;
 
 /// What differs between the heads when drawing a symbol.
@@ -217,90 +209,109 @@ fn mm(dots: u32, dpi: f64) -> f32 {
     dots as f32 / (dpi as f32 / MM_PER_INCH)
 }
 
-/// Which end of a module a dot sits at, and how far its centre is past
-/// the corner arc's, in dots. `None` on the straight side between two
-/// corners, which at a radius of nothing is the whole module.
-fn corner(dot: u32, span: u32, radius: u32) -> Option<(i32, f32)> {
-    let centre = dot as f32 + 0.5;
-    if dot < radius {
-        Some((-1, centre - radius as f32))
-    } else if dot >= span - radius {
-        Some((1, centre - (span - radius) as f32))
-    } else {
-        None
+/// The largest corner radius, in modules. An arc much past 1.7 cuts the
+/// centre of the module in the corner, which is the point a scanner
+/// samples. This leaves a margin, and happens to make a circle of the
+/// 3 by 3 block at the heart of each finder pattern.
+const MAX_RADIUS_MODULES: f32 = 1.5;
+
+/// A corner of the dark shape, found at a grid vertex where one of the
+/// four modules around it differs from the other three.
+struct Corner {
+    /// The vertex, in modules from the symbol's top-left.
+    vx: i32,
+    vy: i32,
+    /// The quadrant the odd module is in: `-1` or `1` on each axis.
+    sx: i32,
+    sy: i32,
+    /// A dark module among light ones is a convex corner and loses
+    /// ink; a light one among dark is concave and gains it.
+    convex: bool,
+    /// In modules. What was asked for, or less where the edges that
+    /// meet here are short.
+    radius: f32,
+}
+
+/// Every corner the shape has, with the radius each can take: half the
+/// shorter of the two edges that meet there at most, so a lone module
+/// stops at its circle while a finder pattern's ring keeps rounding.
+/// Where two dark modules touch only at a point, neither light corner
+/// between them is filled, so rounding never joins them.
+fn corners(symbol: &Symbol, radius: f32) -> Vec<Corner> {
+    let n = symbol.size();
+    let dark = |x: i32, y: i32| symbol.get_module(x, y);
+    let mut out = Vec::new();
+    for vy in 0..=n {
+        for vx in 0..=n {
+            // The module in a quadrant of this vertex.
+            let module = |sx: i32, sy: i32| (vx + (sx - 1) / 2, vy + (sy - 1) / 2);
+            let at = |sx: i32, sy: i32| {
+                let (x, y) = module(sx, sy);
+                dark(x, y)
+            };
+            for (sx, sy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let (this, beside, above, across) =
+                    (at(sx, sy), at(-sx, sy), at(sx, -sy), at(-sx, -sy));
+                let convex = this && !beside && !above;
+                let concave = !this && beside && above && across;
+                if !convex && !concave {
+                    continue;
+                }
+
+                // How far this module's colour runs along each edge
+                // from the vertex, with the other colour across it.
+                let (mx, my) = module(sx, sy);
+                let along_x = (0..)
+                    .take_while(|&k| {
+                        dark(mx + k * sx, my) == this && dark(mx + k * sx, my - sy) != this
+                    })
+                    .count();
+                let along_y = (0..)
+                    .take_while(|&k| {
+                        dark(mx, my + k * sy) == this && dark(mx - sx, my + k * sy) != this
+                    })
+                    .count();
+                out.push(Corner {
+                    vx,
+                    vy,
+                    sx,
+                    sy,
+                    convex,
+                    radius: radius.min(along_x.min(along_y) as f32 / 2.0),
+                });
+            }
+        }
     }
+    // Ink comes off before it goes on.
+    out.sort_by_key(|corner| !corner.convex);
+    out
 }
 
-/// A module as dots: how many it takes each way, and the corner radius
-/// it is drawn with.
-#[derive(Debug, Clone, Copy)]
-struct Module {
-    across: u32,
-    down: u32,
-    rx: u32,
-    ry: u32,
-}
-
-impl Module {
-    /// `percent` of half the module, taken on each axis separately so
-    /// that the arc is round on paper rather than in dots. The SP700
-    /// lays a module seven dots across and three down, where a radius
-    /// circular in dots would print as an oval.
+impl Corner {
+    /// Takes the corner off, or fills it in, dot by dot.
     ///
-    /// Both radii are whole dots. A module with too few to give up,
-    /// those three rows at the default size, clips nothing and stays
-    /// square of its own accord, whatever was asked for.
-    fn new(across: u32, down: u32, percent: u8) -> Self {
-        let share = |span: u32| span * u32::from(percent.min(MAX_RADIUS)) / 200;
-        Self {
-            across,
-            down,
-            rx: share(across),
-            ry: share(down),
+    /// The radius is scaled to each axis so that the arc is round on
+    /// paper rather than in dots. The SP700 lays a module seven dots
+    /// across and three down, where an arc circular in dots would print
+    /// as an oval.
+    fn apply(&self, dots: &mut [bool], width: u32, across: u32, down: u32) {
+        let (rx, ry) = (self.radius * across as f32, self.radius * down as f32);
+        let quiet = QUIET_MODULES as i32;
+        let (vx, vy) = (
+            (self.vx + quiet) * across as i32,
+            (self.vy + quiet) * down as i32,
+        );
+        for j in 0..ry.ceil() as i32 {
+            for i in 0..rx.ceil() as i32 {
+                let (u, v) = ((rx - i as f32 - 0.5) / rx, (ry - j as f32 - 0.5) / ry);
+                if u > 0.0 && v > 0.0 && u * u + v * v > 1.0 {
+                    let x = if self.sx > 0 { vx + i } else { vx - 1 - i };
+                    let y = if self.sy > 0 { vy + j } else { vy - 1 - j };
+                    dots[(y as u32 * width + x as u32) as usize] = !self.convex;
+                }
+            }
         }
     }
-
-    /// Whether a dot falls outside the module's corner arc, and which
-    /// corner that is: `-1` or `1` on each axis.
-    fn clipped(self, dx: u32, dy: u32) -> Option<(i32, i32)> {
-        let (hx, ox) = corner(dx, self.across, self.rx)?;
-        let (hy, oy) = corner(dy, self.down, self.ry)?;
-        let (u, v) = (ox / self.rx as f32, oy / self.ry as f32);
-        (u * u + v * v > 1.0).then_some((hx, hy))
-    }
-
-    /// Whether corners round at all: a radius under a whole dot has
-    /// nothing to take off.
-    fn rounds(self) -> bool {
-        self.clipped(0, 0).is_some()
-    }
-
-    /// The radius as a fraction of the module, across and down, for a
-    /// preview that works in modules rather than dots.
-    fn fraction(self) -> (f32, f32) {
-        if !self.rounds() {
-            return (0.0, 0.0);
-        }
-        (
-            self.rx as f32 / self.across as f32,
-            self.ry as f32 / self.down as f32,
-        )
-    }
-}
-
-/// Whether a dot of a dark module is inked once the corners are taken
-/// off it.
-///
-/// A corner rounds only where both of the modules it faces are light,
-/// so a run of dark modules stays joined and it is the outside of the
-/// run that curves rather than every module in it. Finder patterns are
-/// no exception: squaring them was tried, and reads as an oversight on
-/// paper.
-fn inked(symbol: &Symbol, mx: i32, my: i32, dx: u32, dy: u32, module: Module) -> bool {
-    let Some((hx, hy)) = module.clipped(dx, dy) else {
-        return true;
-    };
-    symbol.get_module(mx + hx, my) || symbol.get_module(mx, my + hy)
 }
 
 impl Qr {
@@ -329,13 +340,33 @@ impl Qr {
     /// The symbol as dots, quiet zone included.
     fn symbol(&self, profile: &DeviceProfile, density: Density) -> Result<Bitmap, String> {
         let (symbol, across, down) = self.encode(profile, density)?;
-        let module = Module::new(across, down, self.radius);
         let total = symbol.size() as u32 + 2 * QUIET_MODULES;
+        let (width, height) = (total * across, total * down);
         let quiet = QUIET_MODULES as i32;
-        Ok(Bitmap::from_fn(total * across, total * down, |x, y| {
-            let (mx, my) = ((x / across) as i32 - quiet, (y / down) as i32 - quiet);
-            symbol.get_module(mx, my) && inked(&symbol, mx, my, x % across, y % down, module)
+        let mut dots: Vec<bool> = (0..height)
+            .flat_map(|y| (0..width).map(move |x| (x, y)))
+            .map(|(x, y)| symbol.get_module((x / across) as i32 - quiet, (y / down) as i32 - quiet))
+            .collect();
+
+        let radius = MAX_RADIUS_MODULES * f32::from(self.radius.min(MAX_RADIUS)) / 100.0;
+        for corner in corners(&symbol, radius) {
+            corner.apply(&mut dots, width, across, down);
+        }
+        Ok(Bitmap::from_fn(width, height, |x, y| {
+            dots[(y * width + x) as usize]
         }))
+    }
+
+    /// The symbol as it will print, for a preview drawn from the dots
+    /// themselves rather than from a rule of its own.
+    pub fn bitmap<P: Protocol>(&self, paper: Paper) -> Result<Bitmap, String>
+    where
+        Builder<P>: QrStyle,
+    {
+        self.symbol(
+            <Builder<P> as QrStyle>::profile(paper),
+            <Builder<P> as QrStyle>::DENSITY,
+        )
     }
 
     /// The caption wrapped to the paper; empty when there is none.
@@ -351,9 +382,8 @@ impl Qr {
             .unwrap_or_default()
     }
 
-    /// The block as modules, with what it measures on paper, for the
-    /// preview. The symbol is drawn here rather than by the printer, so
-    /// this is the same grid that prints.
+    /// The caption and what the block measures on paper, for the
+    /// preview to place the symbol by.
     pub fn layout<P: Protocol>(&self, paper: Paper) -> Result<Layout, String>
     where
         Builder<P>: QrStyle,
@@ -363,24 +393,11 @@ impl Qr {
         let (symbol, across, down) = self.encode(profile, density)?;
         let modules = symbol.size() as u32 + 2 * QUIET_MODULES;
 
-        let quiet = QUIET_MODULES as i32;
-        let mut matrix = Vec::with_capacity((modules * modules) as usize);
-        for y in 0..modules {
-            for x in 0..modules {
-                matrix.push(symbol.get_module(x as i32 - quiet, y as i32 - quiet));
-            }
-        }
-
-        let (radius_x, radius_y) = Module::new(across, down, self.radius).fraction();
-
         Ok(Layout {
             columns: <Builder<P> as TextStyle>::columns(paper),
             caption: self.caption_lines::<P>(paper),
             align: self.align,
             modules,
-            matrix,
-            radius_x,
-            radius_y,
             width_mm: mm(modules * across, profile.horizontal_dpi_at(density)),
             height_mm: mm(modules * down, profile.vertical_dpi),
         })
@@ -519,138 +536,137 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn a_module_rounds_only_the_corners_that_face_blank_paper() {
-        let code = qr("https://example.com/r/42");
-        let profile = &DeviceProfile::THERMAL_80MM;
-        let (symbol, across, down) = code.encode(profile, Density::Single).unwrap();
-        assert_eq!((across, down), (10, 10), "dots enough to round");
-        let bitmap = code.symbol(profile, Density::Single).unwrap();
+    /// A head to draw for: its profile and the density a symbol uses.
+    type Head = (&'static DeviceProfile, Density);
+    const THERMAL: Head = (&DeviceProfile::THERMAL_80MM, Density::Single);
+    const IMPACT: Head = (&DeviceProfile::SP700, Density::Double);
 
-        let dot = |mx: i32, my: i32, dx: u32, dy: u32| {
+    /// Dots inked in the symbol at a given radius.
+    fn ink(head: Head, radius: u8) -> usize {
+        let code = Qr {
+            radius,
+            ..qr("https://example.com/r/42")
+        };
+        let bitmap = code.symbol(head.0, head.1).unwrap();
+        let dots = (0..bitmap.width()).flat_map(|x| (0..bitmap.height()).map(move |y| (x, y)));
+        dots.filter(|&(x, y)| bitmap.get(x, y)).count()
+    }
+
+    /// The dot `dx`,`dy` into module `mx`,`my` of the symbol.
+    fn dot(bitmap: &Bitmap, across: u32, down: u32) -> impl Fn(i32, i32, u32, u32) -> bool + '_ {
+        move |mx, my, dx, dy| {
             let quiet = QUIET_MODULES as i32;
             bitmap.get(
                 (mx + quiet) as u32 * across + dx,
                 (my + quiet) as u32 * down + dy,
             )
-        };
-
-        let (mut rounded, mut joined) = (0, 0);
-        for my in 0..symbol.size() {
-            for mx in 0..symbol.size() {
-                if !symbol.get_module(mx, my) {
-                    continue;
-                }
-                // The top-left dot goes when the module has nothing
-                // above it or to its left, and stays given either.
-                let attached = symbol.get_module(mx - 1, my) || symbol.get_module(mx, my - 1);
-                assert_eq!(dot(mx, my, 0, 0), attached, "module {mx},{my}");
-                joined += u32::from(attached);
-                rounded += u32::from(!attached);
-                assert!(dot(mx, my, across / 2, down / 2), "centre {mx},{my}");
-            }
         }
-        assert!(
-            rounded > 0 && joined > 0,
-            "both cases occur: {rounded} rounded, {joined} joined"
-        );
     }
 
     #[test]
-    fn the_impact_head_keeps_its_modules_square() {
-        // A module is three dot rows there, and half of three is one:
-        // that dot's centre still falls inside the arc, so the corner
-        // survives and the head opts itself out.
-        assert!(!Module::new(7, 3, MAX_RADIUS).rounds());
-        assert!(
-            Module::new(8, 8, MAX_RADIUS).rounds(),
-            "a thermal module has the dots to spare"
-        );
-
-        let code = qr("https://example.com/r/42");
-        let (symbol, across, down) = code.encode(&DeviceProfile::SP700, Density::Double).unwrap();
-        assert!(
-            !Module::new(across, down, code.radius).rounds(),
-            "{across} by {down} dots a module"
-        );
-
-        let bitmap = code.symbol(&DeviceProfile::SP700, Density::Double).unwrap();
-        let quiet = QUIET_MODULES as i32;
-        for my in 0..symbol.size() {
-            for mx in 0..symbol.size() {
-                if !symbol.get_module(mx, my) {
-                    continue;
+    fn no_module_centre_is_ever_touched() {
+        // The centre is what a scanner samples, so however far the
+        // corners go, ink comes off dark modules and goes onto light
+        // ones only at their edges.
+        for head in [THERMAL, IMPACT] {
+            for radius in [0, 33, 66, 100] {
+                let code = Qr {
+                    radius,
+                    ..qr("https://example.com/r/42")
+                };
+                let (symbol, across, down) = code.encode(head.0, head.1).unwrap();
+                let bitmap = code.symbol(head.0, head.1).unwrap();
+                let dot = dot(&bitmap, across, down);
+                for my in 0..symbol.size() {
+                    for mx in 0..symbol.size() {
+                        assert_eq!(
+                            dot(mx, my, across / 2, down / 2),
+                            symbol.get_module(mx, my),
+                            "module {mx},{my} at {radius} on {}",
+                            head.0.name
+                        );
+                    }
                 }
-                let (x, y) = ((mx + quiet) as u32 * across, (my + quiet) as u32 * down);
-                assert!(bitmap.get(x, y), "clipped a corner at {mx},{my}");
             }
         }
     }
 
     #[test]
-    fn the_finder_patterns_round_with_everything_else() {
+    fn a_lone_module_stops_at_its_circle_while_the_eye_keeps_going() {
         let code = qr("https://example.com/r/42");
-        let profile = &DeviceProfile::THERMAL_80MM;
-        let (symbol, across, down) = code.encode(profile, Density::Single).unwrap();
-        let bitmap = code.symbol(profile, Density::Single).unwrap();
-        assert!(symbol.get_module(0, 0), "the eye's outermost module");
+        let (symbol, across, down) = code.encode(THERMAL.0, THERMAL.1).unwrap();
+        let bitmap = code.symbol(THERMAL.0, THERMAL.1).unwrap();
+        let dot = dot(&bitmap, across, down);
 
-        // Its outside corner faces the quiet zone both ways, so it goes
-        // the way any other lone corner does.
-        let (x, y) = (QUIET_MODULES * across, QUIET_MODULES * down);
-        assert!(!bitmap.get(x, y), "the corner of the eye is taken off");
-        assert!(bitmap.get(x + across / 2, y), "the edge between is not");
-        assert!(bitmap.get(x, y + down / 2));
+        // A module with light on all four sides is capped at half a
+        // module of radius, so the middle of its side is on the arc
+        // and survives; a radius past that would have taken it.
+        let n = symbol.size();
+        let (lx, ly) = (0..n)
+            .flat_map(|y| (0..n).map(move |x| (x, y)))
+            .find(|&(x, y)| {
+                symbol.get_module(x, y)
+                    && !symbol.get_module(x - 1, y)
+                    && !symbol.get_module(x + 1, y)
+                    && !symbol.get_module(x, y - 1)
+                    && !symbol.get_module(x, y + 1)
+            })
+            .expect("a lone module somewhere in the data");
+        assert!(!dot(lx, ly, 0, 0), "its corner goes");
+        assert!(dot(lx, ly, 0, down / 2), "the middle of its side stays");
+
+        // The 3 by 3 block at the eye's centre has edges of three, so
+        // its corners take the full radius and it becomes a circle:
+        // half way along the corner module's top edge is still outside.
+        assert!(!dot(2, 2, 0, 0));
+        assert!(!dot(2, 2, across / 2, 0));
+        assert!(dot(3, 2, across / 2, 0), "the block's top-middle is on it");
+        assert!(dot(2, 2, across / 2, down / 2));
     }
 
     #[test]
-    fn the_layout_reports_the_radius_the_dots_were_drawn_with() {
+    fn the_eye_ring_rounds_outside_and_fills_inside() {
         let code = qr("https://example.com/r/42");
+        let (_, across, down) = code.encode(THERMAL.0, THERMAL.1).unwrap();
+        let bitmap = code.symbol(THERMAL.0, THERMAL.1).unwrap();
+        let dot = dot(&bitmap, across, down);
 
-        // 10 dots a module, rounded by 5: half the module.
-        let thermal = code.layout::<StarLine>(Paper::Mm80).unwrap();
-        assert_eq!((thermal.radius_x, thermal.radius_y), (0.5, 0.5));
+        // The ring's outer edges run seven modules, so its corner takes
+        // an arc wider than the module and the next module along loses
+        // the start of its edge too.
+        assert!(!dot(0, 0, 0, 0));
+        assert!(!dot(1, 0, 0, 0), "the neighbour's corner goes with it");
+        assert!(dot(1, 0, across / 2, 0), "but not its middle");
 
-        // Square on the SP700, so the preview draws it square too.
-        let impact = code.layout::<Impact>(Paper::Mm80).unwrap();
-        assert_eq!((impact.radius_x, impact.radius_y), (0.0, 0.0));
-
-        // And square wherever a caller asks for it.
-        let square = Qr { radius: 0, ..code };
-        let thermal = square.layout::<StarLine>(Paper::Mm80).unwrap();
-        assert_eq!((thermal.radius_x, thermal.radius_y), (0.0, 0.0));
+        // The hollow's corner is a concave corner of the ring and is
+        // filled, short of the light module's centre.
+        assert!(dot(1, 1, 0, 0), "filled in");
+        assert!(!dot(1, 1, across / 2, down / 2), "but not to the centre");
+        // The hollow's corner beside the centre block is left alone:
+        // that vertex has two dark modules and two light.
+        assert!(!dot(1, 1, across - 1, down - 1));
     }
 
     #[test]
-    fn the_radius_runs_from_square_to_as_round_as_the_dots_allow() {
-        // Ten dots a module: five of radius is the whole half module.
-        assert_eq!(Module::new(10, 10, 0).fraction(), (0.0, 0.0));
-        assert_eq!(Module::new(10, 10, 50).fraction(), (0.2, 0.2));
-        assert_eq!(Module::new(10, 10, 100).fraction(), (0.5, 0.5));
-        assert_eq!(
-            Module::new(10, 10, 255).fraction(),
-            (0.5, 0.5),
-            "held at the half module rather than eating the one beside it"
-        );
-        assert_eq!(
-            Module::new(10, 10, 5).fraction(),
-            (0.0, 0.0),
-            "under a whole dot there is nothing to take off"
-        );
+    fn a_coarser_module_is_slower_to_round() {
+        // The first radius at which a head's symbol changes at all: the
+        // SP700's 7 by 3 needs a wider arc than a 10 by 10 before its
+        // outermost dot's centre falls outside it.
+        let first = |head: Head| (1..=MAX_RADIUS).find(|&pct| ink(head, pct) != ink(head, 0));
+        assert_eq!(first(THERMAL), Some(12));
+        assert_eq!(first(IMPACT), Some(27));
+    }
 
-        // Rounding costs ink, and asking for more of it costs more.
-        let profile = &DeviceProfile::THERMAL_80MM;
-        let ink = |radius: u8| {
-            let code = Qr {
-                radius,
-                ..qr("https://example.com/r/42")
-            };
-            let bitmap = code.symbol(profile, Density::Single).unwrap();
-            let dots = (0..bitmap.width()).flat_map(|x| (0..bitmap.height()).map(move |y| (x, y)));
-            dots.filter(|&(x, y)| bitmap.get(x, y)).count()
-        };
-        assert!(ink(0) > ink(50), "square keeps the most");
-        assert!(ink(50) > ink(100), "and a fuller radius the least");
+    #[test]
+    fn the_radius_runs_from_square_to_as_round_as_each_shape_allows() {
+        assert!(ink(THERMAL, 0) > ink(THERMAL, 33), "corners cost ink");
+        assert_eq!(ink(THERMAL, 255), ink(THERMAL, 100), "held at the top");
+
+        // With large blocks rounding past a module, the dial has many
+        // shapes on it rather than the handful a lone module has.
+        let shapes: std::collections::BTreeSet<usize> =
+            (0..=MAX_RADIUS).map(|pct| ink(THERMAL, pct)).collect();
+        assert!(shapes.len() >= 20, "only {} shapes", shapes.len());
     }
 
     #[test]
@@ -766,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn the_layout_is_the_grid_that_prints() {
+    fn the_layout_measures_the_block_that_prints() {
         let code = Qr {
             caption: Some("Order 42".to_owned()),
             align: Align::Right,
@@ -777,26 +793,14 @@ mod tests {
         assert_eq!(layout.columns, 48);
         assert_eq!(layout.caption, ["Order 42"]);
         assert_eq!(layout.align, Align::Right);
-        assert_eq!(
-            layout.matrix.len(),
-            (layout.modules * layout.modules) as usize
-        );
 
-        // The same modules the bitmap is drawn from, and the same size.
-        let (symbol, across, down) = code
+        // The same block the bitmap is drawn to, and the same size.
+        let (symbol, across, _) = code
             .encode(&DeviceProfile::THERMAL_80MM, Density::Single)
             .unwrap();
         assert_eq!(layout.modules, symbol.size() as u32 + 2 * QUIET_MODULES);
-        let bitmap = code
-            .symbol(&DeviceProfile::THERMAL_80MM, Density::Single)
-            .unwrap();
+        let bitmap = code.bitmap::<StarLine>(Paper::Mm80).unwrap();
         assert_eq!(bitmap.width(), layout.modules * across);
-        // Sampled at the centre, which rounding never takes off.
-        for (index, dark) in layout.matrix.iter().enumerate() {
-            let (x, y) = (index as u32 % layout.modules, index as u32 / layout.modules);
-            let dot = bitmap.get(x * across + across / 2, y * down + down / 2);
-            assert_eq!(*dark, dot, "module {x},{y}");
-        }
 
         // 8 dots to the millimetre both ways, so the block is square.
         assert_eq!(layout.width_mm, layout.height_mm);

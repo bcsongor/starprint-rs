@@ -11,6 +11,7 @@ mod window;
 use std::sync::Arc;
 
 use serde::Serialize;
+use starprint::graphics::{Bitmap, Grayscale};
 use starprint::transport::TcpTransport;
 use starprint::{Impact, StarLine};
 use starprint_workflows::{Note, Paper, Printer, PrinterKind, Qr, TaskCard, TestPage, Text};
@@ -60,6 +61,43 @@ fn qr_layout(code: Qr, kind: PrinterKind, paper: Paper) -> Result<qr::Layout, St
         PrinterKind::Thermal => code.layout::<StarLine>(paper),
         PrinterKind::Impact => code.layout::<Impact>(paper),
     }
+}
+
+/// PNG bytes of the symbol as it will print, dot for dot, so the
+/// preview needs no rule of its own for how a corner is rounded. On a
+/// thermal head the dots are bloomed as [`picture_preview`]'s are, and
+/// like it this runs off the main thread, so a slider does not stall.
+#[tauri::command]
+async fn qr_preview(
+    code: Qr,
+    kind: PrinterKind,
+    paper: Paper,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bitmap = match kind {
+            PrinterKind::Thermal => code.bitmap::<StarLine>(paper),
+            PrinterKind::Impact => code.bitmap::<Impact>(paper),
+        }?;
+        let drawn = grayscale(&bitmap);
+        let shown = match kind {
+            PrinterKind::Thermal => preview::dot_gain(&drawn, 150),
+            PrinterKind::Impact => drawn,
+        };
+        preview::png(&shown)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(tauri::ipc::Response::new)
+}
+
+/// Ink as black on white.
+fn grayscale(bitmap: &Bitmap) -> Grayscale {
+    let (width, height) = (bitmap.width(), bitmap.height());
+    let pixels = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .map(|(x, y)| if bitmap.get(x, y) { 0 } else { 255 })
+        .collect();
+    Grayscale::new(width, height, pixels).expect("sized from the bitmap")
 }
 
 #[tauri::command]
@@ -173,6 +211,7 @@ pub fn run() {
             text_layout,
             note_layout,
             qr_layout,
+            qr_preview,
             test_page_sections,
             print_job,
             job_hexdump,
