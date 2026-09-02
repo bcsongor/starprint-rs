@@ -79,14 +79,17 @@ export function PaperSheet({ kind, paper, children }: Props) {
           transform: `translateX(-50%) scale(${scale})`,
         }}
       >
-        <span
-          ref={probe}
-          aria-hidden
-          className="invisible absolute whitespace-pre"
-          style={{ fontSize: PROBE_PX }}
-        >
-          {PROBE}
-        </span>
+        {/* Clipped to nothing: it is wider than the SP700's sheet, and
+            even hidden it would scroll the window. */}
+        <div aria-hidden className="absolute size-0 overflow-hidden">
+          <span
+            ref={probe}
+            className="whitespace-pre"
+            style={{ fontSize: PROBE_PX }}
+          >
+            {PROBE}
+          </span>
+        </div>
         {children}
       </div>
     </div>
