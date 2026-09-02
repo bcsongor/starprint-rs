@@ -3,6 +3,7 @@ import type { Printer } from "./api";
 
 const FILE = "settings.json";
 const KEY = "profiles";
+const LINEAR_KEY = "linear";
 /** From before profiles existed; migrated on first load. */
 const LEGACY_KEY = "printer";
 
@@ -14,6 +15,17 @@ export interface Profile extends Printer {
 export interface Profiles {
   profiles: Profile[];
   activeId: string;
+}
+
+/** A Linear account; absent until a key is pasted in. */
+export interface Linear {
+  /** A personal API key, kept in the settings file as it is. */
+  apiKey: string;
+  /** Whose key it is while connected. Null once disconnected; the key
+   * stays so reconnecting is a click. */
+  user: string | null;
+  /** Whether newly assigned issues print as they arrive. */
+  autoPrint: boolean;
 }
 
 const THERMAL: Printer = {
@@ -90,5 +102,16 @@ export async function loadProfiles(): Promise<Profiles> {
 export async function saveProfiles(state: Profiles): Promise<void> {
   const store = await load(FILE, { defaults: {} });
   await store.set(KEY, state);
+  await store.save();
+}
+
+export async function loadLinear(): Promise<Linear | null> {
+  const store = await load(FILE, { defaults: {} });
+  return (await store.get<Linear>(LINEAR_KEY)) ?? null;
+}
+
+export async function saveLinear(linear: Linear): Promise<void> {
+  const store = await load(FILE, { defaults: {} });
+  await store.set(LINEAR_KEY, linear);
   await store.save();
 }

@@ -68,6 +68,7 @@ mod tests {
         };
         assert_eq!(card.text, "Buy milk");
         assert!(!card.priority);
+        assert_eq!(card.reference, None);
         assert_eq!(card.due, None);
 
         let job: Job = serde_json::from_str(r#"{"kind":"test-page"}"#).unwrap();

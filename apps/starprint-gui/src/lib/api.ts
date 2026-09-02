@@ -24,6 +24,8 @@ export interface Printer {
 export interface TaskCard {
   text: string;
   priority: boolean;
+  /** An issue key from Linear; the form has no box for it. */
+  reference: string | null;
   /** ISO date or free text. */
   due: string | null;
 }
@@ -32,6 +34,8 @@ export interface TaskCard {
 export interface Layout {
   columns: number;
   priority: string | null;
+  /** Padded to sit centrally between the banner and the date. */
+  reference: string | null;
   due: string | null;
   lines: string[];
 }

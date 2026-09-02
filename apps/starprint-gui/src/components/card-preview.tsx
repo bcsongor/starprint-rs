@@ -8,11 +8,14 @@ interface Props {
 }
 
 /**
- * Draws the card as the printer will lay it out: the priority banner and
- * the due date on one line, then the task at double width and height.
+ * Draws the card as the printer will lay it out: the priority banner,
+ * the reference and the due date on one line, then the task at double
+ * width and height.
  */
 export function CardPreview({ layout, kind }: Props) {
-  const hasHeader = Boolean(layout?.priority || layout?.due);
+  const hasHeader = Boolean(
+    layout?.priority || layout?.reference || layout?.due,
+  );
   const lines = layout?.lines.filter((line) => line !== "") ?? [];
   const empty = lines.length === 0;
 
@@ -28,6 +31,9 @@ export function CardPreview({ layout, kind }: Props) {
             >
               {layout.priority}
             </span>
+          )}
+          {layout?.reference && (
+            <span className="font-normal">{layout.reference}</span>
           )}
           {layout?.due && <span className="font-normal">{layout.due}</span>}
           {"\n\n"}

@@ -47,10 +47,12 @@ Task card, the common case:
 ```bash
 curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"job":{"kind":"task-card","text":"Renew passport","priority":true,"due":"2026-09-15"}}'
+  -d '{"job":{"kind":"task-card","text":"Renew passport","priority":true,"reference":"OPC-123","due":"2026-09-15"}}'
 ```
 
-`priority` defaults to false and `due` may be left out.
+`priority` defaults to false. `reference` is a short identifier such as
+an issue key, printed between the banner and the date; it and `due` may
+be left out.
 
 Text, for anything freeform:
 

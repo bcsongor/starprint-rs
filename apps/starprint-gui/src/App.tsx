@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/card-preview";
+import { LinearBar } from "@/components/linear-bar";
 import { NoteForm } from "@/components/note-form";
 import { NotePreview } from "@/components/note-preview";
 import { PaperSheet } from "@/components/paper-sheet";
@@ -30,6 +31,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAutoPrint } from "@/hooks/use-auto-print";
 import {
   DEFAULT_NOTE,
   DEFAULT_PICTURE,
@@ -64,9 +66,12 @@ import { roll } from "@/lib/paper";
 import {
   DEFAULT_PROFILES,
   activeProfile,
+  loadLinear,
   loadProfiles,
+  saveLinear,
   saveProfiles,
   toPrinter,
+  type Linear,
   type Profiles,
 } from "@/lib/settings";
 
@@ -82,8 +87,23 @@ const WORKFLOWS: { value: Workflow; label: string }[] = [
 ];
 
 function emptyCard(): TaskCard {
-  return { text: "", priority: false, due: format(new Date(), "yyyy-MM-dd") };
+  return {
+    text: "",
+    priority: false,
+    reference: null,
+    due: format(new Date(), "yyyy-MM-dd"),
+  };
 }
+
+/** Names the job in the toast once it is sent. */
+const NAMES: Record<Workflow, string> = {
+  "task-card": "task card",
+  text: "text",
+  note: "note slip",
+  qr: "QR code",
+  picture: "picture",
+  "test-page": "test page",
+};
 
 const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
 
@@ -110,14 +130,21 @@ export default function App() {
   const [pictureError, setPictureError] = useState<string | null>(null);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [linear, setLinear] = useState<Linear | null>(null);
 
   useEffect(() => {
     loadProfiles().then(setProfiles).catch(console.error);
+    loadLinear().then(setLinear).catch(console.error);
   }, []);
 
   const updateProfiles = (next: Profiles) => {
     setProfiles(next);
     saveProfiles(next).catch(console.error);
+  };
+
+  const updateLinear = (next: Linear) => {
+    setLinear(next);
+    saveLinear(next).catch(console.error);
   };
 
   const profile = activeProfile(profiles);
@@ -296,20 +323,29 @@ export default function App() {
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
-  const print = async () => {
-    if (!canPrint) return;
+  /** Sends one job to the active profile and reports it; `what` names it. */
+  const send = async (job: Job, what: string) => {
     setPrinting(true);
     try {
       const report = await printJob(job, printer);
-      toast.success(`Printed on ${profile.name}`, {
+      toast.success(`Printed ${what} on ${profile.name}`, {
         description: `${report.bytes} bytes sent.`,
       });
     } catch (error) {
-      toast.error("Print failed", { description: String(error) });
+      toast.error(`Could not print ${what}`, { description: String(error) });
     } finally {
       setPrinting(false);
     }
   };
+
+  const print = async () => {
+    if (!canPrint) return;
+    await send(job, NAMES[workflow]);
+  };
+
+  useAutoPrint(linear, (card) =>
+    send({ kind: "task-card", ...card }, card.reference ?? "task card"),
+  );
 
   const copyHexdump = async () => {
     if (!hexdump) return;
@@ -398,31 +434,39 @@ export default function App() {
             />
           )}
 
-          <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-4">
-            <Button onClick={print} disabled={!canPrint}>
-              <PrinterIcon />
-              {printing ? "Printing…" : "Print"}
-            </Button>
-            <Button variant="outline" onClick={showHexdump} disabled={!ready}>
-              <TerminalIcon />
-              Bytes
-            </Button>
-            {!hasHost && (
-              <span className="text-sm text-destructive">No host set.</span>
+          <div className="mt-auto flex flex-col gap-4">
+            {/* Linear feeds task cards, so it sits with that tab; the
+              polling itself runs whichever tab is showing. */}
+            {workflow === "task-card" && (
+              <LinearBar linear={linear} onChange={updateLinear} />
             )}
-            <Field orientation="horizontal" className="ml-auto w-auto">
-              <Switch
-                id="cut"
-                checked={printer.cut}
-                onCheckedChange={(cut) => updatePrinter({ ...printer, cut })}
-              />
-              <FieldLabel
-                htmlFor="cut"
-                className="text-sm tracking-normal normal-case text-foreground"
-              >
-                Auto cut
-              </FieldLabel>
-            </Field>
+
+            <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+              <Button onClick={print} disabled={!canPrint}>
+                <PrinterIcon />
+                {printing ? "Printing…" : "Print"}
+              </Button>
+              <Button variant="outline" onClick={showHexdump} disabled={!ready}>
+                <TerminalIcon />
+                Bytes
+              </Button>
+              {!hasHost && (
+                <span className="text-sm text-destructive">No host set.</span>
+              )}
+              <Field orientation="horizontal" className="ml-auto w-auto">
+                <Switch
+                  id="cut"
+                  checked={printer.cut}
+                  onCheckedChange={(cut) => updatePrinter({ ...printer, cut })}
+                />
+                <FieldLabel
+                  htmlFor="cut"
+                  className="text-sm tracking-normal normal-case text-foreground"
+                >
+                  Auto cut
+                </FieldLabel>
+              </Field>
+            </div>
           </div>
         </section>
 

@@ -4,8 +4,8 @@
 //! (next Saturday), `w2` (next Sunday), an ISO date, or literal text.
 //!
 //! Usage: cargo run -p starprint-workflows --example task_card --
-//!        <printer-host> thermal|impact "<task>" [priority] [due=DATE]
-//!        [density=N]
+//!        <printer-host> thermal|impact "<task>" [priority] [ref=KEY]
+//!        [due=DATE] [density=N]
 
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use starprint::transport::TcpTransport;
@@ -81,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job = Job::TaskCard(TaskCard {
         text,
         priority: flags.iter().any(|flag| flag == "priority"),
+        reference: value("ref=").map(str::to_owned),
         due: due(value("due="), Local::now().date_naive()),
     });
     let document = printer.document(&job, None)?;

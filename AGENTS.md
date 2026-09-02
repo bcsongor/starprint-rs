@@ -35,7 +35,14 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   until they came off the printer.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
-  file selection, the source cache and the previews.
+  file selection, the source cache, the previews and the Linear
+  auto-print, which is frontend only: a personal API key in the settings
+  store, `fetch` against Linear's GraphQL endpoint every 10 seconds
+  while the toggle is on, and a task card through the ordinary print
+  command for each open issue assigned to the user that the previous
+  poll did not list. The first poll only takes stock. Linear's API
+  answers the webview's CORS preflight, so no Tauri HTTP plugin is
+  involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs. The skill below is its reference. One concern per
   module: `body` reads a request, `job` turns it into printable

@@ -1,5 +1,6 @@
-//! A bold, quad-size task with an optional "HIGH PRIORITY" banner and a
-//! due date above it. Byte-identical to the Python GUI's card.
+//! A bold, quad-size task with an optional "HIGH PRIORITY" banner, a
+//! reference and a due date above it. Without a reference the card is
+//! byte-identical to the Python GUI's.
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,10 @@ pub struct TaskCard {
     pub text: String,
     #[serde(default)]
     pub priority: bool,
+    /// A short identifier, such as an issue key, centred between the
+    /// banner and the date.
+    #[serde(default)]
+    pub reference: Option<String>,
     /// An ISO date, printed as `28 AUG 2026`, or free text printed as is.
     #[serde(default)]
     pub due: Option<String>,
@@ -29,6 +34,8 @@ pub struct TaskCard {
 pub struct Layout {
     pub columns: usize,
     pub priority: Option<String>,
+    /// Padded on the left to sit centrally between the banner and the date.
+    pub reference: Option<String>,
     /// Right-aligned to fill the header line.
     pub due: Option<String>,
     /// Wrapped at half the columns, for quad size.
@@ -85,13 +92,27 @@ impl TaskCard {
         let priority = self
             .priority
             .then(|| <Builder<P> as CardStyle>::PRIORITY_TEXT.to_owned());
-        let due = due_text(self.due.as_deref()).map(|due| {
-            let width = columns.saturating_sub(priority.as_ref().map_or(0, |p| p.chars().count()));
-            align_right(&due, width)
+        let banner = priority.as_ref().map_or(0, |p| p.chars().count());
+        let due = due_text(self.due.as_deref());
+        // Centred in the gap the banner and the date leave, not on the line.
+        let gap = columns.saturating_sub(banner + due.as_ref().map_or(0, |d| d.chars().count()));
+        let reference = self
+            .reference
+            .as_deref()
+            .map(str::trim)
+            .filter(|reference| !reference.is_empty())
+            .map(|reference| {
+                let lead = gap.saturating_sub(reference.chars().count()) / 2;
+                format!("{}{reference}", " ".repeat(lead))
+            });
+        let due = due.map(|due| {
+            let used = banner + reference.as_ref().map_or(0, |r| r.chars().count());
+            align_right(&due, columns.saturating_sub(used))
         });
         Layout {
             columns,
             priority,
+            reference,
             due,
             lines: wrap_by_words(self.text.trim(), columns / 2),
         }
@@ -104,12 +125,17 @@ impl TaskCard {
     {
         let layout = self.layout::<P>(paper);
         let mut card = builder.bold(true);
-        if layout.priority.is_some() || layout.due.is_some() {
+        let rest = format!(
+            "{}{}",
+            layout.reference.as_deref().unwrap_or(""),
+            layout.due.as_deref().unwrap_or("")
+        );
+        if layout.priority.is_some() || !rest.is_empty() {
             if let Some(priority) = &layout.priority {
                 card = card.set_accent(true).text(priority).set_accent(false);
             }
-            if let Some(due) = &layout.due {
-                card = card.bold(false).text(due).bold(true);
+            if !rest.is_empty() {
+                card = card.bold(false).text(&rest).bold(true);
             }
             card = card.raw(b"\n").feed(1);
         }
@@ -141,6 +167,7 @@ mod tests {
         TaskCard {
             text: text.to_owned(),
             priority,
+            reference: None,
             due: due.map(str::to_owned),
         }
     }
@@ -217,6 +244,53 @@ mod tests {
         assert_eq!(
             layout.due.as_deref(),
             Some("                      15 JAN 2025")
+        );
+    }
+
+    #[test]
+    fn layout_centres_the_reference_between_banner_and_due() {
+        let card = TaskCard {
+            reference: Some(" OPC-123 ".to_owned()),
+            ..card("x", true, Some("2025-01-15"))
+        };
+        let layout = card.layout::<StarLine>(Paper::Mm80);
+        // 48 - 15 banner - 11 date = 22 gap; (22 - 7) / 2 = 7 spaces lead.
+        assert_eq!(layout.reference.as_deref(), Some("       OPC-123"));
+        // 48 - 15 - 14 = 19 for the date, so it still ends the line.
+        assert_eq!(layout.due.as_deref(), Some("        15 JAN 2025"));
+        let header = format!(
+            "{}{}{}",
+            layout.priority.unwrap(),
+            layout.reference.unwrap(),
+            layout.due.unwrap()
+        );
+        assert_eq!(header.chars().count(), 48);
+    }
+
+    #[test]
+    fn a_reference_alone_still_prints_a_header_line() {
+        let card = TaskCard {
+            reference: Some("OPC-123".to_owned()),
+            ..card("x", false, None)
+        };
+        let layout = card.layout::<Impact>(Paper::Mm80);
+        assert_eq!(
+            layout.reference.as_deref(),
+            Some("                 OPC-123")
+        );
+        let bytes = card
+            .document(starprint::impact(), Paper::Mm80, true)
+            .as_bytes()
+            .to_vec();
+        assert!(bytes.windows(7).any(|w| w == b"OPC-123"));
+        assert_eq!(
+            TaskCard {
+                reference: Some("  ".to_owned()),
+                ..card
+            }
+            .layout::<Impact>(Paper::Mm80)
+            .reference,
+            None
         );
     }
 
