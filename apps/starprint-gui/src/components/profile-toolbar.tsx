@@ -80,12 +80,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
               </span>
             </SelectValue>
           </SelectTrigger>
-          {/* Padded, so the dot does not sit on the edge. */}
-          <SelectContent
-            alignItemWithTrigger={false}
-            align="start"
-            className="p-1"
-          >
+          <SelectContent alignItemWithTrigger={false} align="start">
             {state.profiles.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 <span className={DOTTED}>

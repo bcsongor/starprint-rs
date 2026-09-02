@@ -63,9 +63,8 @@ export function LinearBar({ linear, onChange }: Props) {
             </FieldLabel>
           </Field>
           <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto text-muted-foreground"
+            variant="outline"
+            className="ml-auto"
             title={`Connected as ${linear.user}`}
             onClick={() =>
               onChange({ ...linear, user: null, autoPrint: false })
