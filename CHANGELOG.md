@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+### Linear
+
+- The desktop app can print a task card for each open Linear issue newly
+  assigned to you. A personal API key and a toggle sit under the Task
+  tab; while it is on, the app asks Linear every 10 seconds and prints
+  whatever the previous answer did not list. The first answer only takes
+  stock, so switching it on does not print the backlog.
+
+### HTTP API
+
+- The desktop app runs the API server itself, behind a button in the
+  toolbar. It serves the profiles that have a host, under the names the
+  picker shows, and starts again on the new set when a profile is
+  edited. Nothing else is needed for an agent to print through the app.
+
+### Desktop app
+
+- The preview on an SP700 profile no longer scrolls the window. A hidden
+  span that measures the preview font was wider than the SP700's sheet
+  and leaked past the pane edge.
 
 ### QR codes
 

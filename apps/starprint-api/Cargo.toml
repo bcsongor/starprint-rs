@@ -1,6 +1,6 @@
 [package]
 name = "starprint-api"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local HTTP server that prints starprint jobs to profiled Star printers"
 edition.workspace = true
 rust-version.workspace = true
