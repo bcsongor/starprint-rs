@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 # PNG encoding for the picture preview; decoding lives in starprint.
 image = { version = "0.25", default-features = false, features = ["png"] }
 starprint = { path = "../../../crates/starprint", features = ["image"] }
+# The HTTP API, served from inside the app behind a toggle.
+starprint-api = { path = "../../starprint-api" }
 starprint-workflows = { path = "../../../crates/starprint-workflows" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

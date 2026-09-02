@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { EllipsisIcon } from "lucide-react";
-import { ConnectionDot } from "@/components/connection-dot";
+import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { statusLabel, useProbes } from "@/hooks/use-probes";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { Button } from "@/components/ui/button";
@@ -64,26 +64,37 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
         >
           <SelectTrigger id="profile" className="min-w-0 flex-1">
             <SelectValue>
-              <ConnectionDot
-                status={statuses[profile.id] ?? "checking"}
-                label={statusLabel(profile, statuses[profile.id] ?? "checking")}
-                className="mr-1"
-              />
-              {profile.name}
+              <span className={DOTTED}>
+                <ConnectionDot
+                  status={statuses[profile.id] ?? "checking"}
+                  label={statusLabel(
+                    profile,
+                    statuses[profile.id] ?? "checking",
+                  )}
+                />
+                {profile.name}
+              </span>
               <span className="text-muted-foreground">
                 {" "}
                 · {profile.host || "no host"}
               </span>
             </SelectValue>
           </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
+          {/* Padded, so the dot does not sit on the edge. */}
+          <SelectContent
+            alignItemWithTrigger={false}
+            align="start"
+            className="p-1"
+          >
             {state.profiles.map((p) => (
               <SelectItem key={p.id} value={p.id}>
-                <ConnectionDot
-                  status={statuses[p.id] ?? "checking"}
-                  label={statusLabel(p, statuses[p.id] ?? "checking")}
-                />
-                {p.name}
+                <span className={DOTTED}>
+                  <ConnectionDot
+                    status={statuses[p.id] ?? "checking"}
+                    label={statusLabel(p, statuses[p.id] ?? "checking")}
+                  />
+                  {p.name}
+                </span>
                 <span className="text-muted-foreground">
                   {" "}
                   · {p.host || "no host"}

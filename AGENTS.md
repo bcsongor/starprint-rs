@@ -35,8 +35,12 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   until they came off the printer.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
-  file selection, the source cache, the previews and the Linear
-  auto-print, which is frontend only: a personal API key in the settings
+  file selection, the source cache, the previews, the API button and
+  the Linear auto-print. The button runs `starprint-api`'s server
+  inside the app, on the profiles that have a host, under the names
+  the picker shows. A profile edit starts it again on the new set,
+  which is what a restart does for the standalone server. The
+  auto-print is frontend only: a personal API key in the settings
   store, `fetch` against Linear's GraphQL endpoint every 10 seconds
   while the toggle is on, and a task card through the ordinary print
   command for each open issue assigned to the user that the previous
@@ -44,11 +48,13 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   answers the webview's CORS preflight, so no Tauri HTTP plugin is
   involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. The skill below is its reference. One concern per
-  module: `body` reads a request, `job` turns it into printable
-  bytes, `printers` writes them, `config` reads the profile file,
-  `problem` is the only error shape and `app` wires them together.
-  Anything new goes in whichever of those owns it.
+  local programs. The skill below is its reference. A library with a
+  thin command line on top, so the desktop app can run the same
+  server. One concern per module: `body` reads a request, `job` turns
+  it into printable bytes, `printers` writes them, `config` reads the
+  profile file, `problem` is the only error shape, `app` wires them
+  into a router and `server` binds, serves and stops it. Anything new
+  goes in whichever of those owns it.
 - `manuals/`: the Star specifications. Check bytes there, not from memory.
 - `.agents/skills/starprint-print/`: the skill we publish for callers
   of the API, and the only reference to its endpoints and job fields.

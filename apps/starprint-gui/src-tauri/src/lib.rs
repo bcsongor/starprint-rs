@@ -2,6 +2,7 @@
 //! names one, hands the rest to `starprint-workflows` and returns what
 //! came back.
 
+mod api;
 mod hexdump;
 mod job;
 mod picture;
@@ -200,6 +201,7 @@ async fn probe_printer(host: String, port: u16) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(SourceCache::default()))
+        .manage(api::Embedded::default())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -216,7 +218,9 @@ pub fn run() {
             print_job,
             job_hexdump,
             picture_preview,
-            probe_printer
+            probe_printer,
+            api::start_api,
+            api::stop_api
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

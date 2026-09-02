@@ -274,3 +274,25 @@ export function picturePreview(
 export function probePrinter(host: string, port: number) {
   return invoke<boolean>("probe_printer", { host, port });
 }
+
+/**
+ * Mirrors `Profile` in starprint-api/src/config.rs: what a client names
+ * a printer by, and the printer it reaches.
+ */
+export interface NamedPrinter {
+  name: string;
+  printer: Printer;
+}
+
+/**
+ * Starts the HTTP API inside the app on these printers, replacing one
+ * already running, and returns its URL. Loopback only.
+ */
+export function startApi(printers: NamedPrinter[]) {
+  return invoke<string>("start_api", { printers });
+}
+
+/** Lets requests in flight finish first. */
+export function stopApi() {
+  return invoke<void>("stop_api");
+}

@@ -4,6 +4,8 @@ import type { Printer } from "./api";
 const FILE = "settings.json";
 const KEY = "profiles";
 const LINEAR_KEY = "linear";
+/** Whether the HTTP API runs inside the app. */
+const API_KEY = "api";
 /** From before profiles existed; migrated on first load. */
 const LEGACY_KEY = "printer";
 
@@ -113,5 +115,16 @@ export async function loadLinear(): Promise<Linear | null> {
 export async function saveLinear(linear: Linear): Promise<void> {
   const store = await load(FILE, { defaults: {} });
   await store.set(LINEAR_KEY, linear);
+  await store.save();
+}
+
+export async function loadApiEnabled(): Promise<boolean> {
+  const store = await load(FILE, { defaults: {} });
+  return (await store.get<boolean>(API_KEY)) ?? false;
+}
+
+export async function saveApiEnabled(enabled: boolean): Promise<void> {
+  const store = await load(FILE, { defaults: {} });
+  await store.set(API_KEY, enabled);
   await store.save();
 }

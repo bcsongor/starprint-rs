@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
+import { ApiToggle } from "@/components/api-toggle";
 import { CardPreview } from "@/components/card-preview";
 import { LinearBar } from "@/components/linear-bar";
 import { NoteForm } from "@/components/note-form";
@@ -31,6 +32,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useApiServer } from "@/hooks/use-api-server";
 import { useAutoPrint } from "@/hooks/use-auto-print";
 import {
   DEFAULT_NOTE,
@@ -66,8 +68,10 @@ import { roll } from "@/lib/paper";
 import {
   DEFAULT_PROFILES,
   activeProfile,
+  loadApiEnabled,
   loadLinear,
   loadProfiles,
+  saveApiEnabled,
   saveLinear,
   saveProfiles,
   toPrinter,
@@ -131,10 +135,12 @@ export default function App() {
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
+  const [apiEnabled, setApiEnabled] = useState(false);
 
   useEffect(() => {
     loadProfiles().then(setProfiles).catch(console.error);
     loadLinear().then(setLinear).catch(console.error);
+    loadApiEnabled().then(setApiEnabled).catch(console.error);
   }, []);
 
   const updateProfiles = (next: Profiles) => {
@@ -146,6 +152,15 @@ export default function App() {
     setLinear(next);
     saveLinear(next).catch(console.error);
   };
+
+  const updateApiEnabled = (next: boolean) => {
+    setApiEnabled(next);
+    saveApiEnabled(next).catch(console.error);
+  };
+
+  const apiUrl = useApiServer(apiEnabled, profiles.profiles, () =>
+    updateApiEnabled(false),
+  );
 
   const profile = activeProfile(profiles);
   const printer = toPrinter(profile);
@@ -373,11 +388,20 @@ export default function App() {
     <main className="flex h-screen flex-col [--col:27.5rem]">
       {/* Dark so it reads as app chrome. */}
       <header className="dark grid grid-cols-[var(--col)_minmax(0,1fr)] items-end border-b bg-background py-3 text-foreground">
-        <div className="pl-4">
+        {/* The API serves whichever profile a caller names, so it sits
+            in the picker's column, at the form's right edge like the
+            cut switch below. */}
+        <div className="flex items-end px-4">
           <ProfileToolbar
             state={profiles}
             onChange={updateProfiles}
             printing={printing}
+          />
+          <ApiToggle
+            enabled={apiEnabled}
+            url={apiUrl}
+            onChange={updateApiEnabled}
+            className="ml-auto"
           />
         </div>
         {/* Paper label starts where the Preview label does. */}

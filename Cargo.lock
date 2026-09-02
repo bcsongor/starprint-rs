@@ -3025,6 +3025,7 @@ dependencies = [
  "serde",
  "serde_json",
  "starprint",
+ "starprint-api",
  "starprint-workflows",
  "tauri",
  "tauri-build",

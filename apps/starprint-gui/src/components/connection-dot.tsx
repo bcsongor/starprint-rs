@@ -1,6 +1,12 @@
 import type { Status } from "@/hooks/use-probes";
 import { cn } from "@/lib/utils";
 
+/**
+ * Lays out a dot and the name it belongs to, at the same distance
+ * wherever the pair appears: the profile picker and the API button.
+ */
+export const DOTTED = "flex items-center gap-1.5";
+
 /** A status dot: green when the printer answers, grey when it does not. */
 export function ConnectionDot({
   status,

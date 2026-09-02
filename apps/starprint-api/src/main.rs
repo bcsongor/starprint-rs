@@ -1,24 +1,10 @@
-//! A small HTTP server that prints the same jobs the desktop app does,
-//! for other local programs to call.
-//!
-//! It binds the loopback interface by default and enables no CORS. It
-//! has no authentication, so `--listen` on an address the network can
-//! reach hands every printer in the profile file to anyone who asks.
+//! The command line: profiles from a file, one server until Ctrl-C.
 
-mod app;
 mod args;
-mod body;
-mod config;
-mod job;
-mod printers;
-mod problem;
 
-use std::net::SocketAddr;
 use std::process::ExitCode;
-use std::sync::Arc;
 
-use config::Profile;
-use printers::Printers;
+use starprint_api::{Server, config};
 
 fn main() -> ExitCode {
     match run() {
@@ -52,19 +38,10 @@ fn run() -> Result<(), String> {
 
     tokio::runtime::Runtime::new()
         .map_err(|e| format!("the runtime could not start: {e}"))?
-        .block_on(serve(args.listen, profiles))
-}
-
-async fn serve(listen: SocketAddr, profiles: Vec<Profile>) -> Result<(), String> {
-    let router = app::router(Arc::new(Printers::new(profiles)));
-    let listener = tokio::net::TcpListener::bind(listen)
-        .await
-        .map_err(|e| format!("{listen} could not be bound: {e}"))?;
-    println!("starprint-api: listening on http://{listen}");
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async {
+        .block_on(async {
+            let server = Server::bind(args.listen, profiles).await?;
+            println!("starprint-api: listening on http://{}", server.local_addr());
             let _ = tokio::signal::ctrl_c().await;
+            server.shutdown().await
         })
-        .await
-        .map_err(|e| format!("the server stopped: {e}"))
 }

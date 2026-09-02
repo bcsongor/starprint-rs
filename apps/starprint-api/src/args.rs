@@ -3,6 +3,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use starprint_api::DEFAULT_LISTEN;
+
 pub const USAGE: &str = "\
 starprint-api. Print starprint jobs over HTTP.
 
@@ -14,7 +16,6 @@ Usage: starprint-api [--config <path>] [--listen <addr>]
 ";
 
 const DEFAULT_CONFIG: &str = "printers.toml";
-const DEFAULT_LISTEN: &str = "127.0.0.1:9110";
 
 #[derive(Debug)]
 pub struct Args {
@@ -40,12 +41,15 @@ pub fn parse(raw: impl IntoIterator<Item = String>) -> Result<Option<Args>, Stri
         }
     }
 
-    let listen = listen.as_deref().unwrap_or(DEFAULT_LISTEN);
-    Ok(Some(Args {
-        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG)),
-        listen: listen
+    let listen = match listen {
+        Some(listen) => listen
             .parse()
             .map_err(|e| format!("`--listen {listen}` is not an address with a port: {e}"))?,
+        None => DEFAULT_LISTEN,
+    };
+    Ok(Some(Args {
+        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG)),
+        listen,
     }))
 }
 
@@ -61,7 +65,7 @@ mod tests {
     fn no_arguments_gives_the_defaults() {
         let args = args(&[]).unwrap().expect("not help");
         assert_eq!(args.config, PathBuf::from(DEFAULT_CONFIG));
-        assert_eq!(args.listen.to_string(), DEFAULT_LISTEN);
+        assert_eq!(args.listen, DEFAULT_LISTEN);
     }
 
     #[test]

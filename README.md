@@ -97,11 +97,11 @@ Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the p
 
 ## Desktop app
 
-`apps/starprint-gui` is a Tauri app that prints task cards, text, note slips, QR codes, pictures and test pages. Connect a Linear account with a personal API key and it can print a task card for each issue newly assigned to you while it runs. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
+`apps/starprint-gui` is a Tauri app that prints task cards, text, note slips, QR codes, pictures and test pages. Connect a Linear account with a personal API key and it can print a task card for each issue newly assigned to you while it runs. Press API and it serves the HTTP API below from inside the app, on the profiles it has, so no separate server is needed. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
 
 ## HTTP API
 
-`apps/starprint-api` serves the same jobs to other local programs, mostly AI agents. Name your printers in a TOML file and post jobs to them:
+`apps/starprint-api` serves the same jobs to other local programs, mostly AI agents. The desktop app can serve it too, from its API button. On its own, name your printers in a TOML file and post jobs to them:
 
 ```console
 $ cp apps/starprint-api/printers.toml.example printers.toml

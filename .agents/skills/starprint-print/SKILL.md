@@ -7,7 +7,9 @@ description: Print task cards, text, note slips, QR codes, pictures and test pag
 
 `starprint-api` prints to Star receipt printers on the local network.
 It listens on `http://127.0.0.1:9110` unless it was started with
-`--listen`.
+`--listen`. The Starprint desktop app serves the same API at the same
+address while its API button is pressed, with printers named as its
+profiles are.
 
 Printing is physical and cannot be undone. It spends paper, and ribbon
 on the impact printer. Ask before printing anything the user did not
@@ -19,8 +21,8 @@ lines.
 
 ## Start here
 
-Every job goes to a printer named in the server's profile file, so find
-out what exists before printing:
+Every job goes to a printer by name, so find out what exists before
+printing:
 
 ```bash
 curl -s http://127.0.0.1:9110/v1/printers
@@ -33,8 +35,9 @@ curl -s http://127.0.0.1:9110/v1/printers
 ]
 ```
 
-If this fails to connect, the server is not running. Say so rather than
-guessing a printer name. If more than one printer is listed and the
+If this fails to connect, nothing is serving the API. Neither the
+server nor the desktop app's button is on. Say so rather than guessing
+a printer name. If more than one printer is listed and the
 user did not say which, ask.
 
 ## Printing
