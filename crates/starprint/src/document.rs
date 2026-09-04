@@ -620,7 +620,13 @@ mod tests {
             b'b', 2, 0, 0b0001_0000, 0b0000_0000,
             0x1B, b'*', b'r', b'B',             // quit raster mode
         ]);
-        // A BitImage is accepted as a bitmap too, and empty images emit nothing.
+        // A BitImage is accepted as a bitmap too.
+        let image = BitImage::new(bmp, Density::Single).unwrap();
+        assert_eq!(
+            bytes(Builder::<StarLine>::without_init().raster(&image, RasterQuality::High)),
+            doc
+        );
+        // Empty images emit nothing.
         let empty = Bitmap::from_fn(0, 0, |_, _| false);
         assert_eq!(
             bytes(Builder::<StarLine>::without_init().raster(&empty, RasterQuality::Normal)),

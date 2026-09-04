@@ -154,7 +154,64 @@ impl ImagePipeline {
     }
 
     pub fn prepare(&self, source: &DynamicImage) -> Result<PreparedImage> {
-        prepare(source, self)
+        let mut gray = to_grayscale_on_white(source);
+        let (src_w, src_h) = (gray.width(), gray.height());
+        if src_w == 0 || src_h == 0 {
+            return Err(Error::InvalidData {
+                reason: "source image has zero width or height".into(),
+            });
+        }
+
+        let tone = self.tone.unwrap_or(ToneCurve::for_head(self.profile.head));
+        autocontrast(&mut gray);
+        if tone.gamma != 1.0 {
+            apply_lut(&mut gray, &gamma_lut(tone.gamma));
+        }
+        gray = unsharp_mask(&gray, SHARPEN_SIGMA * 3.0);
+        if tone.equalize {
+            equalize(&mut gray);
+        }
+        if self.density == Density::Double {
+            brightness(&mut gray, DOUBLE_DENSITY_BRIGHTNESS);
+        }
+
+        if self.brightness != 1.0 {
+            brightness(&mut gray, self.brightness);
+        }
+        if self.contrast != 1.0 {
+            contrast(&mut gray, self.contrast);
+        }
+
+        let width = self.profile.max_width(self.density);
+        let h_dpi = self.profile.horizontal_dpi_at(self.density);
+
+        // Fit the width, then stretch the height for the anisotropic pitch.
+        let aspect_h = ratio_round(src_h, width, src_w);
+        let compensated_h =
+            (f64::from(aspect_h) * self.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
+        if compensated_h == 0 {
+            return Err(Error::InvalidData {
+                reason: "image is too wide and short to print at this width".into(),
+            });
+        }
+        // One source for both resamples.
+        let full = image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
+            .expect("buffer sized from dimensions");
+        let print_gray = self.dither.apply(&resize(&full, width, compensated_h));
+        let image = BitImage::with_profile(print_gray.to_bitmap(), self.density, &self.profile)?;
+
+        // Preview: print width at display height, then pool pairs at double
+        // density.
+        let display_w = self.profile.width_dots_single;
+        let display_h = ratio_round(src_h, display_w, src_w).max(1);
+        let preview_gray = self.dither.apply(&resize(&full, width, display_h));
+        let preview = if width == display_w {
+            preview_gray
+        } else {
+            min_pool_pairs(&preview_gray)
+        };
+
+        Ok(PreparedImage { image, preview })
     }
 }
 
@@ -164,69 +221,6 @@ pub struct PreparedImage {
     /// For the screen: single-density width, square pixels. At double
     /// density, pixel pairs are min-pooled to show the dot overlap.
     pub preview: Grayscale,
-}
-
-fn prepare(source: &DynamicImage, options: &ImagePipeline) -> Result<PreparedImage> {
-    let mut gray = to_grayscale_on_white(source);
-    let (src_w, src_h) = (gray.width(), gray.height());
-    if src_w == 0 || src_h == 0 {
-        return Err(Error::InvalidData {
-            reason: "source image has zero width or height".into(),
-        });
-    }
-
-    let tone = options
-        .tone
-        .unwrap_or(ToneCurve::for_head(options.profile.head));
-    autocontrast(&mut gray);
-    if tone.gamma != 1.0 {
-        apply_lut(&mut gray, &gamma_lut(tone.gamma));
-    }
-    gray = unsharp_mask(&gray, SHARPEN_SIGMA * 3.0, UNSHARP_PERCENT, 0);
-    if tone.equalize {
-        equalize(&mut gray);
-    }
-    if options.density == Density::Double {
-        brightness(&mut gray, DOUBLE_DENSITY_BRIGHTNESS);
-    }
-
-    if options.brightness != 1.0 {
-        brightness(&mut gray, options.brightness);
-    }
-    if options.contrast != 1.0 {
-        contrast(&mut gray, options.contrast);
-    }
-
-    let width = options.profile.max_width(options.density);
-    let h_dpi = options.profile.horizontal_dpi_at(options.density);
-
-    // Fit the width, then stretch the height for the anisotropic pitch.
-    let aspect_h = ratio_round(src_h, width, src_w);
-    let compensated_h =
-        (f64::from(aspect_h) * options.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
-    if compensated_h == 0 {
-        return Err(Error::InvalidData {
-            reason: "image is too wide and short to print at this width".into(),
-        });
-    }
-    // One source for both resamples.
-    let full = image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
-        .expect("buffer sized from dimensions");
-    let print_gray = options.dither.apply(&resize(&full, width, compensated_h));
-    let image = BitImage::with_profile(print_gray.to_bitmap(), options.density, &options.profile)?;
-
-    // Preview: print width at display height, then pool pairs at double
-    // density.
-    let display_w = options.profile.width_dots_single;
-    let display_h = ratio_round(src_h, display_w, src_w).max(1);
-    let preview_gray = options.dither.apply(&resize(&full, width, display_h));
-    let preview = if width == display_w {
-        preview_gray
-    } else {
-        min_pool_pairs(&preview_gray)
-    };
-
-    Ok(PreparedImage { image, preview })
 }
 
 /// `round(a * b / c)`, ties to even like Python.
@@ -374,9 +368,9 @@ fn blend_channel(a: f64, b: f64, factor: f64) -> u8 {
     }
 }
 
-/// Pillow's unsharp arithmetic over a true Gaussian (Pillow uses box
-/// blurs).
-fn unsharp_mask(gray: &Grayscale, radius: f64, percent: i32, threshold: i32) -> Grayscale {
+/// Pillow's unsharp arithmetic at [`UNSHARP_PERCENT`] and no threshold,
+/// over a true Gaussian (Pillow uses box blurs).
+fn unsharp_mask(gray: &Grayscale, radius: f64) -> Grayscale {
     let blurred = gaussian_blur(gray, radius);
     let pixels = gray
         .pixels()
@@ -384,11 +378,7 @@ fn unsharp_mask(gray: &Grayscale, radius: f64, percent: i32, threshold: i32) -> 
         .zip(blurred.pixels())
         .map(|(&px, &blur)| {
             let diff = i32::from(px) - i32::from(blur);
-            if diff.abs() > threshold {
-                (i32::from(px) + diff * percent / 100).clamp(0, 255) as u8
-            } else {
-                px
-            }
+            (i32::from(px) + diff * UNSHARP_PERCENT / 100).clamp(0, 255) as u8
         })
         .collect();
     Grayscale::new(gray.width(), gray.height(), pixels).expect("same dimensions")
