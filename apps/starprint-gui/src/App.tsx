@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ import {
   DEFAULT_TEST_PAGE,
   DEFAULT_TEXT,
   QUIET_MODULES,
+  TWO_COLOR_DENSITY,
   jobHexdump,
   noteLayout,
   picturePreview,
@@ -115,7 +116,7 @@ export default function App() {
   const [note, setNote] = useState<Note>(DEFAULT_NOTE);
   const [code, setCode] = useState<Qr>(DEFAULT_QR);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
-  const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
+  const [pictureSettings, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
@@ -148,6 +149,12 @@ export default function App() {
 
   const profile = activeProfile(profiles);
   const printer = toPrinter(profile);
+  const twoColor =
+    printer.kind === "thermal" && printer.density === TWO_COLOR_DENSITY;
+  const picture = useMemo(
+    () => (twoColor ? { ...pictureSettings, double: false } : pictureSettings),
+    [pictureSettings, twoColor],
+  );
 
   const updatePrinter = (next: Printer) =>
     updateProfiles({
@@ -349,8 +356,8 @@ export default function App() {
             />
           ) : (
             <PictureForm
-              picture={picture}
-              kind={printer.kind}
+              picture={pictureSettings}
+              printer={printer}
               onChange={setPicture}
             />
           )}

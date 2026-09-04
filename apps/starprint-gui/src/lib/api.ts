@@ -9,6 +9,9 @@ export type Speed = "high" | "medium" | "slow";
 /** Mirrors `Paper` in starprint-workflows/src/lib.rs. */
 export type Paper = "80" | "112";
 
+/** Selects two-colour mode; mirrors `TWO_COLOR_DENSITY` in starprint-workflows. */
+export const TWO_COLOR_DENSITY = 4;
+
 /** Mirrors `Printer` in starprint-workflows/src/lib.rs. */
 export interface Printer {
   kind: PrinterKind;

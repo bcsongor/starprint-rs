@@ -189,7 +189,7 @@ mod tests {
         let request = request(r#"{"density":7,"job":{"kind":"test-page"}}"#);
         assert_eq!(
             detail(request.printer(&thermal()).unwrap_err()),
-            "`density` is 7, outside -3 to 3."
+            "`density` is 7, outside -3 to 4."
         );
     }
 

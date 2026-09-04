@@ -265,12 +265,13 @@ pub enum ImpactFont {
     FiveByNineWide,
 }
 
-/// Print colour on impact printers with a black/red ribbon.
+/// Print colour on impact printers with a black/red ribbon, and on
+/// thermal printers in [`PrintMode::TwoColor`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Color {
     #[default]
     Black,
-    /// Needs [`two_color`](crate::Builder::two_color). Red passes print
-    /// one way only, so they are slower.
+    /// Needs [`two_color`](crate::Builder::two_color) on impact, where
+    /// red passes print one way only, so they are slower.
     Red,
 }

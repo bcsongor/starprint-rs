@@ -7,9 +7,10 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_PICTURE,
+  TWO_COLOR_DENSITY,
   type Dither,
   type Picture,
-  type PrinterKind,
+  type Printer,
 } from "@/lib/api";
 
 const DITHERS: Option<Dither>[] = [
@@ -28,7 +29,7 @@ const FILE_FILTERS = [
 
 interface Props {
   picture: Picture;
-  kind: PrinterKind;
+  printer: Printer;
   onChange: (picture: Picture) => void;
 }
 
@@ -36,10 +37,11 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function PictureForm({ picture, kind, onChange }: Props) {
+export function PictureForm({ picture, printer, onChange }: Props) {
   const set = <K extends keyof Picture>(key: K, value: Picture[K]) =>
     onChange({ ...picture, [key]: value });
-  const thermal = kind === "thermal";
+  const thermal = printer.kind === "thermal";
+  const twoColor = thermal && printer.density === TWO_COLOR_DENSITY;
   const hasThreshold = picture.dither !== "bayer";
   const adjusted = (Object.keys(DEFAULT_PICTURE) as (keyof Picture)[]).some(
     (key) => key !== "path" && picture[key] !== DEFAULT_PICTURE[key],
@@ -102,10 +104,20 @@ export function PictureForm({ picture, kind, onChange }: Props) {
           />
         </Field>
 
-        <Field orientation="horizontal" className="h-8 w-auto">
+        <Field
+          orientation="horizontal"
+          className="h-8 w-auto"
+          data-disabled={twoColor}
+          title={
+            twoColor
+              ? "Double resolution is unavailable at density +4."
+              : undefined
+          }
+        >
           <Switch
             id="double"
-            checked={picture.double}
+            checked={picture.double && !twoColor}
+            disabled={twoColor}
             onCheckedChange={(checked) => set("double", checked)}
           />
           <FieldLabel

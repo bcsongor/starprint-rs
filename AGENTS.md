@@ -93,6 +93,14 @@ them, so do not retune these values from a screen:
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job.
+- Two-colour mode prints a darker black than single colour at +3 on
+  plain paper, measured on the TSP700II, which is what density +4 in a
+  profile selects. In that mode the density command does nothing to
+  black (a sweep from -3 to +3 printed three identical bars) and the
+  speed command is ignored, so +4 sections send neither command.
+  Double-resolution sections use +3 instead. The GUI disables picture
+  double resolution at +4 for both preview and printing. The text colour
+  and the raster colour both survive `ESC @`, so every job sets them.
 - A QR module is drawn 7 dots by 3 on the SP700, at double density: 169
   dots to the inch across against 72 down, which comes within 1 % of
   square. A 30 mm symbol printed that way scans off the ribbon, so the
@@ -131,7 +139,9 @@ Behaviour that shapes how jobs are written:
   slow density=3 [double] [rotate] [gamma=F] [equalize=0|1]` for photos.
 - `cargo run --example impact_image --features image -- <host> photo.jpg
   double [rotate]` for the SP700.
-- Three probes print the same content under two settings for comparison:
-  `thermal_black_probe` (normal against double resolution),
-  `thermal_text_probe` (double resolution on the printer's fonts) and
-  `thermal_speed_probe` (times each `ESC RS r` value).
+- Four probes print the same content under different settings for
+  comparison: `thermal_black_probe` (normal against double resolution),
+  `thermal_color_probe` (single colour against two-colour black and red,
+  since the red drive is the hotter one), `thermal_text_probe` (double
+  resolution on the printer's fonts) and `thermal_speed_probe` (times
+  each `ESC RS r` value).

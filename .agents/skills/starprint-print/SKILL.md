@@ -115,9 +115,15 @@ the desktop app starts from and are usually right.
 ## Per-job overrides
 
 Alongside `job`, a request may carry `cut`, and on thermal printers
-`density` (-3 to 3) and `speed` (`high`, `medium` or `slow`). Omitted,
+`density` (-3 to 4) and `speed` (`high`, `medium` or `slow`). Omitted,
 they come from the profile. Sending `density` or `speed` to an impact
 printer is an error rather than being ignored.
+
+`density` 4 selects the printer's two-colour mode, which prints a
+darker black than +3 on plain paper. The mode has one speed, so
+`speed` does nothing at 4. A picture with `double` prints in double
+resolution at +3 instead. A test page's double-resolution section
+also uses +3; its other sections use two-colour mode.
 
 Leave these alone unless the user asks. The profile holds settings that
 were tuned against the actual hardware.

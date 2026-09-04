@@ -3,7 +3,7 @@
 
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
-use starprint::{Document, PrintSpeed};
+use starprint::{Builder, Color, Document, PrintMode, PrintSpeed, StarLine};
 
 use crate::{Job, picture, test_page};
 
@@ -76,9 +76,12 @@ impl From<Speed> for PrintSpeed {
     }
 }
 
-/// What the printer's own -3 to +3 density scale accepts. Reachable
-/// through [`check_density`], which is the only thing that needs it.
-const DENSITY_RANGE: std::ops::RangeInclusive<i8> = -3..=3;
+/// Selects two-colour mode for darker black on plain paper.
+/// Double-resolution sections use +3 instead.
+pub const TWO_COLOR_DENSITY: i8 = 4;
+
+/// The printer's density scale plus our two-colour setting.
+const DENSITY_RANGE: std::ops::RangeInclusive<i8> = -3..=TWO_COLOR_DENSITY;
 
 /// `starprint` clamps a density it cannot use. A profile or a request
 /// that names one is a mistake worth reporting instead, so both front
@@ -195,22 +198,38 @@ impl Printer {
                 speed,
             } => {
                 // The print mode outlives `ESC @` and the job that set
-                // it, so a double-resolution picture would otherwise
-                // leave the next job printing at half height.
-                let head = starprint::starline()
-                    .print_mode(starprint::PrintMode::SingleColor)
-                    .print_density(density)
-                    .print_speed(speed.into());
-                match job {
-                    Job::TaskCard(card) => Ok(card.document(head, paper, cut)),
-                    Job::Text(text) => Ok(text.document(head, paper, cut)),
-                    Job::Note(note) => Ok(note.document(head, paper, cut)),
-                    Job::Qr(code) => code.document(head, paper, cut),
-                    Job::TestPage(page) => Ok(test_page::thermal(head, page, paper, cut)),
+                // it, so every job selects its mode first, and a
+                // two-colour job leaves the printer in single colour.
+                let two_color = density == TWO_COLOR_DENSITY;
+                let mode = if two_color {
+                    PrintMode::TwoColor
+                } else {
+                    PrintMode::SingleColor
+                };
+                let head = starprint::starline().print_mode(mode).color(Color::Black);
+                let head = if two_color {
+                    head
+                } else {
+                    head.print_density(density).print_speed(speed.into())
+                };
+                let doc = match job {
+                    Job::TaskCard(card) => card.document(head, paper, cut),
+                    Job::Text(text) => text.document(head, paper, cut),
+                    Job::Note(note) => note.document(head, paper, cut),
+                    Job::Qr(code) => code.document(head, paper, cut)?,
+                    Job::TestPage(page) => test_page::thermal(head, page, paper, cut, mode),
                     Job::Picture(pic) => {
                         let image = image.ok_or("No picture supplied.")?;
-                        picture::thermal(head, pic, paper, cut, image)
+                        picture::thermal(head, pic, paper, cut, image, mode)?
                     }
+                };
+                if two_color {
+                    Ok(Builder::<StarLine>::without_init()
+                        .raw(doc)
+                        .print_mode(PrintMode::SingleColor)
+                        .build())
+                } else {
+                    Ok(doc)
                 }
             }
             Head::Impact => {
@@ -325,6 +344,80 @@ mod tests {
             !bytes.windows(3).any(|w| w[..2] == [0x1b, 0x1e]),
             "no density, speed or print mode: {bytes:02x?}"
         );
+    }
+
+    #[test]
+    fn the_density_above_the_scale_is_two_colour_mode_for_the_job() {
+        let job = Job::Text(Text {
+            text: "Hi".to_owned(),
+            ..Text::default()
+        });
+        let mut printer = thermal();
+        printer.head = Head::Thermal {
+            paper: Paper::Mm80,
+            density: TWO_COLOR_DENSITY,
+            speed: Speed::Slow,
+        };
+        let doc = printer.document(&job, None).unwrap();
+        let bytes = doc.as_bytes();
+        let first = bytes
+            .windows(4)
+            .find(|w| w[..3] == [0x1b, 0x1e, b'C'])
+            .expect("selects a print mode");
+        assert_eq!(first[3], 1, "starts in two-colour mode");
+        assert!(
+            bytes.windows(4).any(|w| w == [0x1b, 0x1e, b'c', 0]),
+            "text in black, whatever the last job left: {bytes:02x?}"
+        );
+        assert!(
+            !bytes
+                .windows(3)
+                .any(|w| w[..2] == [0x1b, 0x1e] && (w[2] == b'd' || w[2] == b'r')),
+            "no density or speed, which the mode ignores: {bytes:02x?}"
+        );
+        assert!(
+            bytes.ends_with(&[0x1b, b'd', 3, 0x1b, 0x1e, b'C', 0]),
+            "cuts, then hands the printer back in single colour"
+        );
+    }
+
+    #[test]
+    fn double_resolution_at_plus_four_sets_density_before_the_raster() {
+        let printer = Printer::thermal(
+            "printer.invalid".to_owned(),
+            9100,
+            Paper::Mm80,
+            TWO_COLOR_DENSITY,
+            Speed::Slow,
+        );
+        let image = DynamicImage::new_rgb8(1, 1);
+        for job in [
+            Job::Picture(Picture {
+                double: true,
+                ..Picture::default()
+            }),
+            Job::TestPage(TestPage {
+                double_resolution: true,
+            }),
+        ] {
+            let document = printer.document(&job, Some(&image)).unwrap();
+            let bytes = document.as_bytes();
+            let double = bytes
+                .windows(4)
+                .position(|w| w == [0x1b, 0x1e, b'C', 32])
+                .expect("selects double resolution");
+            assert_eq!(
+                &bytes[double + 4..double + 12],
+                &[0x1b, 0x1e, b'd', 0, 0x1b, b'*', b'r', b'A'],
+                "sets +3 before entering raster mode: {job:?}"
+            );
+            let end = bytes[double + 12..]
+                .windows(4)
+                .position(|w| w[..3] == [0x1b, 0x1e, b'C'])
+                .expect("restores the job's mode");
+            assert_eq!(bytes[double + 12 + end + 3], 1);
+            assert!(bytes.ends_with(&[0x1b, 0x1e, b'C', 0]));
+        }
     }
 
     #[test]

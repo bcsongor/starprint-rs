@@ -206,7 +206,7 @@ density = 3
         assert_eq!(err(&with("paper", "58")), "p: `paper` is 58, not 80 or 112");
         assert_eq!(
             err(&with("density", "9")),
-            "p: `density` is 9, outside -3 to 3"
+            "p: `density` is 9, outside -3 to 4"
         );
         assert!(err(&with("speed", "\"quick\"")).starts_with("p: "));
         assert!(err(&with("port", "70000")).starts_with("p: "));

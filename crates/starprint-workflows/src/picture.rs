@@ -150,16 +150,20 @@ pub(crate) fn thermal(
     paper: Paper,
     cut: bool,
     source: &DynamicImage,
+    mode: PrintMode,
 ) -> Result<Document, String> {
     let prepared = picture.prepare(PrinterKind::Thermal, paper, source)?;
     let mut doc = builder.align(Alignment::Center);
     if picture.double {
         doc = doc.print_mode(PrintMode::DoubleResolution);
+        if mode == PrintMode::TwoColor {
+            doc = doc.print_density(3);
+        }
     }
     doc = doc.raster(&prepared.image, RasterQuality::High);
     if picture.double {
-        // The mode outlives ESC @.
-        doc = doc.print_mode(PrintMode::SingleColor);
+        // The mode outlives ESC @, so go back to the job's own.
+        doc = doc.print_mode(mode);
     }
     Ok(finish(margin(doc, cut), cut))
 }
@@ -261,6 +265,7 @@ mod tests {
             Paper::Mm80,
             false,
             &sample(),
+            PrintMode::SingleColor,
         )
         .unwrap();
         let bytes = doc.as_bytes();

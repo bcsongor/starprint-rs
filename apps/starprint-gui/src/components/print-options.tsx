@@ -1,24 +1,27 @@
 import { OptionSelect, type Option } from "@/components/option-select";
 import { Field, FieldLabel } from "@/components/ui/field";
-import type { Paper, Printer, Speed } from "@/lib/api";
+import {
+  TWO_COLOR_DENSITY,
+  type Paper,
+  type Printer,
+  type Speed,
+} from "@/lib/api";
 
 const PAPERS: Option<Paper>[] = [
   { value: "80", label: "80 mm", hint: "576 dots" },
   { value: "112", label: "112 mm", hint: "832 dots" },
 ];
 
-const DENSITIES: Option<string>[] = [3, 2, 1, 0, -1, -2, -3].map((value) => ({
-  value: String(value),
-  label: value > 0 ? `+${value}` : String(value),
-  hint:
-    value === 3
-      ? "darkest"
-      : value === 0
-        ? "default"
-        : value === -3
-          ? "lightest"
-          : "",
-}));
+const DENSITIES: Option<string>[] = [
+  { value: String(TWO_COLOR_DENSITY), label: "+4", hint: "two-colour" },
+  { value: "3", label: "+3", hint: "darkest" },
+  { value: "2", label: "+2" },
+  { value: "1", label: "+1" },
+  { value: "0", label: "0", hint: "default" },
+  { value: "-1", label: "-1" },
+  { value: "-2", label: "-2" },
+  { value: "-3", label: "-3", hint: "lightest" },
+];
 
 const SPEEDS: Option<Speed>[] = [
   { value: "slow", label: "Slow", hint: "best quality" },
@@ -38,6 +41,7 @@ export function PrintOptions({ printer, onChange }: Props) {
   const set = <K extends keyof Printer>(key: K, value: Printer[K]) =>
     onChange({ ...printer, [key]: value });
   const thermal = printer.kind === "thermal";
+  const twoColor = thermal && printer.density === TWO_COLOR_DENSITY;
 
   return (
     <>
@@ -65,13 +69,16 @@ export function PrintOptions({ printer, onChange }: Props) {
         />
       </Field>
 
-      <Field data-disabled={!thermal}>
+      <Field
+        data-disabled={!thermal || twoColor}
+        title={twoColor ? "Two-colour mode has one speed." : undefined}
+      >
         <FieldLabel htmlFor="speed">Speed</FieldLabel>
         <OptionSelect
           id="speed"
           value={printer.speed}
           options={SPEEDS}
-          disabled={!thermal}
+          disabled={!thermal || twoColor}
           labelClassName="w-14"
           onChange={(speed) => set("speed", speed)}
         />

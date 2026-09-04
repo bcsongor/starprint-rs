@@ -82,6 +82,7 @@ pub(crate) fn thermal(
     page: &TestPage,
     paper: Paper,
     cut: bool,
+    mode: PrintMode,
 ) -> Document {
     let width = paper.dots();
     let black_bar = Bitmap::from_fn(width, 64, |_, _| true);
@@ -108,9 +109,13 @@ pub(crate) fn thermal(
     if page.double_resolution {
         doc = doc
             .line("4b grey ramp, double resolution")
-            .print_mode(PrintMode::DoubleResolution)
+            .print_mode(PrintMode::DoubleResolution);
+        if mode == PrintMode::TwoColor {
+            doc = doc.print_density(3);
+        }
+        doc = doc
             .raster(ramp(width, 192), RasterQuality::High)
-            .print_mode(PrintMode::SingleColor);
+            .print_mode(mode);
     }
 
     let barcode = Barcode::new(Symbology::Code128, "STARPRINT")
@@ -228,7 +233,13 @@ mod tests {
     #[test]
     fn thermal_page_builds_for_both_papers() {
         for paper in [Paper::Mm80, Paper::Mm112] {
-            let doc = thermal(starprint::starline(), &page(true), paper, true);
+            let doc = thermal(
+                starprint::starline(),
+                &page(true),
+                paper,
+                true,
+                PrintMode::SingleColor,
+            );
             assert!(
                 doc.as_bytes().len() > 10_000,
                 "{paper:?} page is a raster job"

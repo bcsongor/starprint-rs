@@ -300,6 +300,13 @@ impl Builder<StarLine> {
         self.raw([ESC, 0x1E, b'C', mode.code()])
     }
 
+    /// Selects the text colour in two-colour mode (`ESC RS c n`).
+    /// Ignored outside it. The setting survives `ESC @`.
+    #[must_use]
+    pub fn color(self, color: Color) -> Self {
+        self.raw([ESC, 0x1E, b'c', (color == Color::Red) as u8])
+    }
+
     /// Sets the line-mode print speed (`ESC RS r n`). Ignored in
     /// double-resolution, two-colour and low-power modes; rasters use
     /// [`RasterQuality`] instead.
@@ -321,7 +328,7 @@ impl Builder<StarLine> {
         self.raw([ESC, 0x1E, b'd', n])
     }
 
-    /// Prints a bitmap in raster mode (`ESC * r`), one dot row per
+    /// Prints a black bitmap in raster mode (`ESC * r`), one dot row per
     /// command, so there is no stripe banding. The printer crops rows
     /// wider than its print area.
     ///
@@ -333,7 +340,20 @@ impl Builder<StarLine> {
     /// `*_DOUBLE_RESOLUTION` [`DeviceProfile`](crate::graphics::DeviceProfile)
     /// and select [`PrintMode::DoubleResolution`] first.
     #[must_use]
-    pub fn raster(mut self, image: impl AsRef<Bitmap>, quality: RasterQuality) -> Self {
+    pub fn raster(self, image: impl AsRef<Bitmap>, quality: RasterQuality) -> Self {
+        self.raster_color(image, quality, Color::Black)
+    }
+
+    /// Prints a bitmap with the given raster colour (`ESC * r K n NUL`).
+    /// Red requires [`PrintMode::TwoColor`]; otherwise colour is ignored.
+    /// Text colour is set separately by [`Self::color`].
+    #[must_use]
+    pub fn raster_color(
+        mut self,
+        image: impl AsRef<Bitmap>,
+        quality: RasterQuality,
+        color: Color,
+    ) -> Self {
         let bitmap = image.as_ref();
         if bitmap.width() == 0 || bitmap.height() == 0 {
             return self;
@@ -347,6 +367,10 @@ impl Builder<StarLine> {
             .extend_from_slice(&[ESC, b'*', b'r', b'E', b'1', 0]); // EOT: print only
         self.buf
             .extend_from_slice(&[ESC, b'*', b'r', b'Q', quality.code(), 0]);
+        // Raster colour survives both raster entry and ESC @.
+        let color = if color == Color::Red { b'1' } else { b'0' };
+        self.buf
+            .extend_from_slice(&[ESC, b'*', b'r', b'K', color, 0]);
 
         let bytes_per_row = bitmap.width().div_ceil(8);
         let [n1, n2] = (bytes_per_row as u16).to_le_bytes();
@@ -616,6 +640,7 @@ mod tests {
             0x1B, b'*', b'r', b'P', b'0', 0,    // continuous page length
             0x1B, b'*', b'r', b'E', b'1', 0,    // EOT mode: print, no cut
             0x1B, b'*', b'r', b'Q', b'2', 0,    // high quality
+            0x1B, b'*', b'r', b'K', b'0', 0,    // black, whatever the last job set
             b'b', 2, 0, 0b1000_0000, 0b0100_0000,
             b'b', 2, 0, 0b0001_0000, 0b0000_0000,
             0x1B, b'*', b'r', b'B',             // quit raster mode
@@ -632,6 +657,23 @@ mod tests {
             bytes(Builder::<StarLine>::without_init().raster(&empty, RasterQuality::Normal)),
             []
         );
+    }
+
+    #[test]
+    fn thermal_raster_defaults_to_black_after_red() {
+        let bitmap = Bitmap::from_fn(1, 1, |_, _| true);
+        let doc = bytes(
+            Builder::<StarLine>::without_init()
+                .print_mode(PrintMode::TwoColor)
+                .raster_color(&bitmap, RasterQuality::High, Color::Red)
+                .raster(&bitmap, RasterQuality::High),
+        );
+        let colors: Vec<_> = doc
+            .windows(6)
+            .filter(|w| w[..4] == [0x1b, b'*', b'r', b'K'])
+            .map(|w| (w[4], w[5]))
+            .collect();
+        assert_eq!(colors, [(b'1', 0), (b'0', 0)]);
     }
 
     #[test]
