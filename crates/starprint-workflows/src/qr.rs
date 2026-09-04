@@ -10,10 +10,11 @@
 use qrcodegen::{QrCode as Symbol, QrCodeEcc};
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
-use starprint::{Alignment, Builder, Cut, Document, Impact, Protocol, RasterQuality, StarLine};
+use starprint::{Alignment, Builder, Document, Impact, Protocol, RasterQuality, StarLine};
 
+use crate::picture::margin;
 use crate::text::{TextStyle, wrap_by_words};
-use crate::{MM_PER_INCH, Paper};
+use crate::{MM_PER_INCH, Paper, finish};
 
 /// Where the code sits across the paper. Mirrors
 /// [`starprint::Alignment`], which has no serde support of its own.
@@ -423,12 +424,7 @@ impl Qr {
             doc = doc.line(&line);
         }
         let doc = doc.draw(symbol)?;
-
-        Ok(if cut {
-            doc.feed(2).cut(Cut::FeedThenPartial).build()
-        } else {
-            doc.feed(3).build()
-        })
+        Ok(finish(margin(doc, cut), cut))
     }
 }
 

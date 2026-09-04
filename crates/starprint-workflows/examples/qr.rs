@@ -12,9 +12,10 @@
 //! the symbol and adds it inside them, and nobody has yet measured how
 //! much of that a phone will forgive on either head.
 
-use starprint::transport::TcpTransport;
+mod common;
+
 use starprint_workflows::qr::{Align, Ecc};
-use starprint_workflows::{Job, Paper, Printer, Qr, Speed};
+use starprint_workflows::{Job, Qr};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     const USAGE: &str = "usage: qr <printer-host> thermal|impact \"<data>\" [size=MM] [radius=PCT] [ecc=l|m|q|h] [align=left|center|right] [caption=TEXT]";
@@ -24,15 +25,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = args.next().ok_or(USAGE)?;
 
     let flags: Vec<String> = args.collect();
-    if let Some(bad) = flags.iter().find(|flag| {
-        !["size=", "radius=", "ecc=", "align=", "caption="]
-            .iter()
-            .any(|prefix| flag.starts_with(prefix))
-    }) {
-        return Err(format!("unknown option {bad:?}; {USAGE}").into());
-    }
+    common::check_flags(
+        &flags,
+        &["size=", "radius=", "ecc=", "align=", "caption="],
+        USAGE,
+    )?;
     let value = |key: &str| flags.iter().find_map(|flag| flag.strip_prefix(key));
 
+    let defaults = Qr::default();
     let code = Qr {
         data,
         caption: value("caption=").map(str::to_owned),
@@ -43,8 +43,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some("h") => Ecc::H,
             Some(bad) => return Err(format!("unknown error correction {bad:?}").into()),
         },
-        size: value("size=").map(str::parse).transpose()?.unwrap_or(30),
-        radius: value("radius=").map(str::parse).transpose()?.unwrap_or(100),
+        size: value("size=")
+            .map(str::parse)
+            .transpose()?
+            .unwrap_or(defaults.size),
+        radius: value("radius=")
+            .map(str::parse)
+            .transpose()?
+            .unwrap_or(defaults.radius),
         align: match value("align=") {
             None | Some("center") => Align::Center,
             Some("left") => Align::Left,
@@ -53,15 +59,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    let printer = match kind.as_str() {
-        "thermal" => Printer::thermal(host.clone(), 9100, Paper::Mm80, 3, Speed::Slow),
-        "impact" => Printer::impact(host.clone(), 9100),
-        _ => return Err(USAGE.into()),
-    };
-    let document = printer.document(&Job::Qr(code), None)?;
-
-    let mut transport = TcpTransport::connect(&host)?;
-    transport.print(&document)?;
-    println!("sent {} bytes to {host}", document.as_bytes().len());
-    Ok(())
+    let printer = common::printer(&kind, &host, None, USAGE)?;
+    common::send(&printer, &Job::Qr(code))
 }

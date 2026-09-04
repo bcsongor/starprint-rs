@@ -18,6 +18,7 @@ pub mod test_page;
 pub mod text;
 
 use serde::Deserialize;
+use starprint::{Builder, Cut, Document, Protocol};
 
 pub use note::Note;
 pub use picture::Picture;
@@ -30,6 +31,16 @@ pub use text::Text;
 /// Both heads place dots on a pitch of their own, so anything with a
 /// size in millimetres converts through this rather than a dot count.
 pub(crate) const MM_PER_INCH: f32 = 25.4;
+
+/// How a job ends: a cut, or three blank lines for the next job to start
+/// under when the profile has cutting off.
+pub(crate) fn finish<P: Protocol>(doc: Builder<P>, cut: bool) -> Document {
+    if cut {
+        doc.cut(Cut::FeedThenPartial).build()
+    } else {
+        doc.feed(3).build()
+    }
+}
 
 /// The six jobs, as one tagged enum. `kind` picks the variant and the
 /// rest of the object is that job's own settings.

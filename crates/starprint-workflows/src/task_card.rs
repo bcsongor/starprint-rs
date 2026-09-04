@@ -4,10 +4,10 @@
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
-use starprint::{Builder, Cut, Document, Impact, Protocol, StarLine};
+use starprint::{Builder, Document, Impact, Protocol, StarLine};
 
-use crate::Paper;
 use crate::text::{TextStyle, wrap_by_words};
+use crate::{Paper, finish};
 
 /// `text` is the only part a caller must supply. As with [`Text`], the
 /// [`Default`] derive leaves `text` required.
@@ -145,11 +145,7 @@ impl TaskCard {
             .set_tall(true)
             .text(&layout.lines.join("\n"))
             .feed(2);
-        if cut {
-            card.cut(Cut::FeedThenPartial).build()
-        } else {
-            card.feed(3).build()
-        }
+        finish(card, cut)
     }
 }
 

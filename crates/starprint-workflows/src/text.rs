@@ -64,9 +64,8 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     let mut lines = Vec::new();
 
     for raw_line in raw_lines {
-        let words: Vec<&str> = raw_line.split_whitespace().collect();
         let mut current = String::new();
-        for word in &words {
+        for word in raw_line.split_whitespace() {
             let word_len = word.chars().count();
             if current.is_empty() {
                 current.push_str(word);
@@ -75,7 +74,7 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
                 current.push_str(word);
             } else {
                 lines.push(current);
-                current = (*word).to_owned();
+                current = word.to_owned();
             }
         }
         lines.push(current);

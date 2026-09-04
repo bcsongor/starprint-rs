@@ -185,9 +185,6 @@ impl Printer {
             Job::Qr(code) if code.data.trim().is_empty() => {
                 return Err("The QR data is empty.".to_owned());
             }
-            Job::Picture(_) if image.is_none() => {
-                return Err("No picture supplied.".to_owned());
-            }
             _ => {}
         }
         let cut = self.cut;
@@ -211,7 +208,8 @@ impl Printer {
                     Job::Qr(code) => code.document(head, paper, cut),
                     Job::TestPage(page) => Ok(test_page::thermal(head, page, paper, cut)),
                     Job::Picture(pic) => {
-                        picture::thermal(head, pic, paper, cut, image.expect("checked above"))
+                        let image = image.ok_or("No picture supplied.")?;
+                        picture::thermal(head, pic, paper, cut, image)
                     }
                 }
             }
@@ -227,7 +225,8 @@ impl Printer {
                     Job::Qr(code) => code.document(head, paper, cut),
                     Job::TestPage(_) => Ok(test_page::impact(head, cut)),
                     Job::Picture(pic) => {
-                        picture::impact(head, pic, cut, image.expect("checked above"))
+                        let image = image.ok_or("No picture supplied.")?;
+                        picture::impact(head, pic, cut, image)
                     }
                 }
             }

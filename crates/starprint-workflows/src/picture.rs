@@ -8,9 +8,9 @@ use image::DynamicImage;
 use image::imageops::FilterType;
 use serde::Deserialize;
 use starprint::graphics::{Density, DeviceProfile, Dithering, ImagePipeline, PreparedImage};
-use starprint::{Alignment, Builder, Cut, Document, Impact, PrintMode, RasterQuality, StarLine};
+use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, StarLine};
 
-use crate::{Paper, PrinterKind};
+use crate::{Paper, PrinterKind, finish};
 
 /// [`Dithering`] without its threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -161,7 +161,7 @@ pub(crate) fn thermal(
         // The mode outlives ESC @.
         doc = doc.print_mode(PrintMode::SingleColor);
     }
-    Ok(finish(doc, cut))
+    Ok(finish(margin(doc, cut), cut))
 }
 
 pub(crate) fn impact(
@@ -172,15 +172,13 @@ pub(crate) fn impact(
 ) -> Result<Document, String> {
     let prepared = picture.prepare(PrinterKind::Impact, Paper::Mm80, source)?;
     let doc = builder.align(Alignment::Center).bit_image(&prepared.image);
-    Ok(finish(doc, cut))
+    Ok(finish(margin(doc, cut), cut))
 }
 
-fn finish<P: starprint::Protocol>(doc: Builder<P>, cut: bool) -> Document {
-    if cut {
-        doc.feed(2).cut(Cut::FeedThenPartial).build()
-    } else {
-        doc.feed(3).build()
-    }
+/// Blank paper under the image before a cut. Without one, the feed that
+/// ends the job is margin enough.
+pub(crate) fn margin<P: starprint::Protocol>(doc: Builder<P>, cut: bool) -> Builder<P> {
+    if cut { doc.feed(2) } else { doc }
 }
 
 #[cfg(test)]

@@ -9,11 +9,11 @@
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
-use starprint::{Builder, Cut, Document, Impact, LineSpacing, Protocol, RasterQuality, StarLine};
+use starprint::{Builder, Document, Impact, LineSpacing, Protocol, RasterQuality, StarLine};
 
 use crate::task_card::{align_right, format_date};
 use crate::text::TextStyle;
-use crate::{MM_PER_INCH, Paper};
+use crate::{MM_PER_INCH, Paper, finish};
 
 /// What is drawn for the hand to follow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -162,11 +162,7 @@ impl Note {
             _ => doc.rule(self.grid(<Builder<P> as NoteStyle>::profile(paper))),
         };
 
-        if cut {
-            doc.cut(Cut::FeedThenPartial).build()
-        } else {
-            doc.feed(3).build()
-        }
+        finish(doc, cut)
     }
 }
 

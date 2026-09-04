@@ -7,9 +7,10 @@
 //!        <printer-host> thermal|impact "<task>" [priority] [ref=KEY]
 //!        [due=DATE] [density=N]
 
+mod common;
+
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use starprint::transport::TcpTransport;
-use starprint_workflows::{Job, Paper, Printer, Speed, TaskCard, check_density};
+use starprint_workflows::{Job, TaskCard, check_density};
 
 fn next_weekday(today: NaiveDate, target_from_monday: u32) -> NaiveDate {
     let current = today.weekday().num_days_from_monday();
@@ -52,44 +53,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("task text cannot be empty".into());
     }
     let flags: Vec<String> = args.collect();
-    if let Some(bad) = flags.iter().find(|flag| {
-        flag.as_str() != "priority"
-            && !["ref=", "due=", "density="]
-                .iter()
-                .any(|prefix| flag.starts_with(prefix))
-    }) {
-        return Err(format!("unknown option {bad:?}; {USAGE}").into());
-    }
+    common::check_flags(&flags, &["priority", "ref=", "due=", "density="], USAGE)?;
 
     let value = |key: &str| flags.iter().find_map(|flag| flag.strip_prefix(key));
     let density: Option<i8> = value("density=").map(str::parse).transpose()?;
     if let Some(density) = density {
         check_density(density)?;
     }
-    let printer = match kind.as_str() {
-        "thermal" => Printer::thermal(
-            host.clone(),
-            9100,
-            Paper::Mm80,
-            density.unwrap_or(3),
-            Speed::Slow,
-        ),
-        "impact" if density.is_none() => Printer::impact(host.clone(), 9100),
-        "impact" => return Err("density is only available for thermal printers".into()),
-        _ => return Err(USAGE.into()),
-    };
+    let printer = common::printer(&kind, &host, density, USAGE)?;
     let job = Job::TaskCard(TaskCard {
         text,
         priority: flags.iter().any(|flag| flag == "priority"),
         reference: value("ref=").map(str::to_owned),
         due: due(value("due="), Local::now().date_naive()),
     });
-    let document = printer.document(&job, None)?;
-
-    let mut transport = TcpTransport::connect(&host)?;
-    transport.print(&document)?;
-    println!("sent {} bytes to {host}", document.as_bytes().len());
-    Ok(())
+    common::send(&printer, &job)
 }
 
 #[cfg(test)]

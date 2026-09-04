@@ -5,9 +5,9 @@
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, Dithering, Grayscale};
 
-use crate::Paper;
+use crate::{Paper, finish};
 use starprint::{
-    Alignment, Barcode, Builder, Color, Cut, Document, Impact, ImpactFont, PrintMode, QrCode,
+    Alignment, Barcode, Builder, Color, Document, Impact, ImpactFont, PrintMode, QrCode,
     RasterQuality, StarLine, Symbology, ThermalFont,
 };
 
@@ -36,8 +36,8 @@ fn section(title: &str, check: &str) -> Section {
 
 pub fn thermal_sections(page: &TestPage) -> Vec<Section> {
     let mut sections = vec![
-        section("Solid bar", "white hairline = dead element"),
-        section("Lines every 8 dots", "faint or missing = weak element"),
+        section("Solid bar", "white hairline = dead dot"),
+        section("Lines every 8 dots", "faint or missing = weak dot"),
         section("One-dot checkerboard", "sharpness and dot gain"),
         section("Grey ramp", "banding = platen or heat; streaks = drift"),
     ];
@@ -217,14 +217,6 @@ pub(crate) fn impact(builder: Builder<Impact>, cut: bool) -> Document {
     finish(doc, cut)
 }
 
-fn finish<P: starprint::Protocol>(doc: Builder<P>, cut: bool) -> Document {
-    if cut {
-        doc.cut(Cut::FeedThenPartial).build()
-    } else {
-        doc.feed(3).build()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,12 +255,5 @@ mod tests {
             "switches to red"
         );
         assert!(!bytes.ends_with(&[0x1b, b'd', 3]), "no cut when disabled");
-    }
-
-    #[test]
-    fn character_set_splits_into_three_lines() {
-        let ascii: String = (0x20u8..0x7f).map(char::from).collect();
-        assert_eq!(ascii.len(), 95);
-        assert_eq!(ascii[84..].len(), 11);
     }
 }
