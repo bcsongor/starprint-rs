@@ -61,7 +61,7 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         <Textarea
           id="task"
           // 5px padding makes an empty box the date button's 32px height.
-          className="min-h-0 border-border bg-background py-[0.3125rem] text-sm"
+          className="min-h-8 border-border bg-background py-[0.3125rem] text-sm"
           value={card.text}
           placeholder="What needs doing?"
           rows={3}
