@@ -36,7 +36,7 @@ export function PrintedText({ columns, children }: Props) {
     observer.observe(outer);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, [columns, children]);
+  }, []);
 
   return (
     <div ref={region} className="relative w-full" style={{ height }}>

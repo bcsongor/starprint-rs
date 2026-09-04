@@ -1,8 +1,8 @@
 //! Layout and image preview commands, thermal dot gain and PNG encoding.
 
-use std::io::Cursor;
 use std::sync::Arc;
 
+use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use starprint::graphics::{Bitmap, Grayscale};
 use starprint::{Impact, StarLine};
 use starprint_workflows::{Note, Paper, PrinterKind, Qr, TaskCard, TestPage, Text};
@@ -185,12 +185,11 @@ fn dot_kernel(diameter: f64) -> [[f64; 3]; 3] {
 
 fn png(image: &Grayscale) -> Result<Vec<u8>, String> {
     let (width, height) = (image.width(), image.height());
-    let gray = image::GrayImage::from_raw(width, height, image.pixels().to_vec())
-        .expect("buffer matches its dimensions");
-    let mut out = Cursor::new(Vec::new());
-    gray.write_to(&mut out, image::ImageFormat::Png)
+    let mut out = Vec::new();
+    PngEncoder::new(&mut out)
+        .write_image(image.pixels(), width, height, ExtendedColorType::L8)
         .map_err(|e| e.to_string())?;
-    Ok(out.into_inner())
+    Ok(out)
 }
 
 #[cfg(test)]
