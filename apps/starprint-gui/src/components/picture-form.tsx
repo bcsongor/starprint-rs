@@ -1,15 +1,9 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpenIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { OptionSelect, type Option } from "@/components/option-select";
 import { SliderField } from "@/components/slider-field";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_PICTURE,
@@ -18,7 +12,7 @@ import {
   type PrinterKind,
 } from "@/lib/api";
 
-const DITHERS: { value: Dither; label: string; hint: string }[] = [
+const DITHERS: Option<Dither>[] = [
   { value: "floyd-steinberg", label: "Floyd–Steinberg", hint: "photos" },
   { value: "atkinson", label: "Atkinson", hint: "lighter, crisper" },
   { value: "threshold", label: "Threshold", hint: "line art" },
@@ -98,29 +92,14 @@ export function PictureForm({ picture, kind, onChange }: Props) {
       <div className="flex items-end gap-4">
         <Field className="w-44">
           <FieldLabel htmlFor="dither">Dither</FieldLabel>
-          <Select
-            modal={false}
+          <OptionSelect
+            id="dither"
             value={picture.dither}
-            onValueChange={(value) => set("dither", value as Dither)}
-          >
-            <SelectTrigger id="dither" className="w-full">
-              <SelectValue>
-                {DITHERS.find((d) => d.value === picture.dither)?.label}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent
-              alignItemWithTrigger={false}
-              align="start"
-              className="w-max min-w-(--anchor-width)"
-            >
-              {DITHERS.map((d) => (
-                <SelectItem key={d.value} value={d.value}>
-                  <span className="w-30">{d.label}</span>
-                  <span className="text-muted-foreground">{d.hint}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={DITHERS}
+            align="start"
+            labelClassName="w-30"
+            onChange={(dither) => set("dither", dither)}
+          />
         </Field>
 
         <Field orientation="horizontal" className="h-8 w-auto">

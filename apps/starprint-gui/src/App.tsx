@@ -191,43 +191,47 @@ export default function App() {
     return { value: null, png: await picturePreview(picture, kind, paper) };
   }, [picture, kind, paper]);
 
-  const job: Job =
-    workflow === "task-card"
-      ? { kind: "task-card", ...card }
-      : workflow === "text"
-        ? { kind: "text", ...text }
-        : workflow === "note"
-          ? { kind: "note", ...note }
-          : workflow === "qr"
-            ? { kind: "qr", ...code }
-            : workflow === "test-page"
-              ? { kind: "test-page", ...testPage }
-              : { kind: "picture", ...picture };
-  const ready =
-    workflow === "task-card"
-      ? card.text.trim().length > 0
-      : workflow === "text"
-        ? text.text.trim().length > 0
-        : workflow === "qr"
-          ? qr.value !== null
-          : workflow === "picture"
-            ? preview.url !== null
-            : true;
-  const hint =
-    workflow === "task-card"
-      ? layout && `${layout.columns} columns`
-      : workflow === "text"
-        ? wrap && `${wrap.columns} columns`
-        : workflow === "note"
-          ? `${note.rows} rows, ${note.rows * note.pitch} mm`
-          : workflow === "qr"
-            ? qr.value &&
-              // The slider sets the symbol; the block on paper is that
-              // plus the quiet zone, which is what this measures.
-              `${qr.value.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.value.widthMm)} mm`
-            : workflow === "picture"
-              ? `${roll(printer.kind, printer.paper).dots} dots`
-              : null;
+  /** What the print button sends, whether it can, and the preview's hint. */
+  const workflows: Record<
+    Workflow,
+    { job: Job; ready: boolean; hint: string | null }
+  > = {
+    "task-card": {
+      job: { kind: "task-card", ...card },
+      ready: card.text.trim().length > 0,
+      hint: layout && `${layout.columns} columns`,
+    },
+    text: {
+      job: { kind: "text", ...text },
+      ready: text.text.trim().length > 0,
+      hint: wrap && `${wrap.columns} columns`,
+    },
+    note: {
+      job: { kind: "note", ...note },
+      ready: true,
+      hint: `${note.rows} rows, ${note.rows * note.pitch} mm`,
+    },
+    qr: {
+      job: { kind: "qr", ...code },
+      ready: qr.value !== null,
+      // The slider sets the symbol; the block on paper is that plus the
+      // quiet zone, which is what this measures.
+      hint:
+        qr.value &&
+        `${qr.value.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.value.widthMm)} mm`,
+    },
+    "test-page": {
+      job: { kind: "test-page", ...testPage },
+      ready: true,
+      hint: null,
+    },
+    picture: {
+      job: { kind: "picture", ...picture },
+      ready: preview.url !== null,
+      hint: `${roll(kind, paper).dots} dots`,
+    },
+  };
+  const { job, ready, hint } = workflows[workflow];
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 

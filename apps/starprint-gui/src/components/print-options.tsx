@@ -1,20 +1,14 @@
+import { OptionSelect, type Option } from "@/components/option-select";
 import { Field, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { Paper, Printer, Speed } from "@/lib/api";
 
-const PAPERS: { value: Paper; label: string; hint: string }[] = [
+const PAPERS: Option<Paper>[] = [
   { value: "80", label: "80 mm", hint: "576 dots" },
   { value: "112", label: "112 mm", hint: "832 dots" },
 ];
 
-const DENSITIES = [3, 2, 1, 0, -1, -2, -3].map((value) => ({
-  value,
+const DENSITIES: Option<string>[] = [3, 2, 1, 0, -1, -2, -3].map((value) => ({
+  value: String(value),
   label: value > 0 ? `+${value}` : String(value),
   hint:
     value === 3
@@ -26,7 +20,7 @@ const DENSITIES = [3, 2, 1, 0, -1, -2, -3].map((value) => ({
           : "",
 }));
 
-const SPEEDS: { value: Speed; label: string; hint: string }[] = [
+const SPEEDS: Option<Speed>[] = [
   { value: "slow", label: "Slow", hint: "best quality" },
   { value: "medium", label: "Medium", hint: "" },
   { value: "high", label: "High", hint: "default" },
@@ -49,90 +43,38 @@ export function PrintOptions({ printer, onChange }: Props) {
     <>
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="paper">Paper</FieldLabel>
-        <Select
-          modal={false}
+        <OptionSelect
+          id="paper"
           value={printer.paper}
+          options={PAPERS}
           disabled={!thermal}
-          onValueChange={(value) => set("paper", value as Paper)}
-        >
-          <SelectTrigger id="paper" className="w-full">
-            <SelectValue>
-              {PAPERS.find((p) => p.value === printer.paper)?.label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent
-            alignItemWithTrigger={false}
-            align="end"
-            className="w-max min-w-(--anchor-width)"
-          >
-            {PAPERS.map((p) => (
-              <SelectItem key={p.value} value={p.value}>
-                <span className="w-14">{p.label}</span>
-                <span className="text-muted-foreground">{p.hint}</span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          labelClassName="w-14"
+          onChange={(paper) => set("paper", paper)}
+        />
       </Field>
 
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="density">Density</FieldLabel>
-        <Select
-          modal={false}
+        <OptionSelect
+          id="density"
           value={String(printer.density)}
+          options={DENSITIES}
           disabled={!thermal}
-          onValueChange={(value) => set("density", Number(value))}
-        >
-          <SelectTrigger id="density" className="w-full">
-            <SelectValue>
-              {DENSITIES.find((d) => d.value === printer.density)?.label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent
-            alignItemWithTrigger={false}
-            align="end"
-            className="w-max min-w-(--anchor-width)"
-          >
-            {DENSITIES.map((d) => (
-              <SelectItem key={d.value} value={String(d.value)}>
-                <span className="w-6 tabular-nums">{d.label}</span>
-                {d.hint && (
-                  <span className="text-muted-foreground">{d.hint}</span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          labelClassName="w-6 tabular-nums"
+          onChange={(density) => set("density", Number(density))}
+        />
       </Field>
 
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="speed">Speed</FieldLabel>
-        <Select
-          modal={false}
+        <OptionSelect
+          id="speed"
           value={printer.speed}
+          options={SPEEDS}
           disabled={!thermal}
-          onValueChange={(value) => set("speed", value as Speed)}
-        >
-          <SelectTrigger id="speed" className="w-full">
-            <SelectValue>
-              {SPEEDS.find((s) => s.value === printer.speed)?.label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent
-            alignItemWithTrigger={false}
-            align="end"
-            className="w-max min-w-(--anchor-width)"
-          >
-            {SPEEDS.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                <span className="w-14">{s.label}</span>
-                {s.hint && (
-                  <span className="text-muted-foreground">{s.hint}</span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          labelClassName="w-14"
+          onChange={(speed) => set("speed", speed)}
+        />
       </Field>
     </>
   );
