@@ -78,7 +78,9 @@ export function PaperSheet({ kind, paper, children }: Props) {
           fontSize: printPx,
           lineHeight: 1.3,
           padding: `${TOP_MM * PX_PER_MM}px ${edge}px ${BOTTOM_MM * PX_PER_MM}px`,
-          transform: `translateX(-50%) scale(${scale})`,
+          // Lay out at the display scale so thin rules can snap to pixels.
+          zoom: scale,
+          transform: "translateX(-50%)",
         }}
       >
         {/* Clipped to nothing: it is wider than the SP700's sheet, and

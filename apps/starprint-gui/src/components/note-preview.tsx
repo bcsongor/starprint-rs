@@ -9,7 +9,7 @@ interface Props {
   paper: Paper;
 }
 
-/** A grid dot; `DOT_MM` in src-tauri/src/note.rs. */
+/** A grid dot; `DOT_MM` in starprint-workflows/src/note.rs. */
 const DOT = Math.max(1, Math.round(0.3 * PX_PER_MM));
 
 function upTo(last: number, first = 0) {
@@ -50,40 +50,51 @@ export function NotePreview({ layout, note, kind, paper }: Props) {
         <div>{"\n"}</div>
       </PrintedText>
 
-      <div className="relative w-full" style={{ height }}>
+      <svg
+        className="block overflow-visible"
+        width={width}
+        height={height}
+        shapeRendering={note.rule === "dots" ? "auto" : "crispEdges"}
+        aria-hidden
+      >
         {note.rule !== "blank" &&
           note.rule !== "dots" &&
           rows.map((row) => (
-            <div
+            <line
               key={`rule-${row}`}
-              className="absolute bg-black"
-              style={{ top: down(row), height: 1, left, width: right - left }}
+              x1={left}
+              x2={right}
+              y1={down(row) + 0.5}
+              y2={down(row) + 0.5}
+              stroke="black"
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         {note.rule === "squares" &&
           columns.map((square) => (
-            <div
+            <line
               key={`side-${square}`}
-              className="absolute inset-y-0 bg-black"
-              style={{ left: across(square), width: 1 }}
+              x1={across(square) + 0.5}
+              x2={across(square) + 0.5}
+              y1={0}
+              y2={height}
+              stroke="black"
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         {note.rule === "dots" &&
           rows.map((row) =>
             columns.map((square) => (
-              <div
+              <rect
                 key={`dot-${row}-${square}`}
-                className="absolute bg-black"
-                style={{
-                  top: down(row),
-                  left: across(square),
-                  width: DOT,
-                  height: DOT,
-                }}
+                x={across(square)}
+                y={down(row)}
+                width={DOT}
+                height={DOT}
               />
             )),
           )}
-      </div>
+      </svg>
     </>
   );
 }
