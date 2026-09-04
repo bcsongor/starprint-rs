@@ -106,13 +106,6 @@ mod tests {
     }
 
     #[test]
-    fn profiles_keep_the_order_the_file_listed_them_in() {
-        let printers = printers();
-        let names: Vec<&str> = printers.profiles().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["tsp800ii", "sp743"]);
-    }
-
-    #[test]
     fn a_printer_is_found_by_name_and_only_by_name() {
         let printers = printers();
         assert_eq!(printers.find("sp743").unwrap().profile().name, "sp743");

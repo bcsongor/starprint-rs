@@ -16,14 +16,8 @@ pub const BINARY_LIMIT: usize = 16 << 20;
 /// A handler matches on this to pick which reader to call.
 pub fn media_type(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::CONTENT_TYPE)?.to_str().ok()?;
-    Some(
-        value
-            .split(';')
-            .next()
-            .unwrap_or(value)
-            .trim()
-            .to_ascii_lowercase(),
-    )
+    let essence = value.split_once(';').map_or(value, |(essence, _)| essence);
+    Some(essence.trim().to_ascii_lowercase())
 }
 
 /// The `415` for a body this endpoint has no reader for.
