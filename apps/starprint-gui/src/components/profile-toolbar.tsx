@@ -26,6 +26,14 @@ import {
   type Profiles,
 } from "@/lib/settings";
 
+/** The profiles as the picker lists them, in alphabetical order. The stored
+ * order is left alone so nothing else moves when a profile is renamed. */
+function byName(profiles: Profile[]): Profile[] {
+  return [...profiles].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
+}
+
 /** A name that does not collide with the existing profiles. */
 function uniqueName(base: string, profiles: Profile[]): string {
   const taken = new Set(profiles.map((p) => p.name));
@@ -48,6 +56,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
   const [editing, setEditing] = useState(false);
   const profile = activeProfile(state);
   const statuses = useProbes(state.profiles, state.activeId, printing);
+  const listed = byName(state.profiles);
 
   const add = (next: Profile) =>
     onChange({ profiles: [...state.profiles, next], activeId: next.id });
@@ -82,7 +91,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
             </SelectValue>
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
-            {state.profiles.map((p) => (
+            {listed.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 <span className={DOTTED}>
                   <ConnectionDot
@@ -148,7 +157,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
                 const profiles = state.profiles.filter(
                   (p) => p.id !== profile.id,
                 );
-                onChange({ profiles, activeId: profiles[0].id });
+                onChange({ profiles, activeId: byName(profiles)[0].id });
               }}
             >
               Delete
