@@ -36,7 +36,10 @@ with two front ends on the jobs in `crates/starprint-workflows`.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the source cache, the previews, the API button and
-  the Linear auto-print. The button runs `starprint-api`'s server
+  the Linear auto-print. In Rust, `lib` sets up the app and probes printers,
+  `job` prepares documents for printing and hex dumps, `picture` caches
+  source files, and `preview` owns layout commands, PNGs and dot gain.
+  The button runs `starprint-api`'s server
   inside the app, on the profiles that have a host, under the names
   the picker shows. A profile edit starts it again on the new set,
   which is what a restart does for the standalone server. The

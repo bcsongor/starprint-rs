@@ -1,6 +1,7 @@
 //! The printers the profile file named, and getting bytes to one of
 //! them. Nothing here cares what the bytes mean.
 
+use axum::body::Bytes;
 use axum::http::StatusCode;
 use starprint::transport::{TcpTransport, Transport};
 use tokio::sync::Mutex;
@@ -54,7 +55,7 @@ impl Entry {
     /// A completed write is all this can promise. Without automatic
     /// status back there is no way to ask whether the printer accepted
     /// the job, let alone printed it.
-    pub async fn send(&self, payload: Vec<u8>) -> Result<usize, Problem> {
+    pub async fn send(&self, payload: Bytes) -> Result<usize, Problem> {
         let address = self.profile.printer.address();
         let sent = payload.len();
         let _turn = self.turn.lock().await;

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
 use starprint::{Builder, Document, Impact, LineSpacing, Protocol, RasterQuality, StarLine};
 
-use crate::task_card::{align_right, format_date};
+use crate::task_card::format_date;
 use crate::text::TextStyle;
 use crate::{MM_PER_INCH, Paper, finish};
 
@@ -145,7 +145,7 @@ impl Note {
         let columns = <Builder<P> as TextStyle>::columns(paper);
         Layout {
             columns,
-            date: align_right(&format_date(Local::now().date_naive()), columns),
+            date: format!("{:>columns$}", format_date(Local::now().date_naive())),
         }
     }
 
@@ -237,9 +237,7 @@ fn thickness(dots_per_mm: f32) -> usize {
 fn mark(mask: &mut [bool], at: usize, thickness: usize) {
     let start = at.min(mask.len().saturating_sub(thickness));
     let end = (start + thickness).min(mask.len());
-    for cell in &mut mask[start..end] {
-        *cell = true;
-    }
+    mask[start..end].fill(true);
 }
 
 #[cfg(test)]

@@ -1,45 +1,79 @@
-//! The job the frontend sends. It differs from the shared crate's
-//! [`Job`] in one place: a picture names a file, which only this app
-//! knows how to read.
+//! Job requests, document preparation, printing and hex dumps.
+//! Unlike the shared [`Job`], a picture request names a file to read.
 
-use image::DynamicImage;
-use serde::Deserialize;
-use starprint_workflows::{Job, Note, Paper, PrinterKind, Qr, TaskCard, TestPage, Text};
+use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+use starprint::Document;
+use starprint::transport::TcpTransport;
+use starprint_workflows::{Job, Printer};
+
+use crate::hexdump::{self, HexDump};
 use crate::picture::{PicturePath, SourceCache};
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum JobRequest {
-    TaskCard(TaskCard),
-    Text(Text),
-    Note(Note),
-    Qr(Qr),
-    TestPage(TestPage),
-    Picture(PicturePath),
+pub struct JobRequest {
+    #[serde(flatten)]
+    job: Job,
+    #[serde(default)]
+    path: String,
 }
 
 impl JobRequest {
-    /// Reads the picture, if this is one, so the shared crate never has
-    /// to. The other kinds print nothing from disk and yield no image.
-    pub fn resolve(
-        self,
-        kind: PrinterKind,
-        paper: Paper,
-        cache: &SourceCache,
-    ) -> Result<(Job, Option<DynamicImage>), String> {
-        Ok(match self {
-            Self::TaskCard(card) => (Job::TaskCard(card), None),
-            Self::Text(text) => (Job::Text(text), None),
-            Self::Note(note) => (Job::Note(note), None),
-            Self::Qr(code) => (Job::Qr(code), None),
-            Self::TestPage(page) => (Job::TestPage(page), None),
-            Self::Picture(picture) => {
-                let source = picture.source(kind, paper, cache)?;
-                (Job::Picture(picture.picture), Some(source))
-            }
-        })
+    fn document(self, printer: &Printer, cache: &SourceCache) -> Result<Document, String> {
+        let image = match self.job {
+            Job::Picture(picture) => Some(
+                PicturePath {
+                    path: self.path,
+                    picture,
+                }
+                .source(printer.head.kind(), printer.head.paper(), cache)?,
+            ),
+            _ => None,
+        };
+        printer.document(&self.job, image.as_ref())
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintReport {
+    pub bytes: usize,
+}
+
+#[tauri::command]
+pub async fn print_job(
+    job: JobRequest,
+    printer: Printer,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<PrintReport, String> {
+    let cache = Arc::clone(&cache);
+    // Image preparation is CPU-bound and the transport sleeps between
+    // chunks; neither belongs on the async runtime.
+    tauri::async_runtime::spawn_blocking(move || {
+        let document = job.document(&printer, &cache)?;
+        let mut transport = TcpTransport::connect(&printer.address()).map_err(|e| e.to_string())?;
+        transport.print(&document).map_err(|e| e.to_string())?;
+        Ok(PrintReport {
+            bytes: document.as_bytes().len(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn job_hexdump(
+    job: JobRequest,
+    printer: Printer,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<HexDump, String> {
+    let cache = Arc::clone(&cache);
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(hexdump::of(job.document(&printer, &cache)?.as_bytes()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -47,40 +81,43 @@ mod tests {
     use super::*;
     use crate::picture::tests::{at, sample};
 
-    fn resolve(job: JobRequest) -> Result<(Job, Option<DynamicImage>), String> {
-        job.resolve(PrinterKind::Impact, Paper::Mm80, &SourceCache::default())
+    fn printer() -> Printer {
+        Printer::impact("printer.invalid".to_owned(), 9100)
     }
 
     #[test]
-    fn a_picture_job_resolves_to_its_image() {
+    fn a_picture_file_prints_the_same_as_the_shared_job() {
         let file = sample(64, 32);
-        let (job, image) = resolve(JobRequest::Picture(at(file.path().to_str().unwrap()))).unwrap();
-        assert!(job.needs_image());
-        assert_eq!(image.expect("read from disk").width(), 64);
+        let picture = at(file.path().to_str().unwrap());
+        let source = image::open(file.path()).unwrap();
+        let expected = printer()
+            .document(&Job::Picture(picture.picture), Some(&source))
+            .unwrap();
+        let actual = JobRequest {
+            job: Job::Picture(picture.picture),
+            path: picture.path,
+        }
+        .document(&printer(), &SourceCache::default())
+        .unwrap();
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn every_other_kind_resolves_without_touching_the_disk() {
-        let jobs = [
-            JobRequest::TaskCard(TaskCard {
-                text: "Task".to_owned(),
-                ..TaskCard::default()
-            }),
-            JobRequest::Text(Text {
-                text: "Text".to_owned(),
-                ..Text::default()
-            }),
-            JobRequest::Note(Note::default()),
-            JobRequest::Qr(Qr {
-                data: "https://example.com".to_owned(),
-                ..Qr::default()
-            }),
-            JobRequest::TestPage(TestPage::default()),
-        ];
-        for job in jobs {
-            let (job, image) = resolve(job).expect("resolves");
-            assert!(!job.needs_image());
-            assert!(image.is_none());
+    fn other_jobs_print_the_same_as_the_shared_job() {
+        for json in [
+            r#"{"kind":"task-card","text":"Task","priority":true}"#,
+            r#"{"kind":"text","text":"Text","bold":true}"#,
+            r#"{"kind":"note"}"#,
+            r#"{"kind":"qr","data":"https://example.com"}"#,
+            r#"{"kind":"test-page"}"#,
+        ] {
+            let request: JobRequest = serde_json::from_str(json).unwrap();
+            let job: Job = serde_json::from_str(json).unwrap();
+            let actual = request
+                .document(&printer(), &SourceCache::default())
+                .unwrap();
+            let expected = printer().document(&job, None).unwrap();
+            assert_eq!(actual, expected, "{json}");
         }
     }
 
@@ -89,14 +126,32 @@ mod tests {
     #[test]
     fn a_picture_job_carries_its_path_beside_the_settings() {
         let json = r#"{"kind":"picture","path":"C:\\photo.jpg","dither":"atkinson"}"#;
-        let JobRequest::Picture(picture) = serde_json::from_str(json).unwrap() else {
+        let request: JobRequest = serde_json::from_str(json).unwrap();
+        let Job::Picture(picture) = request.job else {
             panic!("picture")
         };
-        assert_eq!(picture.path, r"C:\photo.jpg");
+        assert_eq!(request.path, r"C:\photo.jpg");
         assert_eq!(
-            picture.picture.dither,
+            picture.dither,
             starprint_workflows::picture::Dither::Atkinson
         );
-        assert_eq!(picture.picture.threshold, 128, "and the rest default");
+        assert_eq!(picture.threshold, 128, "and the rest default");
+    }
+
+    #[test]
+    fn a_picture_job_needs_a_path() {
+        for json in [
+            r#"{"kind":"picture"}"#,
+            r#"{"kind":"picture","path":""}"#,
+            r#"{"kind":"picture","path":"  "}"#,
+        ] {
+            let request: JobRequest = serde_json::from_str(json).unwrap();
+            assert_eq!(
+                request
+                    .document(&printer(), &SourceCache::default())
+                    .unwrap_err(),
+                "No picture chosen.",
+            );
+        }
     }
 }

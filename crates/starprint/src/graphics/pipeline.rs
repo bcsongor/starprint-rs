@@ -204,7 +204,11 @@ impl ImagePipeline {
         // density.
         let display_w = self.profile.width_dots_single;
         let display_h = ratio_round(src_h, display_w, src_w).max(1);
-        let preview_gray = self.dither.apply(&resize(&full, width, display_h));
+        let preview_gray = if display_h == compensated_h {
+            print_gray
+        } else {
+            self.dither.apply(&resize(&full, width, display_h))
+        };
         let preview = if width == display_w {
             preview_gray
         } else {
@@ -313,15 +317,12 @@ fn gamma_lut(gamma: f64) -> [u8; 256] {
 /// Pillow `ImageOps.equalize`.
 fn equalize(gray: &mut Grayscale) {
     let h = histogram(gray.pixels());
-    let nonzero: Vec<u64> = h
-        .iter()
-        .filter(|&&c| c > 0)
-        .map(|&c| u64::from(c))
-        .collect();
-    if nonzero.len() <= 1 {
+    let mut nonzero = h.iter().copied().filter(|&c| c > 0).map(u64::from);
+    // Pillow excludes the highest occupied bin when calculating the step.
+    if nonzero.next_back().is_none() {
         return;
     }
-    let step = (nonzero.iter().sum::<u64>() - nonzero.last().unwrap()) / 255;
+    let step = nonzero.sum::<u64>() / 255;
     if step == 0 {
         return;
     }
@@ -337,34 +338,16 @@ fn equalize(gray: &mut Grayscale) {
 /// Pillow `ImageEnhance.Brightness`: `px * factor`.
 fn brightness(gray: &mut Grayscale, factor: f64) {
     for p in gray.pixels_mut() {
-        *p = blend_channel(0.0, f64::from(*p), factor);
+        *p = (factor * f64::from(*p)) as u8;
     }
 }
 
 /// Pillow `ImageEnhance.Contrast`: `mean + factor * (px - mean)`.
 fn contrast(gray: &mut Grayscale, factor: f64) {
-    let h = histogram(gray.pixels());
-    let total: u64 = h.iter().map(|&c| u64::from(c)).sum();
-    let weighted: u64 = h
-        .iter()
-        .enumerate()
-        .map(|(i, &c)| i as u64 * u64::from(c))
-        .sum();
-    let mean = (weighted as f64 / total as f64 + 0.5) as i32; // round half up
+    let sum: u64 = gray.pixels().iter().map(|&p| u64::from(p)).sum();
+    let mean = (sum as f64 / gray.pixels().len() as f64 + 0.5) as i32; // round half up
     for p in gray.pixels_mut() {
-        *p = blend_channel(f64::from(mean), f64::from(*p), factor);
-    }
-}
-
-/// Pillow's `ImagingBlend`: `a + factor * (b - a)`, clipped, truncated.
-fn blend_channel(a: f64, b: f64, factor: f64) -> u8 {
-    let out = a + factor * (b - a);
-    if out <= 0.0 {
-        0
-    } else if out >= 255.0 {
-        255
-    } else {
-        out as u8
+        *p = (f64::from(mean) + factor * (f64::from(*p) - f64::from(mean))) as u8;
     }
 }
 
@@ -506,6 +489,15 @@ mod tests {
     }
 
     #[test]
+    fn equalize_leaves_empty_and_uniform_images_unchanged() {
+        for pixels in [vec![], vec![0; 256], vec![128; 256], vec![255; 256]] {
+            let mut gray = Grayscale::new(pixels.len() as u32, 1, pixels.clone()).unwrap();
+            equalize(&mut gray);
+            assert_eq!(gray.pixels(), pixels);
+        }
+    }
+
+    #[test]
     fn brightness_matches_reference() {
         let mut lifted = src();
         brightness(&mut lifted, 1.2);
@@ -564,6 +556,25 @@ mod tests {
             .prepare(&source)
             .unwrap();
         assert_eq!(prepared.image.bitmap().height(), 432);
+    }
+
+    #[test]
+    fn normal_thermal_preview_matches_the_printed_dots() {
+        let source = image::GrayImage::from_raw(W, H, src().into_pixels()).unwrap();
+        let source = DynamicImage::ImageLuma8(source);
+        for dither in [
+            Dithering::FloydSteinberg { threshold: 128 },
+            Dithering::Atkinson { threshold: 128 },
+            Dithering::Threshold { threshold: 128 },
+            Dithering::Bayer8x8,
+        ] {
+            let prepared = ImagePipeline::new()
+                .profile(DeviceProfile::THERMAL_80MM)
+                .dither(dither)
+                .prepare(&source)
+                .unwrap();
+            assert_eq!(&prepared.preview.to_bitmap(), prepared.image.bitmap());
+        }
     }
 
     #[test]

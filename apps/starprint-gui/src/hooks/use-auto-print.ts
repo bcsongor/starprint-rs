@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 import type { TaskCard } from "@/lib/api";
 import { assignedIssues, toCard } from "@/lib/linear";
@@ -19,12 +19,7 @@ export function useAutoPrint(
   linear: Linear | null,
   print: (card: TaskCard) => Promise<void>,
 ) {
-  // The interval outlives renders and reads the current printer through
-  // this when it fires.
-  const latest = useRef(print);
-  useEffect(() => {
-    latest.current = print;
-  });
+  const printCard = useEffectEvent(print);
   const apiKey = linear?.user && linear.autoPrint ? linear.apiKey : null;
 
   useEffect(() => {
@@ -51,7 +46,7 @@ export function useAutoPrint(
         seen = new Set(issues.map((issue) => issue.id));
         for (const issue of fresh) {
           if (cancelled) return;
-          await latest.current(toCard(issue));
+          await printCard(toCard(issue));
         }
       } catch (error) {
         // Once per outage, not once per poll.

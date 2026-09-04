@@ -10,7 +10,7 @@ use serde::Deserialize;
 use starprint::graphics::{Density, DeviceProfile, Dithering, ImagePipeline, PreparedImage};
 use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, StarLine};
 
-use crate::{Paper, PrinterKind, finish};
+use crate::{Paper, PrinterKind, finish_graphic};
 
 /// [`Dithering`] without its threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -128,13 +128,6 @@ impl Picture {
             .prepare(source)
             .map_err(|e| e.to_string())
     }
-
-    /// Dot diameter as a percentage of the pitch, matched against a step
-    /// wedge on a TSP700II at slow speed, density +3. Rows are half as far
-    /// apart in double resolution, so the overlap is larger.
-    pub fn thermal_dot_size(&self) -> u32 {
-        if self.double { 200 } else { 150 }
-    }
 }
 
 /// PNG, JPEG, WebP or BMP, whatever the caller called it. The message
@@ -165,7 +158,7 @@ pub(crate) fn thermal(
         // The mode outlives ESC @, so go back to the job's own.
         doc = doc.print_mode(mode);
     }
-    Ok(finish(margin(doc, cut), cut))
+    Ok(finish_graphic(doc, cut))
 }
 
 pub(crate) fn impact(
@@ -176,13 +169,7 @@ pub(crate) fn impact(
 ) -> Result<Document, String> {
     let prepared = picture.prepare(PrinterKind::Impact, Paper::Mm80, source)?;
     let doc = builder.align(Alignment::Center).bit_image(&prepared.image);
-    Ok(finish(margin(doc, cut), cut))
-}
-
-/// Blank paper under the image before a cut. Without one, the feed that
-/// ends the job is margin enough.
-pub(crate) fn margin<P: starprint::Protocol>(doc: Builder<P>, cut: bool) -> Builder<P> {
-    if cut { doc.feed(2) } else { doc }
+    Ok(finish_graphic(doc, cut))
 }
 
 #[cfg(test)]

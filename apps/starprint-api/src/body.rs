@@ -1,7 +1,7 @@
 //! Reading a request body, and refusing one that is the wrong type or
 //! too big. Nothing here knows what a printer is.
 
-use axum::body::Body;
+use axum::body::Bytes;
 use axum::extract::{FromRequest, Multipart, Request};
 use axum::http::{HeaderMap, StatusCode, header};
 
@@ -29,8 +29,12 @@ pub fn unsupported(given: Option<&str>, wanted: &str) -> Problem {
 }
 
 /// The whole body, or a `413` if it runs past `limit`.
-pub async fn collect(request: Request, limit: usize) -> Result<Vec<u8>, Problem> {
-    read(request.into_body(), limit).await
+/// `to_bytes` also reports dropped connections as opaque errors; these
+/// receive the same `413` response.
+pub async fn collect(request: Request, limit: usize) -> Result<Bytes, Problem> {
+    axum::body::to_bytes(request.into_body(), limit)
+        .await
+        .map_err(|e| Problem::too_large(format!("The body is larger than {limit} bytes: {e}.")))
 }
 
 /// The `job` part, which is required, and the `image` part, which is
@@ -38,7 +42,7 @@ pub async fn collect(request: Request, limit: usize) -> Result<Vec<u8>, Problem>
 ///
 /// Streams the form rather than collecting it, so the size limit comes
 /// from the `DefaultBodyLimit` on the route.
-pub async fn form(request: Request) -> Result<(Vec<u8>, Option<Vec<u8>>), Problem> {
+pub async fn form(request: Request) -> Result<(Bytes, Option<Bytes>), Problem> {
     let mut multipart = Multipart::from_request(request, &())
         .await
         .map_err(|e| Problem::new(e.status(), format!("The form could not be read: {e}.")))?;
@@ -54,7 +58,7 @@ pub async fn form(request: Request) -> Result<(Vec<u8>, Option<Vec<u8>>), Proble
                 )));
             }
         };
-        *slot = Some(field.bytes().await.map_err(part_problem)?.to_vec());
+        *slot = Some(field.bytes().await.map_err(part_problem)?);
     }
     let job = job.ok_or_else(|| Problem::bad_request("The form has no `job` part."))?;
     Ok((job, image))
@@ -68,19 +72,10 @@ fn part_problem(error: axum::extract::multipart::MultipartError) -> Problem {
     }
 }
 
-/// `to_bytes` reports its limit and a dropped connection through the
-/// same opaque error. Running past the limit is the only one of those a
-/// client can do anything about, so both come back as `413`.
-async fn read(body: Body, limit: usize) -> Result<Vec<u8>, Problem> {
-    axum::body::to_bytes(body, limit)
-        .await
-        .map(Vec::from)
-        .map_err(|e| Problem::too_large(format!("The body is larger than {limit} bytes: {e}.")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
 
     fn headers(content_type: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();
@@ -103,10 +98,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_body_past_its_limit_is_a_413_and_a_short_one_is_read() {
-        let body = |bytes: usize| Body::from(vec![b'x'; bytes]);
-        assert_eq!(read(body(8), 8).await.unwrap().len(), 8);
+        let request = |bytes: usize| Request::new(Body::from(vec![b'x'; bytes]));
+        assert_eq!(collect(request(8), 8).await.unwrap().len(), 8);
 
-        let problem = read(body(9), 8).await.unwrap_err();
+        let problem = collect(request(9), 8).await.unwrap_err();
         let json = serde_json::to_value(&problem).unwrap();
         assert_eq!(json["status"], 413);
         assert!(

@@ -1,18 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** Mirrors `PrinterKind` in starprint-workflows/src/lib.rs. */
+/** Mirrors `PrinterKind` in starprint-workflows/src/printer.rs. */
 export type PrinterKind = "thermal" | "impact";
 
-/** Mirrors `Speed` in starprint-workflows/src/lib.rs. */
+/** Mirrors `Speed` in starprint-workflows/src/printer.rs. */
 export type Speed = "high" | "medium" | "slow";
 
-/** Mirrors `Paper` in starprint-workflows/src/lib.rs. */
+/** Mirrors `Paper` in starprint-workflows/src/printer.rs. */
 export type Paper = "80" | "112";
 
 /** Selects two-colour mode; mirrors `TWO_COLOR_DENSITY` in starprint-workflows. */
 export const TWO_COLOR_DENSITY = 4;
 
-/** Mirrors `Printer` in starprint-workflows/src/lib.rs. */
+/** Mirrors `Printer` in starprint-workflows/src/printer.rs. */
 export interface Printer {
   kind: PrinterKind;
   host: string;
@@ -186,7 +186,7 @@ export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
 
 /**
  * Mirrors `Picture` in starprint-workflows/src/picture.rs, with the
- * `path` that `PicturePath` in src-tauri/src/source.rs adds. The shared
+ * `path` that `PicturePath` in src-tauri/src/picture.rs adds. The shared
  * crate takes image data, so choosing a file is the app's own business.
  */
 export interface Picture {
@@ -210,7 +210,7 @@ export const DEFAULT_PICTURE: Picture = {
   contrast: 1,
 };
 
-/** Mirrors `JobRequest` in src-tauri/src/source.rs. */
+/** Mirrors `JobRequest` in src-tauri/src/job.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
   | ({ kind: "text" } & Text)

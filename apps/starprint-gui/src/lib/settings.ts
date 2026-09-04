@@ -57,10 +57,6 @@ export const DEFAULT_PROFILES: Profiles = {
   activeId: "tsp800ii",
 };
 
-export function newId(): string {
-  return crypto.randomUUID();
-}
-
 export function toPrinter(profile: Profile): Printer {
   const { id: _id, name: _name, ...printer } = profile;
   return printer;

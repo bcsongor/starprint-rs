@@ -172,7 +172,12 @@ impl Printer {
 
     /// `host:port`, ready for [`starprint::transport::TcpTransport`].
     pub fn address(&self) -> String {
-        format!("{}:{}", self.host.trim(), self.port)
+        let host = self.host.trim();
+        if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]:{}", self.port)
+        } else {
+            format!("{host}:{}", self.port)
+        }
     }
 
     /// The bytes `job` prints on this printer. A [`Job::Picture`] needs
@@ -437,6 +442,24 @@ mod tests {
         let mut printer = thermal();
         printer.host = "  192.168.1.180 ".to_owned();
         assert_eq!(printer.address(), "192.168.1.180:9100");
+    }
+
+    #[test]
+    fn ipv6_addresses_keep_the_configured_port() {
+        let mut printer = thermal();
+        printer.port = 9200;
+        for host in [" ::1 ", "[::1]"] {
+            printer.host = host.to_owned();
+            assert_eq!(printer.address(), "[::1]:9200");
+            assert_eq!(
+                printer
+                    .address()
+                    .parse::<std::net::SocketAddr>()
+                    .unwrap()
+                    .port(),
+                9200
+            );
+        }
     }
 
     /// The desktop app stores a profile as one flat object and has done

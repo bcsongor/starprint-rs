@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import { startApi, stopApi, type NamedPrinter } from "@/lib/api";
 import { toPrinter, type Profile } from "@/lib/settings";
@@ -24,10 +24,9 @@ export function useApiServer(
   const key = JSON.stringify(printers);
   const served = useRef(printers);
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const fail = useRef(onFail);
+  const fail = useEffectEvent(onFail);
   useEffect(() => {
     served.current = printers;
-    fail.current = onFail;
   });
 
   useEffect(() => {
@@ -46,7 +45,7 @@ export function useApiServer(
         );
         if (enabled) {
           setUrl(null);
-          fail.current();
+          fail();
         }
       }
     });

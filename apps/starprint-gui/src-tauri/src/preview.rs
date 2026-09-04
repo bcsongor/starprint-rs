@@ -1,17 +1,137 @@
-//! A dot-gain model for thermal previews, and PNG encoding.
+//! Layout and image preview commands, thermal dot gain and PNG encoding.
 
 use std::io::Cursor;
+use std::sync::Arc;
 
-use starprint::graphics::Grayscale;
+use starprint::graphics::{Bitmap, Grayscale};
+use starprint::{Impact, StarLine};
+use starprint_workflows::{Note, Paper, PrinterKind, Qr, TaskCard, TestPage, Text};
+use starprint_workflows::{note, qr, task_card, test_page, text};
+
+use crate::picture::{PicturePath, SourceCache};
+
+/// Dot diameters as percentages of pitch, measured on a TSP700II at
+/// slow speed and density +3. Double resolution halves the row pitch.
+const THERMAL_DOT_SIZE: u32 = 150;
+const THERMAL_DOUBLE_DOT_SIZE: u32 = 200;
+
+#[tauri::command]
+pub fn task_card_layout(card: TaskCard, kind: PrinterKind, paper: Paper) -> task_card::Layout {
+    match kind {
+        PrinterKind::Thermal => card.layout::<StarLine>(paper),
+        PrinterKind::Impact => card.layout::<Impact>(paper),
+    }
+}
+
+#[tauri::command]
+pub fn text_layout(text: Text, kind: PrinterKind, paper: Paper) -> text::Layout {
+    match kind {
+        PrinterKind::Thermal => text.layout::<StarLine>(paper),
+        PrinterKind::Impact => text.layout::<Impact>(paper),
+    }
+}
+
+#[tauri::command]
+pub fn note_layout(note: Note, kind: PrinterKind, paper: Paper) -> note::Layout {
+    match kind {
+        PrinterKind::Thermal => note.layout::<StarLine>(paper),
+        PrinterKind::Impact => note.layout::<Impact>(paper),
+    }
+}
+
+/// Returns an error when the data is too long to encode.
+#[tauri::command]
+pub fn qr_layout(code: Qr, kind: PrinterKind, paper: Paper) -> Result<qr::Layout, String> {
+    match kind {
+        PrinterKind::Thermal => code.layout::<StarLine>(paper),
+        PrinterKind::Impact => code.layout::<Impact>(paper),
+    }
+}
+
+/// Renders the printable symbol as a PNG, with thermal dot gain.
+/// Runs off the async runtime to keep sliders responsive.
+#[tauri::command]
+pub async fn qr_preview(
+    code: Qr,
+    kind: PrinterKind,
+    paper: Paper,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bitmap = match kind {
+            PrinterKind::Thermal => code.bitmap::<StarLine>(paper),
+            PrinterKind::Impact => code.bitmap::<Impact>(paper),
+        }?;
+        let drawn = grayscale(&bitmap);
+        let shown = match kind {
+            PrinterKind::Thermal => dot_gain(&drawn, THERMAL_DOT_SIZE),
+            PrinterKind::Impact => drawn,
+        };
+        png(&shown)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(tauri::ipc::Response::new)
+}
+
+/// Ink as black on white.
+fn grayscale(bitmap: &Bitmap) -> Grayscale {
+    let (width, height) = (bitmap.width(), bitmap.height());
+    let pixels = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .map(|(x, y)| if bitmap.get(x, y) { 0 } else { 255 })
+        .collect();
+    Grayscale::new(width, height, pixels).expect("sized from the bitmap")
+}
+
+#[tauri::command]
+pub fn test_page_sections(page: TestPage, kind: PrinterKind) -> Vec<test_page::Section> {
+    match kind {
+        PrinterKind::Thermal => test_page::thermal_sections(&page),
+        PrinterKind::Impact => test_page::impact_sections(),
+    }
+}
+
+/// PNG bytes; the frontend shows them through a blob URL.
+///
+/// A thermal head blooms each dot wider than its pitch, so the preview
+/// widens them to match. See [`dot_gain`].
+#[tauri::command]
+pub async fn picture_preview(
+    picture: PicturePath,
+    kind: PrinterKind,
+    paper: Paper,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+) -> Result<tauri::ipc::Response, String> {
+    let cache = Arc::clone(&cache);
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = picture.source(kind, paper, &cache)?;
+        let prepared = picture.picture.prepare(kind, paper, &source)?.preview;
+        let shown = match kind {
+            PrinterKind::Thermal => {
+                let dot_size = if picture.picture.double {
+                    THERMAL_DOUBLE_DOT_SIZE
+                } else {
+                    THERMAL_DOT_SIZE
+                };
+                dot_gain(&prepared, dot_size)
+            }
+            PrinterKind::Impact => prepared,
+        };
+        png(&shown)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(tauri::ipc::Response::new)
+}
 
 /// Below 100 % solids would show gaps; above 300 % the 3×3 kernel no
 /// longer holds the dot.
-pub const DOT_SIZE_RANGE: std::ops::RangeInclusive<u32> = 100..=300;
+const DOT_SIZE_RANGE: std::ops::RangeInclusive<u32> = 100..=300;
 
 /// Every ink pixel becomes a disc `dot_size` percent of the pitch wide.
 /// Each output pixel combines the coverage of its own and its eight
 /// neighbours' discs, assuming independent overlap.
-pub fn dot_gain(image: &Grayscale, dot_size: u32) -> Grayscale {
+fn dot_gain(image: &Grayscale, dot_size: u32) -> Grayscale {
     let dot_size = dot_size.clamp(*DOT_SIZE_RANGE.start(), *DOT_SIZE_RANGE.end());
     let kernel = dot_kernel(f64::from(dot_size) / 100.0);
     let (width, height) = (image.width(), image.height());
@@ -63,7 +183,7 @@ fn dot_kernel(diameter: f64) -> [[f64; 3]; 3] {
     kernel
 }
 
-pub fn png(image: &Grayscale) -> Result<Vec<u8>, String> {
+fn png(image: &Grayscale) -> Result<Vec<u8>, String> {
     let (width, height) = (image.width(), image.height());
     let gray = image::GrayImage::from_raw(width, height, image.pixels().to_vec())
         .expect("buffer matches its dimensions");

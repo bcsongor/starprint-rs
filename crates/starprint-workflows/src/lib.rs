@@ -42,6 +42,12 @@ pub(crate) fn finish<P: Protocol>(doc: Builder<P>, cut: bool) -> Document {
     }
 }
 
+/// Pictures and QR codes need two blank lines before a cut. Without a
+/// cut, the feed in `finish` supplies the margin.
+pub(crate) fn finish_graphic<P: Protocol>(doc: Builder<P>, cut: bool) -> Document {
+    finish(if cut { doc.feed(2) } else { doc }, cut)
+}
+
 /// The six jobs, as one tagged enum. `kind` picks the variant and the
 /// rest of the object is that job's own settings.
 #[derive(Debug, Clone, Deserialize)]
@@ -53,14 +59,6 @@ pub enum Job {
     Qr(Qr),
     TestPage(TestPage),
     Picture(Picture),
-}
-
-impl Job {
-    /// A picture job is the only one that needs image data, and the
-    /// caller has to supply it.
-    pub fn needs_image(&self) -> bool {
-        matches!(self, Self::Picture(_))
-    }
 }
 
 #[cfg(test)]
@@ -120,21 +118,6 @@ mod tests {
         assert_eq!(picture.dither, Dither::Bayer);
         assert_eq!(picture.brightness, 1.4);
         assert_eq!(picture.threshold, 128, "and the rest still default");
-    }
-
-    #[test]
-    fn only_a_picture_needs_an_image() {
-        let job = |json| serde_json::from_str::<Job>(json).expect("parses");
-        for json in [
-            r#"{"kind":"task-card","text":"x"}"#,
-            r#"{"kind":"text","text":"x"}"#,
-            r#"{"kind":"note"}"#,
-            r#"{"kind":"qr","data":"x"}"#,
-            r#"{"kind":"test-page"}"#,
-        ] {
-            assert!(!job(json).needs_image(), "{json}");
-        }
-        assert!(job(r#"{"kind":"picture"}"#).needs_image());
     }
 
     #[test]

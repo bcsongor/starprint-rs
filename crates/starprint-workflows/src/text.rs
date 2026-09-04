@@ -56,26 +56,21 @@ impl TextStyle for Builder<Impact> {
 
 /// Keeps the line breaks the user typed.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
-    let raw_lines: Vec<&str> = if text.is_empty() {
-        vec![""]
-    } else {
-        text.lines().collect()
-    };
+    if text.is_empty() {
+        return vec![String::new()];
+    }
     let mut lines = Vec::new();
 
-    for raw_line in raw_lines {
+    for raw_line in text.lines() {
         let mut current = String::new();
         for word in raw_line.split_whitespace() {
-            let word_len = word.chars().count();
-            if current.is_empty() {
-                current.push_str(word);
-            } else if current.chars().count() + 1 + word_len <= max_len {
-                current.push(' ');
-                current.push_str(word);
-            } else {
-                lines.push(current);
-                current = word.to_owned();
+            if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > max_len {
+                lines.push(std::mem::take(&mut current));
             }
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
         }
         lines.push(current);
     }
@@ -292,5 +287,8 @@ mod tests {
     fn typed_line_breaks_are_kept() {
         assert_eq!(wrap_by_words("one\ntwo", 40), ["one", "two"]);
         assert_eq!(wrap_by_words("", 40), [""]);
+        assert_eq!(wrap_by_words("one\n\ntwo\n", 40), ["one", "", "two"]);
+        assert_eq!(wrap_by_words(" café  déjà vu ", 9), ["café déjà", "vu"]);
+        assert_eq!(wrap_by_words("longword x", 3), ["longword", "x"]);
     }
 }

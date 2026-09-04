@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import {
   activeProfile,
-  newId,
   type Profile,
   type Profiles,
 } from "@/lib/settings";
@@ -129,7 +128,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
               onClick={() =>
                 add({
                   ...profile,
-                  id: newId(),
+                  id: crypto.randomUUID(),
                   name: uniqueName(`${profile.name} copy`, state.profiles),
                 })
               }
@@ -140,7 +139,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
               onClick={() => {
                 add({
                   ...profile,
-                  id: newId(),
+                  id: crypto.randomUUID(),
                   name: uniqueName("New profile", state.profiles),
                   host: "",
                 });

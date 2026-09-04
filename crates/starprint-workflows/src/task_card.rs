@@ -78,11 +78,6 @@ fn due_text(due: Option<&str>) -> Option<String> {
     )
 }
 
-pub(crate) fn align_right(text: &str, width: usize) -> String {
-    let padding = width.saturating_sub(text.chars().count());
-    format!("{}{text}", " ".repeat(padding))
-}
-
 impl TaskCard {
     pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
@@ -107,7 +102,7 @@ impl TaskCard {
             });
         let due = due.map(|due| {
             let used = banner + reference.as_ref().map_or(0, |r| r.chars().count());
-            align_right(&due, columns.saturating_sub(used))
+            format!("{due:>width$}", width = columns.saturating_sub(used))
         });
         Layout {
             columns,

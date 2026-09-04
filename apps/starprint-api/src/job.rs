@@ -1,6 +1,7 @@
 //! A job request, and the bytes it prints. This is where a request stops
 //! being HTTP and becomes a `starprint-workflows` job.
 
+use axum::body::Bytes;
 use axum::http::StatusCode;
 use serde::Deserialize;
 use starprint_workflows::{Head, Job, Printer, Speed, check_density};
@@ -30,12 +31,8 @@ impl JobRequest {
     /// Preparing a picture is CPU-bound, so it runs off the async
     /// runtime. The caller does this before taking the printer's turn,
     /// so a slow photo does not hold the printer up.
-    pub async fn document(
-        self,
-        profile: &Printer,
-        image: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, Problem> {
-        if self.job.needs_image() && image.is_none() {
+    pub async fn document(self, profile: &Printer, image: Option<Bytes>) -> Result<Bytes, Problem> {
+        if matches!(self.job, Job::Picture(_)) && image.is_none() {
             return Err(Problem::bad_request(
                 "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
             ));
@@ -48,7 +45,7 @@ impl JobRequest {
                 .transpose()?;
             printer
                 .document(&job, image.as_ref())
-                .map(starprint::Document::into_bytes)
+                .map(|document| Bytes::from(document.into_bytes()))
         })
         .await
         .map_err(|e| {
@@ -206,7 +203,7 @@ mod tests {
     async fn an_image_that_will_not_decode_is_a_bad_request() {
         let request = request(r#"{"job":{"kind":"picture"}}"#);
         let problem = request
-            .document(&thermal(), Some(b"not an image".to_vec()))
+            .document(&thermal(), Some(Bytes::from_static(b"not an image")))
             .await
             .unwrap_err();
         assert!(detail(problem).starts_with("The image could not be decoded"));

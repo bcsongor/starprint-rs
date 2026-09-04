@@ -12,9 +12,8 @@ use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
 use starprint::{Alignment, Builder, Document, Impact, Protocol, RasterQuality, StarLine};
 
-use crate::picture::margin;
 use crate::text::{TextStyle, wrap_by_words};
-use crate::{MM_PER_INCH, Paper, finish};
+use crate::{MM_PER_INCH, Paper, finish_graphic};
 
 /// Where the code sits across the paper. Mirrors
 /// [`starprint::Alignment`], which has no serde support of its own.
@@ -79,10 +78,9 @@ pub struct Qr {
     /// and reduced further if the symbol will not fit the paper.
     #[serde(default = "default_size")]
     pub size: u8,
-    /// How far a module's corners are taken off, as a percentage of
-    /// half the module: 100 draws one with nothing beside it as a
-    /// circle, 0 leaves it square. Clamped, and rounded down to whole
-    /// dots, so a coarse head prints square whatever this asks for.
+    /// Corner radius as a percentage of 1.5 modules, capped at half the
+    /// shorter adjoining edge. A lone module becomes a circle near 33.
+    /// Larger blocks keep rounding up to 100. Zero leaves corners square.
     #[serde(default = "default_radius")]
     pub radius: u8,
     /// Carries the caption with it.
@@ -414,17 +412,14 @@ impl Qr {
     where
         Builder<P>: QrStyle,
     {
-        let symbol = self.symbol(
-            <Builder<P> as QrStyle>::profile(paper),
-            <Builder<P> as QrStyle>::DENSITY,
-        )?;
+        let symbol = self.bitmap::<P>(paper)?;
 
         let mut doc = builder.align(self.align.into());
         for line in self.caption_lines::<P>(paper) {
             doc = doc.line(&line);
         }
         let doc = doc.draw(symbol)?;
-        Ok(finish(margin(doc, cut), cut))
+        Ok(finish_graphic(doc, cut))
     }
 }
 

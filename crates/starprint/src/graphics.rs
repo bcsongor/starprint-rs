@@ -77,11 +77,9 @@ impl DeviceProfile {
     /// TSP800II on 112 mm paper: 104 mm print width, 832 dots.
     pub const THERMAL_112MM: Self = Self {
         name: "Star TSP800II 112 mm",
-        head: HeadKind::Thermal,
-        vertical_dpi: 203.2,
-        horizontal_dpi: 203.2,
         width_dots_single: 832,
         width_dots_double: 832,
+        ..Self::THERMAL_80MM
     };
 
     /// [`THERMAL_80MM`](Self::THERMAL_80MM) in
@@ -89,21 +87,15 @@ impl DeviceProfile {
     /// twice the rows.
     pub const THERMAL_80MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 80 mm thermal (double resolution)",
-        head: HeadKind::Thermal,
         vertical_dpi: 406.4,
-        horizontal_dpi: 203.2,
-        width_dots_single: 576,
-        width_dots_double: 576,
+        ..Self::THERMAL_80MM
     };
 
     /// [`THERMAL_112MM`](Self::THERMAL_112MM) in double resolution.
     pub const THERMAL_112MM_DOUBLE_RESOLUTION: Self = Self {
         name: "Star 112 mm thermal (double resolution)",
-        head: HeadKind::Thermal,
         vertical_dpi: 406.4,
-        horizontal_dpi: 203.2,
-        width_dots_single: 832,
-        width_dots_double: 832,
+        ..Self::THERMAL_112MM
     };
 
     #[must_use]
