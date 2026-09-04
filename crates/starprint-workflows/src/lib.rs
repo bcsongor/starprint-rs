@@ -124,23 +124,17 @@ mod tests {
 
     #[test]
     fn only_a_picture_needs_an_image() {
-        let jobs = [
+        let job = |json| serde_json::from_str::<Job>(json).expect("parses");
+        for json in [
             r#"{"kind":"task-card","text":"x"}"#,
             r#"{"kind":"text","text":"x"}"#,
             r#"{"kind":"note"}"#,
             r#"{"kind":"qr","data":"x"}"#,
             r#"{"kind":"test-page"}"#,
-            r#"{"kind":"picture"}"#,
-        ];
-        let needs: Vec<bool> = jobs
-            .iter()
-            .map(|json| {
-                serde_json::from_str::<Job>(json)
-                    .expect("parses")
-                    .needs_image()
-            })
-            .collect();
-        assert_eq!(needs, [false, false, false, false, false, true]);
+        ] {
+            assert!(!job(json).needs_image(), "{json}");
+        }
+        assert!(job(r#"{"kind":"picture"}"#).needs_image());
     }
 
     #[test]
