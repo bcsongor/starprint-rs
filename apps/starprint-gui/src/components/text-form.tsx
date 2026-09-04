@@ -59,7 +59,7 @@ export function TextForm({ text, kind, onChange, onSubmit }: Props) {
           value={text.text}
           placeholder="Anything you want on paper"
           autoFocus
-          onChange={(e) => onChange({ ...text, text: e.target.value })}
+          onChange={(e) => set("text", e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();

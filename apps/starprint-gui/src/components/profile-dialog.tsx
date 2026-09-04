@@ -39,10 +39,9 @@ interface Props {
 export function ProfileDialog({ profile, open, onOpenChange, onSave }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Keyed so the draft resets whenever the dialog opens. */}
+      {/* Mounted per opening so the draft starts from the profile. */}
       {open && (
         <ProfileForm
-          key={profile.id}
           profile={profile}
           onCancel={() => onOpenChange(false)}
           onSave={(next) => {
@@ -135,7 +134,6 @@ function ProfileForm({
             />
           </Field>
         </div>
-
       </FieldGroup>
 
       <DialogFooter>
@@ -145,7 +143,11 @@ function ProfileForm({
         <Button
           disabled={!valid}
           onClick={() =>
-            onSave({ ...draft, name: draft.name.trim(), host: draft.host.trim() })
+            onSave({
+              ...draft,
+              name: draft.name.trim(),
+              host: draft.host.trim(),
+            })
           }
         >
           Save

@@ -22,9 +22,11 @@ export function useApiServer(
     .map((p) => ({ name: p.name, printer: toPrinter(p) }));
   // Restart on a change to what is served, not on every render.
   const key = JSON.stringify(printers);
+  const served = useRef(printers);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const fail = useRef(onFail);
   useEffect(() => {
+    served.current = printers;
     fail.current = onFail;
   });
 
@@ -32,7 +34,7 @@ export function useApiServer(
     queue.current = queue.current.then(async () => {
       try {
         if (enabled) {
-          setUrl(await startApi(JSON.parse(key)));
+          setUrl(await startApi(served.current));
         } else {
           await stopApi();
           setUrl(null);

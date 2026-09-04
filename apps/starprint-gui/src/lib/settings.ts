@@ -41,7 +41,7 @@ const THERMAL: Printer = {
 };
 
 const SEED: Profile[] = [
-  { ...THERMAL, id: "tsp700ii", name: "TSP700II", host: "" },
+  { ...THERMAL, id: "tsp700ii", name: "TSP700II" },
   { ...THERMAL, id: "tsp800ii", name: "TSP800II", host: "192.168.1.180" },
   {
     ...THERMAL,
@@ -70,6 +70,17 @@ export function activeProfile(state: Profiles): Profile {
   return (
     state.profiles.find((p) => p.id === state.activeId) ?? state.profiles[0]
   );
+}
+
+async function read<T>(key: string): Promise<T | undefined> {
+  const store = await load(FILE, { defaults: {} });
+  return store.get<T>(key);
+}
+
+async function write(key: string, value: unknown): Promise<void> {
+  const store = await load(FILE, { defaults: {} });
+  await store.set(key, value);
+  await store.save();
 }
 
 export async function loadProfiles(): Promise<Profiles> {
@@ -101,30 +112,22 @@ export async function loadProfiles(): Promise<Profiles> {
   return DEFAULT_PROFILES;
 }
 
-export async function saveProfiles(state: Profiles): Promise<void> {
-  const store = await load(FILE, { defaults: {} });
-  await store.set(KEY, state);
-  await store.save();
+export function saveProfiles(state: Profiles): Promise<void> {
+  return write(KEY, state);
 }
 
 export async function loadLinear(): Promise<Linear | null> {
-  const store = await load(FILE, { defaults: {} });
-  return (await store.get<Linear>(LINEAR_KEY)) ?? null;
+  return (await read<Linear>(LINEAR_KEY)) ?? null;
 }
 
-export async function saveLinear(linear: Linear): Promise<void> {
-  const store = await load(FILE, { defaults: {} });
-  await store.set(LINEAR_KEY, linear);
-  await store.save();
+export function saveLinear(linear: Linear): Promise<void> {
+  return write(LINEAR_KEY, linear);
 }
 
 export async function loadApiEnabled(): Promise<boolean> {
-  const store = await load(FILE, { defaults: {} });
-  return (await store.get<boolean>(API_KEY)) ?? false;
+  return (await read<boolean>(API_KEY)) ?? false;
 }
 
-export async function saveApiEnabled(enabled: boolean): Promise<void> {
-  const store = await load(FILE, { defaults: {} });
-  await store.set(API_KEY, enabled);
-  await store.save();
+export function saveApiEnabled(enabled: boolean): Promise<void> {
+  return write(API_KEY, enabled);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { probePrinter } from "@/lib/api";
 import type { Profile } from "@/lib/settings";
 
@@ -22,28 +22,24 @@ export function useProbes(
 ): Record<string, Status> {
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   // Re-probe when a host or port changes, not on every profile edit.
-  const key = [...profiles]
+  const targets = [...profiles]
     .sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId))
-    .map((p) => `${p.id}\t${p.host}\t${p.port}`)
-    .join("\n");
+    .map((p) => ({ id: p.id, host: p.host, port: p.port }));
+  const key = JSON.stringify(targets);
+  const latest = useRef(targets);
+  useEffect(() => {
+    latest.current = targets;
+  });
 
   useEffect(() => {
     if (paused) return;
-
-    const targets = key
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const [id, host, port] = line.split("\t");
-        return { id, host, port: Number(port) };
-      });
 
     // One probe per endpoint; two at once would refuse each other.
     const endpoints = new Map<
       string,
       { host: string; port: number; ids: string[] }
     >();
-    for (const { id, host, port } of targets) {
+    for (const { id, host, port } of latest.current) {
       const endpoint = `${host}:${port}`;
       const existing = endpoints.get(endpoint);
       if (existing) existing.ids.push(id);

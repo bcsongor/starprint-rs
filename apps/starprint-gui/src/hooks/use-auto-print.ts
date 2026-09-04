@@ -41,8 +41,9 @@ export function useAutoPrint(
         const issues = await assignedIssues(apiKey);
         if (cancelled) return;
         failing = false;
-        const fresh = seen
-          ? issues.filter((issue) => !seen?.has(issue.id))
+        const previous = seen;
+        const fresh = previous
+          ? issues.filter((issue) => !previous.has(issue.id))
           : [];
         // Counted as seen before printing, so a card that fails is
         // reported once and not sent again to a printer that may have

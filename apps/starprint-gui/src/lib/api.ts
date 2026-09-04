@@ -170,6 +170,8 @@ export interface TestPage {
   doubleResolution: boolean;
 }
 
+export const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
+
 /** Mirrors `Section` in starprint-workflows/src/test_page.rs. */
 export interface Section {
   title: string;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { CopyIcon, PrinterIcon, TerminalIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -33,11 +33,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiServer } from "@/hooks/use-api-server";
+import { useAsync } from "@/hooks/use-async";
 import { useAutoPrint } from "@/hooks/use-auto-print";
+import { usePreview } from "@/hooks/use-preview";
 import {
   DEFAULT_NOTE,
   DEFAULT_PICTURE,
   DEFAULT_QR,
+  DEFAULT_TEST_PAGE,
   DEFAULT_TEXT,
   QUIET_MODULES,
   jobHexdump,
@@ -51,18 +54,13 @@ import {
   textLayout,
   type HexDump,
   type Job,
-  type Layout,
   type Note,
-  type NoteLayout,
   type Picture,
   type Printer,
   type Qr,
-  type QrLayout,
-  type Section,
   type TaskCard,
   type TestPage,
   type Text,
-  type TextLayout,
 } from "@/lib/api";
 import { roll } from "@/lib/paper";
 import {
@@ -109,11 +107,6 @@ const NAMES: Record<Workflow, string> = {
   "test-page": "test page",
 };
 
-const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
-
-/** Coalesces slider drags; the preview is never more than one render behind. */
-const PREVIEW_DEBOUNCE_MS = 30;
-
 export default function App() {
   const [profiles, setProfiles] = useState<Profiles>(DEFAULT_PROFILES);
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
@@ -121,17 +114,8 @@ export default function App() {
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
   const [note, setNote] = useState<Note>(DEFAULT_NOTE);
   const [code, setCode] = useState<Qr>(DEFAULT_QR);
-  const [symbol, setSymbol] = useState<QrLayout | null>(null);
-  const [symbolUrl, setSymbolUrl] = useState<string | null>(null);
-  const [symbolError, setSymbolError] = useState<string | null>(null);
   const [testPage, setTestPage] = useState<TestPage>(DEFAULT_TEST_PAGE);
-  const [layout, setLayout] = useState<Layout | null>(null);
-  const [wrap, setWrap] = useState<TextLayout | null>(null);
-  const [slip, setSlip] = useState<NoteLayout | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
   const [picture, setPicture] = useState<Picture>(DEFAULT_PICTURE);
-  const [pictureUrl, setPictureUrl] = useState<string | null>(null);
-  const [pictureError, setPictureError] = useState<string | null>(null);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
@@ -173,122 +157,39 @@ export default function App() {
       ),
     });
 
-  useEffect(() => {
-    let cancelled = false;
-    taskCardLayout(card, printer.kind, printer.paper)
-      .then((result) => {
-        if (!cancelled) setLayout(result);
-      })
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [card, printer.kind, printer.paper]);
-
-  useEffect(() => {
-    let cancelled = false;
-    textLayout(text, printer.kind, printer.paper)
-      .then((result) => {
-        if (!cancelled) setWrap(result);
-      })
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [text, printer.kind, printer.paper]);
-
-  useEffect(() => {
-    let cancelled = false;
-    noteLayout(note, printer.kind, printer.paper)
-      .then((result) => {
-        if (!cancelled) setSlip(result);
-      })
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [note, printer.kind, printer.paper]);
+  const { kind, paper } = printer;
+  const layout = useAsync(
+    () => taskCardLayout(card, kind, paper),
+    [card, kind, paper],
+  );
+  const wrap = useAsync(
+    () => textLayout(text, kind, paper),
+    [text, kind, paper],
+  );
+  const slip = useAsync(
+    () => noteLayout(note, kind, paper),
+    [note, kind, paper],
+  );
+  const sections = useAsync(
+    () => testPageSections(testPage, kind),
+    [testPage, kind],
+  );
 
   // An empty string encodes to a perfectly valid symbol, which is not
   // one the preview should show.
   const hasData = code.data.trim().length > 0;
-  const previewChain = useRef<Promise<void>>(Promise.resolve());
-  useEffect(() => {
-    if (!hasData) return;
-    let cancelled = false;
-    let url: string | null = null;
-    const timer = setTimeout(() => {
-      // One render at a time; a stale request is skipped.
-      previewChain.current = previewChain.current.then(async () => {
-        if (cancelled) return;
-        try {
-          const [layout, png] = await Promise.all([
-            qrLayout(code, printer.kind, printer.paper),
-            qrPreview(code, printer.kind, printer.paper),
-          ]);
-          if (cancelled) return;
-          url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
-          setSymbol(layout);
-          setSymbolUrl(url);
-          setSymbolError(null);
-        } catch (error) {
-          if (cancelled) return;
-          setSymbol(null);
-          setSymbolUrl(null);
-          setSymbolError(String(error));
-        }
-      });
-    }, PREVIEW_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [code, hasData, printer.kind, printer.paper]);
-
-  useEffect(() => {
-    let cancelled = false;
-    testPageSections(testPage, printer.kind)
-      .then((result) => {
-        if (!cancelled) setSections(result);
-      })
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [testPage, printer.kind]);
-
-  useEffect(() => {
-    if (!picture.path) return;
-    let cancelled = false;
-    let url: string | null = null;
-    const timer = setTimeout(() => {
-      // One render at a time; a stale request is skipped.
-      previewChain.current = previewChain.current.then(async () => {
-        if (cancelled) return;
-        try {
-          const png = await picturePreview(
-            picture,
-            printer.kind,
-            printer.paper,
-          );
-          if (cancelled) return;
-          url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
-          setPictureUrl(url);
-          setPictureError(null);
-        } catch (error) {
-          if (cancelled) return;
-          setPictureUrl(null);
-          setPictureError(String(error));
-        }
-      });
-    }, PREVIEW_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [picture, printer.kind, printer.paper]);
+  const qr = usePreview(async () => {
+    if (!hasData) return null;
+    const [value, png] = await Promise.all([
+      qrLayout(code, kind, paper),
+      qrPreview(code, kind, paper),
+    ]);
+    return { value, png };
+  }, [code, kind, paper]);
+  const preview = usePreview(async () => {
+    if (picture.path === "") return null;
+    return { value: null, png: await picturePreview(picture, kind, paper) };
+  }, [picture, kind, paper]);
 
   const job: Job =
     workflow === "task-card"
@@ -302,21 +203,13 @@ export default function App() {
             : workflow === "test-page"
               ? { kind: "test-page", ...testPage }
               : { kind: "picture", ...picture };
-  // Clearing the picture leaves the last preview in state.
-  const preview = picture.path
-    ? { url: pictureUrl, error: pictureError }
-    : { url: null, error: null };
-  // As does clearing the data.
-  const qr = hasData
-    ? { layout: symbol, url: symbolUrl, error: symbolError }
-    : { layout: null, url: null, error: null };
   const ready =
     workflow === "task-card"
       ? card.text.trim().length > 0
       : workflow === "text"
         ? text.text.trim().length > 0
         : workflow === "qr"
-          ? qr.layout !== null
+          ? qr.value !== null
           : workflow === "picture"
             ? preview.url !== null
             : true;
@@ -328,10 +221,10 @@ export default function App() {
         : workflow === "note"
           ? `${note.rows} rows, ${note.rows * note.pitch} mm`
           : workflow === "qr"
-            ? qr.layout &&
+            ? qr.value &&
               // The slider sets the symbol; the block on paper is that
               // plus the quiet zone, which is what this measures.
-              `${qr.layout.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.layout.widthMm)} mm`
+              `${qr.value.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.value.widthMm)} mm`
             : workflow === "picture"
               ? `${roll(printer.kind, printer.paper).dots} dots`
               : null;
@@ -504,7 +397,7 @@ export default function App() {
             )}
           </Label>
           {workflow === "test-page" ? (
-            <TestPagePreview sections={sections} />
+            <TestPagePreview sections={sections ?? []} />
           ) : (
             <PaperSheet kind={printer.kind} paper={printer.paper}>
               {workflow === "task-card" ? (
@@ -519,7 +412,7 @@ export default function App() {
                   paper={printer.paper}
                 />
               ) : workflow === "qr" ? (
-                <QrPreview layout={qr.layout} url={qr.url} error={qr.error} />
+                <QrPreview layout={qr.value} url={qr.url} error={qr.error} />
               ) : (
                 <PicturePreview url={preview.url} error={preview.error} />
               )}

@@ -49,7 +49,9 @@ export function NoteForm({ note, onChange }: Props) {
               // Each ruling comes at its standard pitch, and at the rows
               // that keep the slip the same length; the sliders are
               // there to argue with it.
-              onClick={() => onChange({ rule: value, ...NOTEBOOK_RULING[value] })}
+              onClick={() =>
+                onChange({ rule: value, ...NOTEBOOK_RULING[value] })
+              }
             >
               <Icon />
               {label}
