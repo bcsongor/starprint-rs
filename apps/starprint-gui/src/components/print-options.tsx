@@ -64,7 +64,7 @@ export function PrintOptions({ printer, onChange }: Props) {
           value={String(printer.density)}
           options={DENSITIES}
           disabled={!thermal}
-          labelClassName="w-6 tabular-nums"
+          labelClassName="w-6 text-right tabular-nums"
           onChange={(density) => set("density", Number(density))}
         />
       </Field>
