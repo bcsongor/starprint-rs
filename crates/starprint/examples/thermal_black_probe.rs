@@ -9,7 +9,9 @@
 //! the rows more than makes up for it. Print speed is fixed in that mode,
 //! so the slow setting only applies to the first half.
 
-use starprint::graphics::{Bitmap, Dithering, Grayscale};
+mod common;
+
+use starprint::graphics::Bitmap;
 use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut, PrintMode, PrintSpeed, RasterQuality};
 
@@ -19,32 +21,13 @@ const CHECKER: u32 = 80;
 const RAMP: u32 = 120;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let usage = "usage: thermal_black_probe <printer-host> [80|112] [density=N]";
-    let host = args.next().ok_or(usage)?;
-    let width: u32 = match args.next().as_deref() {
-        None | Some("80") => 576,
-        Some("112") => 832,
-        Some(other) => return Err(format!("unknown paper width {other:?}; {usage}").into()),
-    };
-    let density: i8 = args
-        .find_map(|f| {
-            f.strip_prefix("density=")
-                .map(|n| n.parse::<i8>().map_err(|e| e.to_string()))
-        })
-        .transpose()?
-        .unwrap_or(3);
+    let common::Probe { host, width, flags } =
+        common::probe("usage: thermal_black_probe <printer-host> [80|112] [density=N]")?;
+    let density = common::density(&flags)?.unwrap_or(3);
 
     let solid = Bitmap::from_fn(width, SOLID, |_, _| true);
     let checker = Bitmap::from_fn(width, CHECKER, |x, y| (x + y) % 2 == 0);
-    let ramp = {
-        let pixels = (0..RAMP)
-            .flat_map(|_| (0..width).map(move |x| (x * 255 / (width - 1)) as u8))
-            .collect();
-        Dithering::FloydSteinberg { threshold: 128 }
-            .apply(&Grayscale::new(width, RAMP, pixels).expect("sized buffer"))
-            .to_bitmap()
-    };
+    let ramp = common::ramp(width, RAMP);
 
     let mut doc = starprint::starline()
         .print_density(density)

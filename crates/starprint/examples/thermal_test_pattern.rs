@@ -15,41 +15,25 @@
 //! prints at slow speed; `density=N` sets print density from -3
 //! (lightest) to 3 (darkest), 0 being the printer's standard.
 
-use starprint::graphics::{Bitmap, Dithering, Grayscale};
+mod common;
+
+use starprint::graphics::Bitmap;
 use starprint::transport::TcpTransport;
 use starprint::{
     Alignment, Barcode, Cut, PrintMode, PrintSpeed, QrCode, RasterQuality, Symbology, ThermalFont,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let usage = "usage: thermal_test_pattern <printer-host> [80|112] [double] [slow] [density=N]";
-    let host = args.next().ok_or(usage)?;
-    let width: u32 = match args.next().as_deref() {
-        None | Some("80") => 576,
-        Some("112") => 832,
-        Some(other) => return Err(format!("unknown paper width {other:?}; {usage}").into()),
-    };
-    let flags: Vec<String> = args.collect();
+    let common::Probe { host, width, flags } = common::probe(
+        "usage: thermal_test_pattern <printer-host> [80|112] [double] [slow] [density=N]",
+    )?;
     let double = flags.iter().any(|f| f == "double");
     let slow = flags.iter().any(|f| f == "slow");
-    let density: Option<i8> = flags
-        .iter()
-        .find_map(|f| f.strip_prefix("density="))
-        .map(|n| n.parse())
-        .transpose()?;
+    let density = common::density(&flags)?;
 
     let black_bar = Bitmap::from_fn(width, 64, |_, _| true);
     let hairlines = Bitmap::from_fn(width, 48, |x, _| x % 8 == 0);
     let checkerboard = Bitmap::from_fn(width, 32, |x, y| (x + y) % 2 == 0);
-    let ramp = |height: u32| {
-        let pixels = (0..height)
-            .flat_map(|_| (0..width).map(move |x| (x * 255 / (width - 1)) as u8))
-            .collect();
-        Dithering::FloydSteinberg { threshold: 128 }
-            .apply(&Grayscale::new(width, height, pixels).expect("sized buffer"))
-            .to_bitmap()
-    };
 
     // The mode outlives ESC @ and the job that set it, so start from a
     // known one rather than from whatever printed last.
@@ -79,13 +63,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .line("3 one-dot checkerboard: sharpness")
         .raster(&checkerboard, RasterQuality::High)
         .line("4 grey ramp: banding / streaks")
-        .raster(ramp(96), RasterQuality::High);
+        .raster(common::ramp(width, 96), RasterQuality::High);
 
     if double {
         doc = doc
             .line("4b grey ramp, double resolution")
             .print_mode(PrintMode::DoubleResolution)
-            .raster(ramp(192), RasterQuality::High)
+            .raster(common::ramp(width, 192), RasterQuality::High)
             .print_mode(PrintMode::SingleColor);
     }
 

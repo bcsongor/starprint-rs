@@ -6,9 +6,7 @@
 //! Usage: cargo run --example receipt -- <printer-host-or-ip> thermal|impact [slow] [density=N] [style=a|b]
 
 use starprint::transport::TcpTransport;
-use starprint::{
-    Alignment, Builder, CodePage, Cut, Document, Impact, PrintSpeed, Protocol, StarLine,
-};
+use starprint::{Alignment, Builder, Cut, Document, Impact, PrintSpeed, Protocol, StarLine};
 
 const CURRENCY: &str = "£";
 const SERVICE_CHARGE_PCT: f64 = 12.5;
@@ -145,13 +143,12 @@ where
     let wide_width = width / 2;
 
     let mut receipt = builder
-        .code_page(CodePage::CP437)
         .align(Alignment::Center)
         // First header line is emphasised and quad size.
         .bold(true)
         .set_wide(true)
         .set_tall(true)
-        .line(&truncate("DISHOOM", wide_width))
+        .line("DISHOOM")
         .set_tall(false)
         .set_wide(false)
         .bold(false)
@@ -312,10 +309,9 @@ fn band(b: Builder<StarLine>) -> Builder<StarLine> {
 }
 
 fn styled(builder: Builder<StarLine>, style: Style) -> Document {
-    let b = builder.code_page(CodePage::CP437);
     let b = match style {
-        Style::Classic => classic(b),
-        Style::Band => band(b),
+        Style::Classic => classic(builder),
+        Style::Band => band(builder),
     };
     b.feed(2).cut(Cut::FeedThenPartial).build()
 }
@@ -332,15 +328,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find_map(|a| a.strip_prefix("density=").map(str::parse::<i8>))
         .transpose()?;
-    let style = match flags
-        .iter()
-        .find_map(|a| a.strip_prefix("style="))
-        .unwrap_or("")
-    {
-        "" => None,
-        "a" => Some(Style::Classic),
-        "b" => Some(Style::Band),
-        _ => return Err(USAGE.into()),
+    let style = match flags.iter().find_map(|a| a.strip_prefix("style=")) {
+        None => None,
+        Some("a") => Some(Style::Classic),
+        Some("b") => Some(Style::Band),
+        Some(_) => return Err(USAGE.into()),
     };
     let doc = match kind.as_str() {
         "thermal" => {

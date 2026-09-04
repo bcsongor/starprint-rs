@@ -24,6 +24,8 @@
 //! with bit 5 set. Measurements on a TSP700II repeated to the
 //! millisecond, but with ASB enabled switch it off (`ESC RS a`) first.
 
+mod common;
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
@@ -61,20 +63,9 @@ const SPEEDS: [(u8, &str); 4] = [
 const ROWS: u32 = 320;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let usage = "usage: thermal_speed_probe <printer-host> [80|112] [density=N]";
-    let host = args.next().ok_or(usage)?;
-    let width: u32 = match args.next().as_deref() {
-        None | Some("80") => 576,
-        Some("112") => 832,
-        Some(other) => return Err(format!("unknown paper width {other:?}; {usage}").into()),
-    };
-    let density: Option<i8> = args
-        .find_map(|f| {
-            f.strip_prefix("density=")
-                .map(|n| n.parse::<i8>().map_err(|e| e.to_string()))
-        })
-        .transpose()?;
+    let common::Probe { host, width, flags } =
+        common::probe("usage: thermal_speed_probe <printer-host> [80|112] [density=N]")?;
+    let density = common::density(&flags)?;
 
     let block = Bitmap::from_fn(width, ROWS, |x, y| (x + y) % 2 == 0);
 
@@ -86,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{:<12}{:>10}{:>10}{:>10}",
         "speed", "sent", "drained", "total"
     );
-    let mut results = Vec::new();
+    let mut totals = Vec::new();
     for (n, name) in SPEEDS {
         let mut doc = starprint::starline()
             // The speed setting is ignored in double-resolution mode,
@@ -110,20 +101,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let drained = wait_until_idle(&mut printer)?;
         let total = start.elapsed();
         println!("{name:<12}{sent:>10.2?}{drained:>10.2?}{total:>10.2?}");
-        results.push((name, total));
+        totals.push(total);
     }
 
-    let mut end = starprint::starline().raw([ESC, RS, b'r', 2]);
-    end = end.feed(1).cut(Cut::FeedThenPartial);
-    send_paced(&mut printer, end.build().as_bytes())?;
+    let end = starprint::starline()
+        .raw([ESC, RS, b'r', 2])
+        .feed(1)
+        .cut(Cut::FeedThenPartial)
+        .build();
+    send_paced(&mut printer, end.as_bytes())?;
 
-    let slowest = results.iter().map(|(_, t)| *t).max().unwrap_or_default();
-    let fastest = results.iter().map(|(_, t)| *t).min().unwrap_or_default();
-    println!(
-        "\nspread {:.2?} between fastest and slowest",
-        slowest - fastest
-    );
-    if slowest.saturating_sub(fastest) < Duration::from_millis(100) {
+    let (slowest, fastest) = (totals.iter().max(), totals.iter().min());
+    let spread = *slowest.expect("timed") - *fastest.expect("timed");
+    println!("\nspread {spread:.2?} between fastest and slowest");
+    if spread < Duration::from_millis(100) {
         println!(
             "that is within the noise: at this pacing the data, not the \
              head, is setting the pace"

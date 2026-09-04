@@ -8,25 +8,17 @@
 //! or prints them at half height. Inverse lines are the one text style
 //! that lays down solid black, so they show the darkening too.
 
+mod common;
+
 use starprint::transport::TcpTransport;
 use starprint::{Alignment, Cut, PrintMode, PrintSpeed, ThermalFont};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let usage = "usage: thermal_text_probe <printer-host> [80|112] [density=N]";
-    let host = args.next().ok_or(usage)?;
-    let columns: usize = match args.next().as_deref() {
-        None | Some("80") => 48,
-        Some("112") => 69,
-        Some(other) => return Err(format!("unknown paper width {other:?}; {usage}").into()),
-    };
-    let density: i8 = args
-        .find_map(|f| {
-            f.strip_prefix("density=")
-                .map(|n| n.parse::<i8>().map_err(|e| e.to_string()))
-        })
-        .transpose()?
-        .unwrap_or(3);
+    let common::Probe { host, width, flags } =
+        common::probe("usage: thermal_text_probe <printer-host> [80|112] [density=N]")?;
+    // Font A is 12 dots wide.
+    let columns = (width / 12) as usize;
+    let density = common::density(&flags)?.unwrap_or(3);
 
     let fox = "The quick brown fox 0123456789";
     let bar = " ".repeat(columns);

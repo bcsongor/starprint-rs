@@ -51,12 +51,10 @@ fn tile_starts(width: u32) -> Vec<u32> {
 
     let step = TILE_WIDTH_DOTS - OVERLAP_DOTS;
     let mut starts = vec![0];
-    while starts.last().copied().unwrap() + TILE_WIDTH_DOTS < width {
-        let next = (starts.last().copied().unwrap() + step).min(width - TILE_WIDTH_DOTS);
-        if starts.last().copied() == Some(next) {
-            break;
-        }
-        starts.push(next);
+    let mut last = 0;
+    while last + TILE_WIDTH_DOTS < width {
+        last = (last + step).min(width - TILE_WIDTH_DOTS);
+        starts.push(last);
     }
     starts
 }
