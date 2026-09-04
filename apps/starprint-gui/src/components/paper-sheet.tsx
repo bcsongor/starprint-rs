@@ -68,9 +68,11 @@ export function PaperSheet({ kind, paper, children }: Props) {
     <div className="relative min-h-0 flex-1">
       {/* Measured apart from the sheet so the scale cannot feed back. */}
       <div ref={pane} className="absolute inset-0" />
+      {/* Composited from the start. WebKit otherwise re-rasterises the
+          scaled text when a popup's layer appears, and it visibly snaps. */}
       <div
         ref={sheet}
-        className="absolute top-0 left-1/2 origin-top bg-white font-mono text-black shadow-md ring-1 ring-black/10"
+        className="absolute top-0 left-1/2 origin-top bg-white font-mono text-black shadow-md ring-1 ring-black/10 will-change-transform"
         style={{
           width,
           fontSize: printPx,

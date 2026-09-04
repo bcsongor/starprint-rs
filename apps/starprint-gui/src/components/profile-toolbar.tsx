@@ -57,6 +57,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
       <FieldLabel htmlFor="profile">Profile</FieldLabel>
       <div className="flex items-center gap-2">
         <Select
+          modal={false}
           value={profile.id}
           onValueChange={(activeId) => {
             if (activeId) onChange({ ...state, activeId });
@@ -99,7 +100,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
           </SelectContent>
         </Select>
 
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             render={
               <Button

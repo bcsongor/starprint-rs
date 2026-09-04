@@ -90,6 +90,7 @@ function ProfileForm({
         <Field>
           <FieldLabel htmlFor="kind">Printer</FieldLabel>
           <Select
+            modal={false}
             value={draft.kind}
             onValueChange={(value) => set("kind", value as PrinterKind)}
           >

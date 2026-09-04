@@ -50,6 +50,7 @@ export function PrintOptions({ printer, onChange }: Props) {
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="paper">Paper</FieldLabel>
         <Select
+          modal={false}
           value={printer.paper}
           disabled={!thermal}
           onValueChange={(value) => set("paper", value as Paper)}
@@ -77,6 +78,7 @@ export function PrintOptions({ printer, onChange }: Props) {
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="density">Density</FieldLabel>
         <Select
+          modal={false}
           value={String(printer.density)}
           disabled={!thermal}
           onValueChange={(value) => set("density", Number(value))}
@@ -106,6 +108,7 @@ export function PrintOptions({ printer, onChange }: Props) {
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="speed">Speed</FieldLabel>
         <Select
+          modal={false}
           value={printer.speed}
           disabled={!thermal}
           onValueChange={(value) => set("speed", value as Speed)}

@@ -99,6 +99,7 @@ export function PictureForm({ picture, kind, onChange }: Props) {
         <Field className="w-44">
           <FieldLabel htmlFor="dither">Dither</FieldLabel>
           <Select
+            modal={false}
             value={picture.dither}
             onValueChange={(value) => set("dither", value as Dither)}
           >
