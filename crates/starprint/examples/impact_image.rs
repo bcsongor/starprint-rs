@@ -32,7 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let prepared = ImagePipeline::new().density(density).prepare(&source)?;
 
-    let bitmap_h = prepared.preview.height();
     let doc = starprint::impact()
         .align(Alignment::Center)
         .bit_image(&prepared.image)
@@ -45,9 +44,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut printer = TcpTransport::connect(&host)?;
     printer.print(&doc)?;
     println!(
-        "printed {}x{} dots ({density:?} density, preview height {bitmap_h}); {} bytes sent",
-        prepared.preview.width(),
-        bitmap_h,
+        "printed {}x{} dots ({density:?} density); {} bytes sent",
+        prepared.image.bitmap().width(),
+        prepared.image.bitmap().height(),
         doc.as_bytes().len()
     );
     Ok(())

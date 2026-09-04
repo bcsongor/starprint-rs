@@ -43,7 +43,7 @@ fn due(due_by: Option<&str>, today: NaiveDate) -> Option<String> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const USAGE: &str = "usage: task_card <printer-host> thermal|impact \"<task>\" [priority] [due=DATE] [density=N]";
+    const USAGE: &str = "usage: task_card <printer-host> thermal|impact \"<task>\" [priority] [ref=KEY] [due=DATE] [density=N]";
     let mut args = std::env::args().skip(1);
     let host = args.next().ok_or(USAGE)?;
     let kind = args.next().ok_or(USAGE)?;
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let flags: Vec<String> = args.collect();
     if let Some(bad) = flags.iter().find(|flag| {
         flag.as_str() != "priority"
-            && !["due=", "density="]
+            && !["ref=", "due=", "density="]
                 .iter()
                 .any(|prefix| flag.starts_with(prefix))
     }) {
