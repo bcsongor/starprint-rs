@@ -40,6 +40,11 @@
 - The desktop app has a QR tab. Because the modules are ours rather than
   the firmware's, its preview draws the symbol that will print, at the
   millimetres it will measure, rather than an approximation of one.
+- A `radius` rounds the corners of the symbol, each as far as its shape
+  allows, so a lone module becomes a circle early on while the finder
+  patterns keep rounding. The default is 0, square, since no rounded
+  symbol has been checked against a phone on either head yet.
+
 ### Library
 
 - `ImagePipeline::prepare` returns the `BitImage` and `prepare_preview`

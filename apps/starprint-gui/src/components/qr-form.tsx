@@ -97,9 +97,10 @@ export function QrForm({ code, onChange, onSubmit }: Props) {
           onChange={(value) => set("size", value)}
         />
 
-        {/* Full draws a lone module as a circle. A head with too few
-            dots to a module prints square regardless, as the preview
-            shows. */}
+        {/* Each corner rounds as far as its shape allows: a lone module
+            is a circle from about a third, the finder patterns keep
+            going to full. The SP700's coarser module rounds later, as
+            the preview shows. */}
         <SliderField
           id="radius"
           label="Corners"

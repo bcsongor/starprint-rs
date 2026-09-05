@@ -146,8 +146,9 @@ Behaviour that shapes how jobs are written:
 - `cargo run --example thermal_test_pattern -- <host> 80 slow density=3`
   prints a head-check page.
 - `cargo run -p starprint-workflows --example qr -- <host> thermal|impact
-  "<data>" [size=MM] [radius=PCT] [ecc=l|m|q|h] [caption=TEXT]` prints a
-  QR code, for checking a module size or a radius against a phone.
+  "<data>" [size=MM] [radius=PCT] [ecc=l|m|q|h] [align=left|center|right]
+  [caption=TEXT]` prints a QR code, for checking a module size or a
+  radius against a phone.
 - `cargo run --example thermal_image --features image -- <host> photo.jpg
   slow density=3 [double] [rotate] [gamma=F] [equalize=0|1]` for photos.
 - `cargo run --example impact_image --features image -- <host> photo.jpg

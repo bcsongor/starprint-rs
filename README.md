@@ -91,7 +91,7 @@ Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the p
 - `impact_kitchen_ticket`: a red/black ticket for an SP700.
 - `receipt`: a till receipt for either printer; pass `thermal` or `impact`.
 - `task_card`: the desktop GUI's task card, for either printer; run with `cargo run -p starprint-workflows --example task_card -- …`.
-- `qr`: a QR code on either printer, with `size=MM`, `ecc=` and `caption=` flags; run with `-p starprint-workflows` too.
+- `qr`: a QR code on either printer, with `size=MM`, `radius=PCT`, `ecc=`, `align=` and `caption=` flags; run with `-p starprint-workflows` too.
 - `thermal_test_pattern`: a head-check page.
 - `thermal_image`, `impact_image`: a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
 

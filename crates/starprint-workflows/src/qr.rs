@@ -163,7 +163,9 @@ impl QrStyle for Builder<StarLine> {
     fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String> {
         // Raster rows start at their own left margin, ignoring ESC GS a
         // (Star Line Mode 3-73, 3-81). Blank dots position the symbol.
-        let spare = Self::profile(paper).max_width(Self::DENSITY) - symbol.width();
+        let spare = Self::profile(paper)
+            .max_width(Self::DENSITY)
+            .saturating_sub(symbol.width());
         let left = match align {
             Align::Left => 0,
             Align::Center => spare / 2,
@@ -792,7 +794,13 @@ mod tests {
                 let bytes = document.as_bytes();
                 let start = bytes.windows(4).position(|w| w == b"\x1b*rA").unwrap();
                 let raster = &bytes[start..];
-                let start = raster.iter().position(|&byte| byte == b'b').unwrap();
+                // Skip the NUL-terminated ESC * r settings, so that a
+                // setting byte is never taken for the first row command.
+                let mut start = 4;
+                while raster[start..].starts_with(&[0x1b, b'*']) {
+                    start += raster[start..].iter().position(|&byte| byte == 0).unwrap() + 1;
+                }
+                assert_eq!(raster[start], b'b');
                 let row_bytes = u16::from_le_bytes([raster[start + 1], raster[start + 2]]) as usize;
 
                 // The first ink row crosses both finder patterns, so its
