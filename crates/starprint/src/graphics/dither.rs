@@ -153,30 +153,46 @@ impl Dithering {
     }
 }
 
-/// In f64 like the reference, so rounding matches.
+/// In f64 like the reference, so rounding matches. The kernels reach at
+/// most two rows down, so three rows of error are live at a time.
 fn error_diffuse(image: &Grayscale, threshold: u8, kernel: Kernel) -> Vec<u8> {
-    let (w, h) = (image.width as i64, image.height as i64);
-    let mut buf: Vec<f64> = image.pixels.iter().map(|&p| f64::from(p)).collect();
-    let mut out = vec![0u8; buf.len()];
+    const ROWS: usize = 3;
+    debug_assert!(
+        kernel
+            .iter()
+            .all(|&(_, dy, _)| (0..ROWS as i64).contains(&dy))
+    );
+    let (w, h) = (image.width as usize, image.height as usize);
+    let threshold = f64::from(threshold);
+    let mut out = vec![0u8; w * h];
+    let mut ring = vec![0.0f64; ROWS * w];
+    let load = |ring: &mut [f64], y: usize| {
+        if y < h {
+            let row = &image.pixels[y * w..][..w];
+            for (err, &p) in ring[(y % ROWS) * w..][..w].iter_mut().zip(row) {
+                *err = f64::from(p);
+            }
+        }
+    };
+    for y in 0..ROWS {
+        load(&mut ring, y);
+    }
 
     for y in 0..h {
         for x in 0..w {
-            let i = (y * w + x) as usize;
-            let old = buf[i];
-            let new = if old < f64::from(threshold) {
-                0.0
-            } else {
-                255.0
-            };
-            out[i] = new as u8;
+            let old = ring[(y % ROWS) * w + x];
+            let new = if old < threshold { 0.0 } else { 255.0 };
+            out[y * w + x] = new as u8;
             let err = old - new;
             for &(dx, dy, weight) in kernel {
-                let (nx, ny) = (x + dx, y + dy);
-                if nx >= 0 && nx < w && ny >= 0 && ny < h {
-                    buf[(ny * w + nx) as usize] += err * weight;
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                if nx >= 0 && nx < w as i64 && ny < h as i64 {
+                    ring[(ny as usize % ROWS) * w + nx as usize] += err * weight;
                 }
             }
         }
+        // Row `y` is done, so its slot takes the row entering the window.
+        load(&mut ring, y + ROWS);
     }
     out
 }
