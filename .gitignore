@@ -2,3 +2,5 @@
 /tmp
 # Someone's own printers, addresses and all; the example is tracked.
 printers.toml
+# Star forbids redistributing its manuals; keep them here, out of the repository.
+manuals/*.pdf

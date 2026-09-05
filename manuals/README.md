@@ -1,22 +1,17 @@
 # Star manuals
 
-The newest revisions Star Micronics publishes (checked 2026-08-26).
+The Star Micronics documents this library implements. They are Star's
+copyright and are not distributed here; each link goes to Star's Global
+Support Center, which carries the current revision.
 
-| File | Title | Revision |
-|---|---|---|
-| [`star-line-mode-command-specifications-rev1.80.pdf`](star-line-mode-command-specifications-rev1.80.pdf) | Line Thermal Printer, STAR Line Mode Command Specifications | Rev 1.80 (2020-08-26), 288 pages |
-| [`dot-impact-star-command-specifications-rev1.91.pdf`](dot-impact-star-command-specifications-rev1.91.pdf) | Dot Impact Printer, STAR Command Specifications | Rev. 1.91 (2014-03-17), 111 pages |
-| [`tsp800ii-hardware-manual-rev2.1.pdf`](tsp800ii-hardware-manual-rev2.1.pdf) | Thermal Printer TSP800II Series, Hardware Manual | Rev. 2.1 (2024-06-20), 37 pages |
-| [`tsp700ii-hardware-manual-rev2.2.pdf`](tsp700ii-hardware-manual-rev2.2.pdf) | Thermal Printer TSP700II Series, Hardware Manual | Rev. 2.2 (2024-06-20), 32 pages |
-| [`sp700-hardware-manual-rev2.0.pdf`](sp700-hardware-manual-rev2.0.pdf) | Dot Printer SP712 / 742 Series, Hardware Manual | Rev. 2.0, 38 pages |
+| Document | Revision |
+|---|---|
+| [Star Line Mode Command Specifications](https://starmicronics.com/support/download/star-line-mode-command-specifications/) | 1.80 |
+| [Dot Impact Printer STAR Command Specifications](https://www.starmicronics.com/support/Mannualfolder/dot_star_cm_en.pdf) | 1.91 |
+| [TSP800II Hardware Manual](https://starmicronics.com/support/download/tsp800ii-hardware-manual-english/) | 2.1 |
+| [TSP700II Hardware Manual](https://starmicronics.com/support/download/tsp700ii-hardware-manual-english/) | 2.2 |
+| [SP700 9-Pin Print Head Hardware Manual](https://starmicronics.com/support/download/sp700-9-pin-print-head-hardware-manual-english/) | 2.0 |
 
 The Line Mode spec covers `Builder<StarLine>`; the dot impact spec covers
-`Builder<Impact>` (the SP700 in "STAR Mode", not its ESC/POS emulation).
-
-All of these are copyright Star Micronics Co., Ltd.
-
-The Star Micronics manuals are excluded from this project's MIT and Apache-2.0
-licences. Their original copyright notices and terms apply.
-
-These documents are technical references for printer compatibility. Their
-inclusion does not imply Star Micronics' endorsement of this independent project.
+`Builder<Impact>`, the SP700 in STAR mode rather than its ESC/POS
+emulation. Source comments cite these documents by section.

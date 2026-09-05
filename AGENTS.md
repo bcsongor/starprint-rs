@@ -65,7 +65,8 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   profile file, `problem` is the only error shape, `app` wires them
   into a router and `server` binds, serves and stops it. Anything new
   goes in whichever of those owns it.
-- `manuals/`: the Star specifications. Check bytes there, not from memory.
+- `manuals/README.md`: links to Star's specifications, which are Star's
+  copyright and not kept here. Check bytes there, not from memory.
 - `.agents/skills/starprint-print/`: the skill we publish for callers
   of the API, and the only reference to its endpoints and job fields.
   Anything the API gains goes in here.
