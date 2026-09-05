@@ -7,7 +7,6 @@ import { CardPreview } from "@/components/card-preview";
 import { LinearBar } from "@/components/linear-bar";
 import { NoteForm } from "@/components/note-form";
 import { NotePreview } from "@/components/note-preview";
-import { PaperSheet } from "@/components/paper-sheet";
 import { PictureForm } from "@/components/picture-form";
 import { PicturePreview } from "@/components/picture-preview";
 import { PrintOptions } from "@/components/print-options";
@@ -29,30 +28,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiServer } from "@/hooks/use-api-server";
-import { useAsync } from "@/hooks/use-async";
 import { useAutoPrint } from "@/hooks/use-auto-print";
-import { usePreview } from "@/hooks/use-preview";
 import {
   DEFAULT_NOTE,
   DEFAULT_PICTURE,
   DEFAULT_QR,
   DEFAULT_TEST_PAGE,
   DEFAULT_TEXT,
-  QUIET_MODULES,
   TWO_COLOR_DENSITY,
   jobHexdump,
-  noteLayout,
-  picturePreview,
   printJob,
-  qrLayout,
-  qrPreview,
-  taskCardLayout,
-  testPageSections,
-  textLayout,
   type HexDump,
   type Job,
   type Note,
@@ -63,7 +51,6 @@ import {
   type TestPage,
   type Text,
 } from "@/lib/api";
-import { roll } from "@/lib/paper";
 import {
   DEFAULT_PROFILES,
   activeProfile,
@@ -119,6 +106,7 @@ export default function App() {
   const [pictureSettings, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
 
@@ -165,80 +153,21 @@ export default function App() {
     });
 
   const { kind, paper } = printer;
-  const layout = useAsync(
-    () => taskCardLayout(card, kind, paper),
-    [card, kind, paper],
-  );
-  const wrap = useAsync(
-    () => textLayout(text, kind, paper),
-    [text, kind, paper],
-  );
-  const slip = useAsync(
-    () => noteLayout(note, kind, paper),
-    [note, kind, paper],
-  );
-  const sections = useAsync(
-    () => testPageSections(testPage, kind),
-    [testPage, kind],
-  );
-
-  // An empty string encodes to a perfectly valid symbol, which is not
-  // one the preview should show.
-  const hasData = code.data.trim().length > 0;
-  const qr = usePreview(async () => {
-    if (!hasData) return null;
-    const [value, png] = await Promise.all([
-      qrLayout(code, kind, paper),
-      qrPreview(code, kind, paper),
-    ]);
-    return { value, png };
-  }, [code, kind, paper]);
-  const preview = usePreview(async () => {
-    if (picture.path === "") return null;
-    return { value: null, png: await picturePreview(picture, kind, paper) };
-  }, [picture, kind, paper]);
-
-  /** What the print button sends, whether it can, and the preview's hint. */
-  const workflows: Record<
-    Workflow,
-    { job: Job; ready: boolean; hint: string | null }
-  > = {
-    "task-card": {
-      job: { kind: "task-card", ...card },
-      ready: card.text.trim().length > 0,
-      hint: layout && `${layout.columns} columns`,
-    },
-    text: {
-      job: { kind: "text", ...text },
-      ready: text.text.trim().length > 0,
-      hint: wrap && `${wrap.columns} columns`,
-    },
-    note: {
-      job: { kind: "note", ...note },
-      ready: true,
-      hint: `${note.rows} rows, ${note.rows * note.pitch} mm`,
-    },
-    qr: {
-      job: { kind: "qr", ...code },
-      ready: qr.value !== null,
-      // The slider sets the symbol; the block on paper is that plus the
-      // quiet zone, which is what this measures.
-      hint:
-        qr.value &&
-        `${qr.value.modules - 2 * QUIET_MODULES} modules, ${Math.round(qr.value.widthMm)} mm`,
-    },
-    "test-page": {
-      job: { kind: "test-page", ...testPage },
-      ready: true,
-      hint: null,
-    },
-    picture: {
-      job: { kind: "picture", ...picture },
-      ready: preview.url !== null,
-      hint: `${roll(kind, paper).dots} dots`,
-    },
+  const jobs: Record<Workflow, Job> = {
+    "task-card": { kind: "task-card", ...card },
+    text: { kind: "text", ...text },
+    note: { kind: "note", ...note },
+    qr: { kind: "qr", ...code },
+    "test-page": { kind: "test-page", ...testPage },
+    picture: { kind: "picture", ...picture },
   };
-  const { job, ready, hint } = workflows[workflow];
+  const job = jobs[workflow];
+  const ready =
+    job.kind === "task-card" || job.kind === "text"
+      ? job.text.trim().length > 0
+      : job.kind === "qr" || job.kind === "picture"
+        ? previewReady
+        : true;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -398,38 +327,29 @@ export default function App() {
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-4 bg-muted p-4">
-          <Label render={<h2 />} className="h-5">
-            Preview
-            {hint && (
-              <span className="font-normal tracking-normal normal-case">
-                {hint}
-              </span>
-            )}
-          </Label>
-          {workflow === "test-page" ? (
-            <TestPagePreview sections={sections ?? []} />
-          ) : (
-            <PaperSheet kind={printer.kind} paper={printer.paper}>
-              {workflow === "task-card" ? (
-                <CardPreview layout={layout} kind={printer.kind} />
-              ) : workflow === "text" ? (
-                <TextPreview layout={wrap} text={text} kind={printer.kind} />
-              ) : workflow === "note" ? (
-                <NotePreview
-                  layout={slip}
-                  note={note}
-                  kind={printer.kind}
-                  paper={printer.paper}
-                />
-              ) : workflow === "qr" ? (
-                <QrPreview layout={qr.value} url={qr.url} error={qr.error} />
-              ) : (
-                <PicturePreview url={preview.url} error={preview.error} />
-              )}
-            </PaperSheet>
-          )}
-        </section>
+        {workflow === "task-card" ? (
+          <CardPreview card={card} kind={kind} paper={paper} />
+        ) : workflow === "text" ? (
+          <TextPreview text={text} kind={kind} paper={paper} />
+        ) : workflow === "note" ? (
+          <NotePreview note={note} kind={kind} paper={paper} />
+        ) : workflow === "qr" ? (
+          <QrPreview
+            code={code}
+            kind={kind}
+            paper={paper}
+            onReady={setPreviewReady}
+          />
+        ) : workflow === "test-page" ? (
+          <TestPagePreview page={testPage} kind={kind} />
+        ) : (
+          <PicturePreview
+            picture={picture}
+            kind={kind}
+            paper={paper}
+            onReady={setPreviewReady}
+          />
+        )}
       </div>
 
       <Dialog

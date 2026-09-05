@@ -1,9 +1,10 @@
 import { PrintedText } from "@/components/printed-text";
-import type { Note, NoteLayout, Paper, PrinterKind } from "@/lib/api";
+import { PreviewPane } from "@/components/preview-pane";
+import { useAsync } from "@/hooks/use-async";
+import { noteLayout, type Note, type Paper, type PrinterKind } from "@/lib/api";
 import { PX_PER_MM, roll } from "@/lib/paper";
 
 interface Props {
-  layout: NoteLayout | null;
   note: Note;
   kind: PrinterKind;
   paper: Paper;
@@ -20,7 +21,11 @@ function upTo(last: number, first = 0) {
  * Draws the slip as it will print: the date, then the ruling, laid out
  * in the millimetres the printer is given.
  */
-export function NotePreview({ layout, note, kind, paper }: Props) {
+export function NotePreview({ note, kind, paper }: Props) {
+  const layout = useAsync(
+    () => noteLayout(note, kind, paper),
+    [note, kind, paper],
+  );
   const width = roll(kind, paper).printMm * PX_PER_MM;
   const pitch = note.pitch * PX_PER_MM;
   const height = note.rows * pitch;
@@ -44,7 +49,10 @@ export function NotePreview({ layout, note, kind, paper }: Props) {
   const right = note.rule === "squares" ? across(squares) + 1 : width;
 
   return (
-    <>
+    <PreviewPane
+      printer={{ kind, paper }}
+      hint={`${note.rows} rows, ${note.rows * note.pitch} mm`}
+    >
       <PrintedText columns={layout?.columns ?? 48}>
         <div>{layout?.date ?? ""}</div>
         <div>{"\n"}</div>
@@ -95,6 +103,6 @@ export function NotePreview({ layout, note, kind, paper }: Props) {
             )),
           )}
       </svg>
-    </>
+    </PreviewPane>
   );
 }

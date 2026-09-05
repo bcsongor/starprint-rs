@@ -19,12 +19,19 @@ const EMPTY: Preview<never> = { value: null, url: null, error: null };
  * A PNG the Rust side draws, as an object URL, with whatever else
  * `render` returns beside it. Empty when `render` resolves to null, and
  * a render that `deps` have outdated is dropped.
+ * `onReady` updates the print controls and clears readiness on unmount.
  */
 export function usePreview<T>(
   render: () => Promise<{ value: T; png: ArrayBuffer } | null>,
   deps: DependencyList,
+  onReady: (ready: boolean) => void,
 ): Preview<T> {
   const [preview, setPreview] = useState<Preview<T>>(EMPTY);
+  const ready = preview.url !== null;
+  useEffect(() => {
+    onReady(ready);
+    return () => onReady(false);
+  }, [onReady, ready]);
   useEffect(() => {
     let cancelled = false;
     let url: string | null = null;

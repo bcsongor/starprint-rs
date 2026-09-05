@@ -39,6 +39,10 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   the Linear auto-print. In Rust, `lib` sets up the app and probes printers,
   `job` prepares documents for printing and hex dumps, `picture` caches
   source files, and `preview` owns layout commands, PNGs and dot gain.
+  Each React preview loads its own layout or image and supplies its hint
+  to `PreviewPane`. Only the active preview is mounted. `App` keeps the
+  drafts and print action; QR and picture previews report readiness
+  through `usePreview`, which clears it on unmount.
   The button runs `starprint-api`'s server
   inside the app, on the profiles that have a host, under the names
   the picker shows. A profile edit starts it again on the new set,
