@@ -40,6 +40,15 @@
 - The desktop app has a QR tab. Because the modules are ours rather than
   the firmware's, its preview draws the symbol that will print, at the
   millimetres it will measure, rather than an approximation of one.
+### Library
+
+- `ImagePipeline::prepare` returns the `BitImage` and `prepare_preview`
+  the `Grayscale` for the screen, in place of `PreparedImage`, so a
+  preview no longer builds the raster it does not show.
+- Rasters are packed straight into the document and dithering keeps
+  three rows of error rather than a copy of the whole image, so a photo
+  prepares with far less memory and copying. The desktop app shares the
+  decoded picture between previews instead of copying it.
 
 ## 0.2.0
 
