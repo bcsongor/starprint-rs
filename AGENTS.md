@@ -4,8 +4,8 @@ For contributors; the README is for users.
 
 ## Layout
 
-A Cargo workspace: `crates/starprint` is the library and default member,
-with two front ends on the jobs in `crates/starprint-workflows`.
+A Cargo workspace. `crates/starprint` is the library and default member,
+`crates/starprint-workflows` holds the jobs, and two front ends print them.
 
 - `crates/starprint/src/document.rs`: `Builder<P>` and the command
   encoding. Every command cites the manual it comes from.
@@ -13,58 +13,30 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   reference in the sibling `starprint` repo (`generate.py`). The impact
   pipeline, dithering and `ESC ^` serialisation must stay byte-identical.
 - `crates/starprint-workflows/`: the printer profile, the tagged `Job`
-  and the six jobs the front ends print: task cards, text, note slips,
-  QR codes, pictures and test pages. It reads no files and opens no
-  sockets, so a picture job is handed its image. Job behaviour belongs
-  here, not in a front end, or the two drift. The desktop app keeps a
-  `JobRequest` of its own, differing in one place: a picture names a file.
-- `crates/starprint-workflows/src/qr.rs`: QR symbols are encoded here,
-  by `qrcodegen`, and printed as dots on both heads. The SP700 has no QR
-  command, and giving the thermal head the same bitmap rather than
-  `ESC GS y` keeps one path and one known version. Owning the modules is
-  also what lets the GUI preview draw the symbol that actually prints,
-  and lets a module be rounded, which `ESC GS y` would not have done.
-  `corners` finds them at the grid vertices. A dark module among three
-  light ones is a convex corner and loses ink; a light one among three
-  dark is concave and gains it. Each takes a radius up to a module and
-  a half, or half the shorter edge that meets it if that is less, so a
-  lone module stops at its circle while the eye's ring keeps rounding.
-  The GUI preview draws the resulting bitmap as a PNG, the way the
-  picture preview does, rather than keeping a rule of its own. It once
-  did, and the two drifted. Squared finder patterns went unnoticed
-  until they came off the printer.
-- `apps/starprint-gui/`: Vite + React + shadcn/ui, with the Rust side in
+  and the six jobs: task cards, text, note slips, QR codes, pictures and
+  test pages. It reads no files and opens no sockets, so a picture job
+  is handed its image. Job behaviour belongs here, not in a front end,
+  or the two drift. QR symbols are encoded here by `qrcodegen` and
+  printed as dots on both heads. The SP700 has no QR command, and one
+  bitmap gives one path, a known version, a preview that draws what
+  prints and rounded modules, none of which `ESC GS y` would.
+- `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
-  file selection, the source cache, the previews, the API button and
-  the Linear auto-print. In Rust, `lib` sets up the app and probes printers,
-  `job` prepares documents for printing and hex dumps, `picture` caches
-  source files, and `preview` owns layout commands, PNGs and dot gain.
-  Each React preview loads its own layout or image and supplies its hint
-  to `PreviewPane`. Note ruling uses the workflow's bitmap, through the
-  same PNG path as QR codes. Only the active preview is mounted. `App`
-  keeps the drafts and print action. QR printing needs non-empty data;
-  picture printing needs a ready preview. `usePreview` clears picture
-  readiness on input changes and unmount, and keeps the last image until
-  its replacement arrives.
-  The button runs `starprint-api`'s server
-  inside the app, on the profiles that have a host, under the names
-  the picker shows. A profile edit starts it again on the new set,
-  which is what a restart does for the standalone server. The
-  auto-print is frontend only: a personal API key in the settings
-  store, `fetch` against Linear's GraphQL endpoint every 10 seconds
-  while the toggle is on, and a task card through the ordinary print
-  command for each open issue assigned to the user that the previous
-  poll did not list. The first poll only takes stock. Linear's API
-  answers the webview's CORS preflight, so no Tauri HTTP plugin is
-  involved.
+  file selection, the previews, the API button and the Linear
+  auto-print. Previews are PNGs the Rust side draws from the bitmaps
+  that print. A preview that kept a rule of its own drifted once, and
+  squared finder patterns went unnoticed until they came off the
+  printer. The API button runs `starprint-api`'s server in-process on
+  the profiles that have a host, and starts it again when a profile
+  changes. Auto-print is frontend only: a personal API key in the
+  settings store, a `fetch` against Linear's GraphQL endpoint every 10
+  seconds, and a task card for each newly assigned open issue. Linear
+  answers the webview's CORS preflight, so no HTTP plugin is involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. The skill below is its reference. A library with a
-  thin command line on top, so the desktop app can run the same
-  server. One concern per module: `body` reads a request, `job` turns
-  it into printable bytes, `printers` writes them, `config` reads the
-  profile file, `problem` is the only error shape, `app` wires them
-  into a router and `server` binds, serves and stops it. Anything new
-  goes in whichever of those owns it.
+  local programs. A library with a thin command line on top, so the
+  desktop app can run the same server. One concern per module; anything
+  new goes in whichever of `body`, `job`, `printers`, `config`,
+  `problem`, `app` or `server` owns it.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own

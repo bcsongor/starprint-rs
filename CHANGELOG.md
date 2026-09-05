@@ -5,15 +5,13 @@
 ### HTTP API
 
 - Requests from web pages are refused with a `403`. A page on any site
-  could post a form to the loopback server without a CORS preflight and
-  print, and DNS rebinding could let it read the reply, so a request
-  carrying `Origin`, or a `Host` that is neither an IP nor `localhost`,
-  is turned away before a printer is looked up. Programs are unaffected.
+  could post a form to the loopback server without a CORS preflight, so
+  a request carrying `Origin`, or a `Host` that is neither an IP nor
+  `localhost`, is turned away. Programs are unaffected.
 
 ### Desktop app
 
-- The seed profiles no longer carry an address, so a first run points at
-  nothing until one is entered.
+- New profiles start without an address.
 
 ## 0.4.0
 
