@@ -14,3 +14,9 @@ The Line Mode spec covers `Builder<StarLine>`; the dot impact spec covers
 `Builder<Impact>` (the SP700 in "STAR Mode", not its ESC/POS emulation).
 
 All of these are copyright Star Micronics Co., Ltd.
+
+The Star Micronics manuals are excluded from this project's MIT and Apache-2.0
+licences. Their original copyright notices and terms apply.
+
+These documents are technical references for printer compatibility. Their
+inclusion does not imply Star Micronics' endorsement of this independent project.

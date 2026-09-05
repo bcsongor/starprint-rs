@@ -112,3 +112,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development and printer reports.
 ## Licence
 
 MIT or Apache-2.0, at your option.
+
+Starprint is an independent open-source project. It is not affiliated with or
+endorsed by Star Micronics.
+
+The [Star Micronics manuals](manuals/README.md) are excluded from this project's
+MIT and Apache-2.0 licences. Their original copyright notices and terms apply.
+
+Star Micronics names and marks belong to their respective owners. References
+identify compatible printers and protocols.
