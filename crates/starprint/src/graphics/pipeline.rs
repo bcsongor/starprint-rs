@@ -159,19 +159,8 @@ impl ImagePipeline {
     pub fn prepare(&self, source: &DynamicImage) -> Result<BitImage> {
         let full = self.adjust(source)?;
         let (src_w, src_h) = full.dimensions();
-        let width = self.profile.max_width(self.density);
-        let h_dpi = self.profile.horizontal_dpi_at(self.density);
-
-        // Fit the width, then stretch the height for the anisotropic pitch.
-        let aspect_h = ratio_round(src_h, width, src_w);
-        let compensated_h =
-            (f64::from(aspect_h) * self.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
-        if compensated_h == 0 {
-            return Err(Error::InvalidData {
-                reason: "image is too wide and short to print at this width".into(),
-            });
-        }
-        let gray = self.dither.apply(&resize(&full, width, compensated_h));
+        let (width, height) = self.print_dimensions(src_w, src_h)?;
+        let gray = self.dither.apply(&resize(&full, width, height));
         BitImage::with_profile(gray.to_bitmap(), self.density, &self.profile)
     }
 
@@ -179,10 +168,11 @@ impl ImagePipeline {
     /// pixel pairs min-pooled at double density to show the dot overlap.
     /// At normal thermal resolution these are the dots
     /// [`prepare`](Self::prepare) prints, without the raster being built.
+    /// Images too short to print are rejected here too.
     pub fn prepare_preview(&self, source: &DynamicImage) -> Result<Grayscale> {
         let full = self.adjust(source)?;
         let (src_w, src_h) = full.dimensions();
-        let width = self.profile.max_width(self.density);
+        let (width, _) = self.print_dimensions(src_w, src_h)?;
         let display_w = self.profile.width_dots_single;
         let display_h = ratio_round(src_h, display_w, src_w).max(1);
         let gray = self.dither.apply(&resize(&full, width, display_h));
@@ -191,6 +181,22 @@ impl ImagePipeline {
         } else {
             min_pool_pairs(&gray)
         })
+    }
+
+    /// Fits the width and compensates for the anisotropic pitch, rejecting
+    /// a height that rounds to zero for both printing and previewing.
+    fn print_dimensions(&self, src_w: u32, src_h: u32) -> Result<(u32, u32)> {
+        let width = self.profile.max_width(self.density);
+        let h_dpi = self.profile.horizontal_dpi_at(self.density);
+        let aspect_h = ratio_round(src_h, width, src_w);
+        let height =
+            (f64::from(aspect_h) * self.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
+        if height == 0 {
+            return Err(Error::InvalidData {
+                reason: "image is too wide and short to print at this width".into(),
+            });
+        }
+        Ok((width, height))
     }
 
     /// Stages 1 to 7: grey, toned, sharpened and adjusted at the source
@@ -539,6 +545,27 @@ mod tests {
         let preview = ImagePipeline::new().prepare_preview(&source).unwrap();
         assert_eq!(preview.width(), 210);
         assert_eq!(preview.height(), 158);
+    }
+
+    #[test]
+    fn preview_rejects_images_too_short_to_print() {
+        for (profile, density, width) in [
+            (DeviceProfile::SP700, Density::Single, 1000),
+            // One row at double density becomes zero after pitch compensation.
+            (DeviceProfile::SP700, Density::Double, 600),
+            (DeviceProfile::THERMAL_80MM, Density::Single, 2000),
+            (
+                DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION,
+                Density::Single,
+                2000,
+            ),
+        ] {
+            let source = DynamicImage::new_luma8(width, 1);
+            let pipeline = ImagePipeline::new().profile(profile).density(density);
+            let print_error = pipeline.prepare(&source).unwrap_err();
+            let preview_error = pipeline.prepare_preview(&source).unwrap_err();
+            assert_eq!(preview_error.to_string(), print_error.to_string());
+        }
     }
 
     #[test]
