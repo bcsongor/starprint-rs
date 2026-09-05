@@ -1,144 +1,114 @@
-<div align="center">
+<p align="center">
+  <img src="apps/starprint-gui/src-tauri/icons/128x128@2x.png" alt="Starprint logo" width="80" height="80">
+</p>
 
-# starprint
+<h1 align="center">starprint</h1>
 
-**Rust driver for Star Micronics receipt printers over Ethernet**
+<p align="center">A desktop app and Rust library for Star Micronics receipt printers.</p>
 
-Build a receipt, ticket or photo with a typed builder and send it to the printer on port 9100.
+<p align="center">
+  <a href="https://github.com/bcsongor/starprint-rs/releases/latest"><img src="https://img.shields.io/badge/download-latest-2563eb" alt="Download the latest release"></a>
+  <a href="https://github.com/bcsongor/starprint-rs/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-view_checks-555" alt="View CI checks"></a>
+</p>
 
-</div>
+<p align="center">
+  <a href="docs/images/desktop-app.png"><img src="docs/images/desktop-app.png" alt="Starprint desktop app with a high-priority task card and its print preview" width="600"></a><br>
+  <strong>Task card</strong>
+</p>
 
-## Install
+## Get started
+
+[Download the latest release](https://github.com/bcsongor/starprint-rs/releases/latest)
+for Windows or macOS on Apple silicon. Windows has an installer and a portable
+executable. The builds are unsigned; the release page has installation instructions.
+
+Connect your printer over Ethernet, then open **Profile actions** beside the
+profile picker and choose **Edit…** to enter its IP address. Choose a job, check
+the preview and press **Print**.
+
+Tested on the TSP700II, TSP800II and SP700. Other thermal printers using Star
+Line Mode may work. StarPRNT, USB and serial connections are not supported.
+
+## Print jobs
+
+The desktop app and HTTP API support **task cards**, **text**, **note slips**,
+**QR codes**, **pictures** and **test pages**. The app previews each job before you print.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="docs/images/note-slip.png"><img src="docs/images/note-slip.png" alt="Starprint window with a dotted note slip preview" width="380"></a><br>
+      <strong>Note slip</strong>
+    </td>
+    <td align="center">
+      <a href="docs/images/picture.png"><img src="docs/images/picture.png" alt="Starprint window with a dithered preview of Hokusai's The Great Wave" width="380"></a><br>
+      <strong>Picture</strong>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>Picture artwork: Hokusai, <a href="https://www.metmuseum.org/art/collection/search/56353">The Great Wave</a>, public domain.</sub>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/e7cf5cbc-501d-43bd-81d0-044b4f7379ab" controls></video>
+      <p><strong>Task card and picture printing</strong></p>
+    </td>
+  </tr>
+</table>
+
+## Automate printing
+
+Turn Linear issues into printed task cards. Connect with a personal API key,
+then enable auto-print for issues newly assigned to you while the app runs.
+
+The **API** button lets scripts and AI agents print through your saved profiles.
+See the [API reference](.agents/skills/starprint-print/SKILL.md) for jobs and setup,
+including running the server on its own.
+
+## Rust library
+
+Build print jobs in your own code and send them over Ethernet.
 
 ```toml
 [dependencies]
 starprint = { git = "https://github.com/bcsongor/starprint-rs" }
 ```
 
-Add `features = ["image"]` to print photos.
-
-## Quickstart
+For a Star Line Mode thermal printer:
 
 ```rust
-use starprint::{Alignment, Cut, QrCode};
-use starprint::transport::TcpTransport;
+use starprint::{Cut, transport::TcpTransport};
 
 fn main() -> Result<(), starprint::Error> {
-    let receipt = starprint::starline()
-        .align(Alignment::Center)
-        .wide(2).tall(2)
-        .line("ACME STORE")
-        .wide(1).tall(1)
-        .align(Alignment::Left)
-        .line("1x Flat white           4.20")
-        .qr_code(&QrCode::new("https://example.com/r/42")?)
-        .cut(Cut::FeedThenPartial)
-        .build();
+	let document = starprint::starline()
+		.line("Hello, paper.")
+		.cut(Cut::FeedThenPartial)
+		.build();
 
-    TcpTransport::connect("192.168.1.60")?.print(&receipt)
+	TcpTransport::connect("192.168.1.60")?.print(&document)
 }
 ```
 
-## Supported printers
+Use your printer's IP address. Add `features = ["image"]` for photos.
+See the [library reference](crates/starprint/src/lib.rs) and [examples](crates/starprint/examples).
 
-| Command set | Printers | Builder |
-|---|---|---|
-| Star Line Mode | Thermal: TSP100 (Line Mode), TSP650II, TSP700II, TSP800II | `starprint::starline()` |
-| Star Mode, dot impact | SP700 series: SP712, SP742, SP717, SP747 | `starprint::impact()` |
+## Build the app from source
 
-Each builder only has the commands its printer understands, so `qr_code` on the impact builder is a compile error. Bytes come from Star's command specifications in `manuals/`.
+Install Rust, Bun and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+then run these commands from the repository root:
 
-## Printing images
-
-The `image` feature adds a pipeline tuned on real hardware: auto-contrast, tone curve, unsharp mask, resize for the head, dither. A `DeviceProfile` picks the geometry and tone curve.
-
-On a thermal printer, with the settings that printed best on a TSP800II:
-
-```rust
-use starprint::graphics::{DeviceProfile, ImagePipeline};
-use starprint::{PrintSpeed, RasterQuality};
-
-let image = ImagePipeline::new()
-    .profile(DeviceProfile::THERMAL_80MM)
-    .prepare_bytes(&std::fs::read("photo.jpg")?)?;
-
-let doc = starprint::starline()
-    .print_speed(PrintSpeed::Slow)
-    .print_density(3)
-    .raster(&image, RasterQuality::High)
-    .build();
+```sh
+bun run gui-setup
+bun run gui
 ```
 
-On an SP700:
+Build an installer with `bun --cwd apps/starprint-gui tauri build`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and printer reports.
 
-```rust
-use starprint::graphics::{Density, ImagePipeline};
-
-let image = ImagePipeline::new()
-    .density(Density::Double)
-    .prepare_bytes(&std::fs::read("photo.jpg")?)?;
-
-let doc = starprint::impact().bit_image(&image).build();
-```
-
-`prepare_preview` gives a `Grayscale` for the screen. Without the feature, `graphics::Bitmap` prints your own pixels.
-
-## Examples
-
-Run the driver examples with `cargo run --example <name> -- <printer-ip>`; the photo examples also need `--features image`.
-
-- `thermal_receipt`: a receipt with a Code 128 barcode and a QR code.
-- `impact_kitchen_ticket`: a red/black ticket for an SP700.
-- `receipt`: a till receipt for either printer; pass `thermal` or `impact`.
-- `task_card`: the desktop GUI's task card, for either printer; run with `cargo run -p starprint-workflows --example task_card -- …`.
-- `qr`: a QR code on either printer, with `size=MM`, `radius=PCT`, `ecc=`, `align=` and `caption=` flags; run with `-p starprint-workflows` too.
-- `thermal_test_pattern`: a head-check page.
-- `thermal_image`, `impact_image`: a photo, with `rotate`, `double`, `slow`, `density=N` and `gamma=F` flags.
-
-## Desktop app
-
-`apps/starprint-gui` is a Tauri app that prints task cards, text, note slips, QR codes, pictures and test pages. Connect a Linear account with a personal API key and it can print a task card for each issue newly assigned to you while it runs. Press API and it serves the HTTP API below from inside the app, on the profiles it has, so no separate server is needed. Run `bun run gui-setup` once, then `bun run gui`, both from the repository root. Run `bun --cwd apps/starprint-gui tauri build` for an installer.
-
-## HTTP API
-
-`apps/starprint-api` serves the same jobs to other local programs, mostly AI agents. The desktop app can serve it too, from its API button. On its own, name your printers in a TOML file and post jobs to them:
-
-```console
-$ cp apps/starprint-api/printers.toml.example printers.toml
-$ bun run api
-starprint-api: tsp800ii, sp743 from printers.toml
-starprint-api: listening on http://127.0.0.1:9110
-```
-
-```console
-$ curl -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
-    -H 'Content-Type: application/json' \
-    -d '{"job":{"kind":"task-card","text":"Renew passport","due":"2026-09-15"}}'
-{"bytesSent":284}
-```
-
-It binds the loopback interface by default and has no authentication, so `--listen` anywhere the network can reach hands your printers to whoever asks.
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /v1/printers` | The printers the profile file named, and which options apply to each |
-| `POST /v1/printers/<name>/jobs` | Prints a `task-card`, `text`, `note`, `qr`, `picture` or `test-page` |
-| `POST /v1/printers/<name>/raw` | Sends bytes that already carry their own commands |
-
-- A job takes `cut`, `density` and `speed` overrides. Anything omitted comes from the profile.
-- A picture goes as `multipart/form-data`, with the image in an `image` part.
-- Both print endpoints return `{"bytesSent": N}`, a completed socket write and nothing more.
-
-The skill in [`.agents/skills/starprint-print`](.agents/skills/starprint-print/SKILL.md) is the full reference, written for the agents that call it.
-
-## Notes
-
-- Star's Ethernet cards drop a large job sent at once, so `TcpTransport` writes 1400 bytes every 20 ms.
-- `PrintMode::DoubleResolution` prints 16 rows/mm. Pair it with a `*_DOUBLE_RESOLUTION` profile and switch back afterwards; the mode survives `ESC @`.
-- The TSP800II buffers about 2,560 raster rows and pauses to print them, leaving a faint line past roughly 320 mm (160 mm at double resolution).
-- `text()` encodes CP437; unmappable characters print as `?`. For other code pages call `code_page()` and pass encoded bytes to `raw()`.
-- Not implemented: stored logos, status back (ASB), StarPRNT (mc-Print, TSP100IV), USB and serial transports.
-
-## License
+## Licence
 
 MIT or Apache-2.0, at your option.
