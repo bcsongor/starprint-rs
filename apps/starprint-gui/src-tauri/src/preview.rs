@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ExtendedColorType, ImageEncoder};
 use starprint::graphics::{Bitmap, Grayscale};
 use starprint::{Impact, StarLine};
 use starprint_workflows::{Note, Paper, PrinterKind, Qr, TaskCard, TestPage, Text};
@@ -183,10 +184,12 @@ fn dot_kernel(diameter: f64) -> [[f64; 3]; 3] {
     kernel
 }
 
+/// Decoded once and dropped, so the fastest encode wins over the
+/// smallest file.
 fn png(image: &Grayscale) -> Result<Vec<u8>, String> {
     let (width, height) = (image.width(), image.height());
     let mut out = Vec::new();
-    PngEncoder::new(&mut out)
+    PngEncoder::new_with_quality(&mut out, CompressionType::Fast, FilterType::NoFilter)
         .write_image(image.pixels(), width, height, ExtendedColorType::L8)
         .map_err(|e| e.to_string())?;
     Ok(out)
