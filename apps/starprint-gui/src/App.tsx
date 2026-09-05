@@ -106,7 +106,7 @@ export default function App() {
   const [pictureSettings, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
-  const [previewReady, setPreviewReady] = useState(false);
+  const [pictureReady, setPictureReady] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
 
@@ -165,9 +165,11 @@ export default function App() {
   const ready =
     job.kind === "task-card" || job.kind === "text"
       ? job.text.trim().length > 0
-      : job.kind === "qr" || job.kind === "picture"
-        ? previewReady
-        : true;
+      : job.kind === "qr"
+        ? job.data.trim().length > 0
+        : job.kind === "picture"
+          ? pictureReady
+          : true;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
@@ -334,12 +336,7 @@ export default function App() {
         ) : workflow === "note" ? (
           <NotePreview note={note} kind={kind} paper={paper} />
         ) : workflow === "qr" ? (
-          <QrPreview
-            code={code}
-            kind={kind}
-            paper={paper}
-            onReady={setPreviewReady}
-          />
+          <QrPreview code={code} kind={kind} paper={paper} />
         ) : workflow === "test-page" ? (
           <TestPagePreview page={testPage} kind={kind} />
         ) : (
@@ -347,7 +344,7 @@ export default function App() {
             picture={picture}
             kind={kind}
             paper={paper}
-            onReady={setPreviewReady}
+            onReady={setPictureReady}
           />
         )}
       </div>

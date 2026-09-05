@@ -148,7 +148,7 @@ export const DEFAULT_QR: Qr = {
   caption: null,
   errorCorrection: "m",
   size: 30,
-  radius: MAX_QR_RADIUS,
+  radius: 0,
   align: "center",
 };
 

@@ -80,8 +80,8 @@ pub struct Qr {
     pub size: u8,
     /// Corner radius as a percentage of 1.5 modules, capped at half the
     /// shorter adjoining edge. A lone module becomes a circle near 33.
-    /// Larger blocks keep rounding up to 100. Zero leaves corners square.
-    #[serde(default = "default_radius")]
+    /// Larger blocks keep rounding up to 100. Defaults to zero: square corners.
+    #[serde(default)]
     pub radius: u8,
     /// Carries the caption with it.
     #[serde(default)]
@@ -112,11 +112,6 @@ fn default_size() -> u8 {
     30
 }
 
-/// As round as it goes.
-fn default_radius() -> u8 {
-    MAX_RADIUS
-}
-
 impl Default for Qr {
     fn default() -> Self {
         Self {
@@ -124,7 +119,7 @@ impl Default for Qr {
             caption: None,
             error_correction: Ecc::default(),
             size: default_size(),
-            radius: default_radius(),
+            radius: 0,
             align: Align::default(),
         }
     }
@@ -152,7 +147,7 @@ pub trait QrStyle: TextStyle + Sized {
     fn profile(paper: Paper) -> &'static DeviceProfile;
 
     /// A raster on one head and a bit image on the other.
-    fn draw(self, symbol: Bitmap) -> Result<Self, String>;
+    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String>;
 }
 
 impl QrStyle for Builder<StarLine> {
@@ -165,8 +160,19 @@ impl QrStyle for Builder<StarLine> {
         }
     }
 
-    fn draw(self, symbol: Bitmap) -> Result<Self, String> {
-        Ok(self.raster(symbol, RasterQuality::High))
+    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String> {
+        // Raster rows start at their own left margin, ignoring ESC GS a
+        // (Star Line Mode 3-73, 3-81). Blank dots position the symbol.
+        let spare = Self::profile(paper).max_width(Self::DENSITY) - symbol.width();
+        let left = match align {
+            Align::Left => 0,
+            Align::Center => spare / 2,
+            Align::Right => spare,
+        };
+        let placed = Bitmap::from_fn(symbol.width() + left, symbol.height(), |x, y| {
+            x >= left && symbol.get(x - left, y)
+        });
+        Ok(self.raster(placed, RasterQuality::High))
     }
 }
 
@@ -177,7 +183,7 @@ impl QrStyle for Builder<Impact> {
         &DeviceProfile::SP700
     }
 
-    fn draw(self, symbol: Bitmap) -> Result<Self, String> {
+    fn draw(self, symbol: Bitmap, _paper: Paper, _align: Align) -> Result<Self, String> {
         let image = BitImage::new(symbol, Density::Double).map_err(|e| e.to_string())?;
         Ok(self.bit_image(&image))
     }
@@ -418,7 +424,7 @@ impl Qr {
         for line in self.caption_lines::<P>(paper) {
             doc = doc.line(&line);
         }
-        let doc = doc.draw(symbol)?;
+        let doc = doc.draw(symbol, paper, self.align)?;
         Ok(finish_graphic(doc, cut))
     }
 }
@@ -519,12 +525,8 @@ mod tests {
                 assert!(!bitmap.get(x, y), "ink in the quiet zone at {x},{y}");
             }
         }
-        // The finder pattern's outer ring is the first module in, and
-        // dark. Sampled at its centre, the corner having been rounded.
-        assert!(bitmap.get(
-            QUIET_MODULES * across + across / 2,
-            QUIET_MODULES * down + down / 2
-        ));
+        // The finder pattern starts with a square corner by default.
+        assert!(bitmap.get(QUIET_MODULES * across, QUIET_MODULES * down));
     }
 
     /// A head to draw for: its profile and the density a symbol uses.
@@ -584,7 +586,10 @@ mod tests {
 
     #[test]
     fn a_lone_module_stops_at_its_circle_while_the_eye_keeps_going() {
-        let code = qr("https://example.com/r/42");
+        let code = Qr {
+            radius: MAX_RADIUS,
+            ..qr("https://example.com/r/42")
+        };
         let (symbol, across, down) = code.encode(THERMAL.0, THERMAL.1).unwrap();
         let bitmap = code.symbol(THERMAL.0, THERMAL.1).unwrap();
         let dot = dot(&bitmap, across, down);
@@ -617,7 +622,10 @@ mod tests {
 
     #[test]
     fn the_eye_ring_rounds_outside_and_fills_inside() {
-        let code = qr("https://example.com/r/42");
+        let code = Qr {
+            radius: MAX_RADIUS,
+            ..qr("https://example.com/r/42")
+        };
         let (_, across, down) = code.encode(THERMAL.0, THERMAL.1).unwrap();
         let bitmap = code.symbol(THERMAL.0, THERMAL.1).unwrap();
         let dot = dot(&bitmap, across, down);
@@ -769,6 +777,46 @@ mod tests {
                 .unwrap();
             let caption = bytes.windows(8).position(|w| w == b"Order 42").unwrap();
             assert!(at < caption, "{align:?} is set before the caption prints");
+        }
+    }
+
+    #[test]
+    fn thermal_raster_alignment_matches_the_print_area() {
+        for paper in [Paper::Mm80, Paper::Mm112] {
+            let profile = <Builder<StarLine> as QrStyle>::profile(paper);
+            let width = profile.max_width(Density::Single);
+            for align in [Align::Left, Align::Center, Align::Right] {
+                let code = Qr { align, ..qr("x") };
+                let (_, across, down) = code.encode(profile, Density::Single).unwrap();
+                let document = code.document(starprint::starline(), paper, false).unwrap();
+                let bytes = document.as_bytes();
+                let start = bytes.windows(4).position(|w| w == b"\x1b*rA").unwrap();
+                let raster = &bytes[start..];
+                let start = raster.iter().position(|&byte| byte == b'b').unwrap();
+                let row_bytes = u16::from_le_bytes([raster[start + 1], raster[start + 2]]) as usize;
+
+                // The first ink row crosses both finder patterns, so its
+                // outermost dots measure the margins of the whole symbol.
+                let row = start + (QUIET_MODULES * down) as usize * (3 + row_bytes) + 3;
+                let ink: Vec<u32> = raster[row..row + row_bytes]
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(x, byte)| {
+                        (0..8).filter_map(move |bit| {
+                            (byte & (0x80 >> bit) != 0).then_some(x as u32 * 8 + bit)
+                        })
+                    })
+                    .collect();
+                let left = *ink.first().unwrap();
+                let right = width - ink.last().unwrap() - 1;
+                match align {
+                    Align::Left => assert_eq!(left, QUIET_MODULES * across),
+                    Align::Center => {
+                        assert!(left.abs_diff(right) <= 1, "{paper:?}: {left}, {right}")
+                    }
+                    Align::Right => assert_eq!(right, QUIET_MODULES * across),
+                }
+            }
         }
     }
 

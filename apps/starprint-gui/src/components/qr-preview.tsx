@@ -16,7 +16,6 @@ interface Props {
   code: Qr;
   kind: PrinterKind;
   paper: Paper;
-  onReady: (ready: boolean) => void;
 }
 
 const ROW: Record<Align, string> = {
@@ -30,7 +29,7 @@ const ROW: Record<Align, string> = {
  * printer is given, at the millimetres it comes out. The quiet zone is
  * part of the block, so the symbol keeps its margin against a caption.
  */
-export function QrPreview({ code, kind, paper, onReady }: Props) {
+export function QrPreview({ code, kind, paper }: Props) {
   const {
     value: layout,
     url,
@@ -46,7 +45,6 @@ export function QrPreview({ code, kind, paper, onReady }: Props) {
       return { value, png };
     },
     [code, kind, paper],
-    onReady,
   );
 
   // Size includes the quiet zone; the module count describes the symbol.

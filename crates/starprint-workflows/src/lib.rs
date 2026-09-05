@@ -102,8 +102,8 @@ mod tests {
         let Job::Qr(code) = job else { panic!("qr") };
         assert_eq!(code.data, "https://x.test");
         assert_eq!(
-            (code.caption, code.error_correction, code.size),
-            (None, Ecc::M, 30)
+            (code.caption, code.error_correction, code.size, code.radius),
+            (None, Ecc::M, 30, 0)
         );
     }
 

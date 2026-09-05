@@ -188,7 +188,8 @@ impl<P: Protocol> Builder<P> {
     }
 
     /// Sets the alignment of subsequent lines (`ESC GS a n`). Takes effect
-    /// at the start of a line.
+    /// at the start of a line. Thermal rasters use their own margins and
+    /// ignore this setting.
     #[must_use]
     pub fn align(self, alignment: Alignment) -> Self {
         self.raw([ESC, 0x1D, b'a', alignment.code()])

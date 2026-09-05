@@ -42,9 +42,10 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   Each React preview loads its own layout or image and supplies its hint
   to `PreviewPane`. Note ruling uses the workflow's bitmap, through the
   same PNG path as QR codes. Only the active preview is mounted. `App`
-  keeps the drafts and print action; QR and picture previews report
-  readiness through `usePreview`, which clears it on input changes and
-  unmount while keeping the last image until its replacement arrives.
+  keeps the drafts and print action. QR printing needs non-empty data;
+  picture printing needs a ready preview. `usePreview` clears picture
+  readiness on input changes and unmount, and keeps the last image until
+  its replacement arrives.
   The button runs `starprint-api`'s server
   inside the app, on the profiles that have a host, under the names
   the picker shows. A profile edit starts it again on the new set,
@@ -115,7 +116,7 @@ them, so do not retune these values from a screen:
   square. A 30 mm symbol printed that way scans off the ribbon, so the
   default size stands and the ratio is not to be adjusted by eye.
 - A corner's arc is an ellipse in dots, so that it is a circle on
-  paper. A `qr` job's `radius` sets it, 0 for the plain square, 100 for
+  paper. A `qr` job's `radius` sets it, 0 (the default) for square, 100 for
   a module and a half. Past about 1.7 modules an arc reaches the centre
   of the module in the corner, which is the point a scanner samples, so
   do not raise the top. No rounded symbol has been scanned yet on either
@@ -136,6 +137,9 @@ Behaviour that shapes how jobs are written:
 - `ESC GS a` places a bit image on the SP700, not only text: left, centre
   and right all move an `ESC ^` graphic as they move a line of type.
   Pictures and QR codes both rely on it.
+- Thermal raster mode ignores `ESC GS a`. QR printing adds blank dots
+  before the symbol to position it within the selected paper's print
+  width. The caption still uses text alignment.
 
 ## Diagnostics
 
