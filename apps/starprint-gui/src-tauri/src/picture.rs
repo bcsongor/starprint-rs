@@ -1,7 +1,7 @@
 //! Reading a picture off disk. The shared crate takes image data, so
 //! choosing the file and decoding it fall to the app.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use image::DynamicImage;
 use serde::Deserialize;
@@ -26,7 +26,7 @@ impl PicturePath {
         kind: PrinterKind,
         paper: Paper,
         cache: &SourceCache,
-    ) -> Result<DynamicImage, String> {
+    ) -> Result<Arc<DynamicImage>, String> {
         if self.path.trim().is_empty() {
             return Err("No picture chosen.".to_owned());
         }
@@ -35,32 +35,33 @@ impl PicturePath {
 }
 
 /// The last decoded picture, shrunk for one head width, so dragging a
-/// slider does not read and decode the file again.
+/// slider does not read and decode the file again. Shared, not copied,
+/// with each preview.
 #[derive(Default)]
 pub struct SourceCache(Mutex<Option<CachedSource>>);
 
 struct CachedSource {
     path: String,
     max_width: u32,
-    image: DynamicImage,
+    image: Arc<DynamicImage>,
 }
 
 impl SourceCache {
-    fn load(&self, path: &str, max_width: u32) -> Result<DynamicImage, String> {
+    fn load(&self, path: &str, max_width: u32) -> Result<Arc<DynamicImage>, String> {
         let mut slot = self.0.lock().map_err(|e| e.to_string())?;
         if let Some(cached) = slot
             .as_ref()
             .filter(|c| c.path == path && c.max_width == max_width)
         {
-            return Ok(cached.image.clone());
+            return Ok(Arc::clone(&cached.image));
         }
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
         let image = decode(&bytes)?;
-        let image = fit_width(&image, max_width).unwrap_or(image);
+        let image = Arc::new(fit_width(&image, max_width).unwrap_or(image));
         *slot = Some(CachedSource {
             path: path.to_owned(),
             max_width,
-            image: image.clone(),
+            image: Arc::clone(&image),
         });
         Ok(image)
     }

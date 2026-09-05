@@ -31,7 +31,7 @@ impl JobRequest {
             ),
             _ => None,
         };
-        printer.document(&self.job, image.as_ref())
+        printer.document(&self.job, image.as_deref())
     }
 }
 
