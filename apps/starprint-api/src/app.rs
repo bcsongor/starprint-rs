@@ -2,10 +2,13 @@
 //! `job` turns it into printable bytes, `printers` writes them. This
 //! module wires the three together and does nothing else.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -35,6 +38,45 @@ pub fn router(printers: Arc<Printers>) -> Router {
             )
         })
         .with_state(printers)
+        .layer(middleware::from_fn(refuse_browsers))
+}
+
+/// Refuses a request a browser made on a web page's behalf.
+///
+/// A page on any site can post a form here without a CORS preflight,
+/// and the job prints even though the page never sees the reply.
+/// Browsers send `Origin` with such requests and programs do not, so
+/// its presence is the tell. DNS rebinding gets past that by pointing
+/// the attacker's domain at this machine, so `Host` must also name the
+/// server the way a client that typed its address would: an IP literal
+/// or `localhost`, with or without a port. Whatever `--listen` bound is
+/// an IP, so a client set up against it passes.
+async fn refuse_browsers(request: Request, next: Next) -> Result<Response, Problem> {
+    let headers = request.headers();
+    if headers.contains_key(header::ORIGIN) {
+        return Err(Problem::forbidden(
+            "Requests from web pages are refused; call the API from a program.",
+        ));
+    }
+    if let Some(host) = headers.get(header::HOST) {
+        let host = host.to_str().unwrap_or_default();
+        if !names_this_server(host) {
+            return Err(Problem::forbidden(format!(
+                "`Host: {host}` is not this server's address; use its IP or `localhost`."
+            )));
+        }
+    }
+    Ok(next.run(request).await)
+}
+
+/// `localhost` or an IP literal, with an optional port.
+fn names_this_server(host: &str) -> bool {
+    let name = match host.strip_prefix('[') {
+        // `[::1]` or `[::1]:9110`.
+        Some(rest) => rest.split_once(']').map_or(rest, |(ip, _)| ip),
+        None => host.rsplit_once(':').map_or(host, |(name, _)| name),
+    };
+    name.eq_ignore_ascii_case("localhost") || name.parse::<IpAddr>().is_ok()
 }
 
 /// A read-only view of the profile file, so a client can pick a printer
@@ -484,6 +526,52 @@ mod tests {
                 "{what} says what went wrong: {:?}",
                 reply.json
             );
+        }
+    }
+
+    #[test]
+    fn a_host_names_this_server_as_localhost_or_an_ip() {
+        for host in [
+            "localhost",
+            "LOCALHOST:9110",
+            "127.0.0.1:9110",
+            "192.168.1.10:9110",
+            "[::1]:9110",
+            "[::1]",
+        ] {
+            assert!(names_this_server(host), "{host}");
+        }
+        for host in ["attacker.example", "attacker.example:9110", ""] {
+            assert!(!names_this_server(host), "{host}");
+        }
+    }
+
+    /// A page can post a form to loopback without a preflight, and DNS
+    /// rebinding can make a browser send a domain as the host. Both are
+    /// refused before any printer is looked up.
+    #[tokio::test]
+    async fn a_browser_is_refused_by_its_origin_or_a_rebound_host() {
+        let mut from_page = json_job(
+            "/v1/printers/tsp800ii/jobs",
+            json!({ "job": { "kind": "test-page" } }),
+        );
+        from_page
+            .headers_mut()
+            .insert(header::ORIGIN, "https://attacker.example".parse().unwrap());
+        let rebound = Request::builder()
+            .uri("/v1/printers")
+            .header(header::HOST, "attacker.example")
+            .body(Body::empty())
+            .unwrap();
+        for (what, request) in [("an origin", from_page), ("a rebound host", rebound)] {
+            let reply = call(printers(9100), request).await;
+            assert_eq!(
+                reply.status,
+                StatusCode::FORBIDDEN,
+                "{what}: {:?}",
+                reply.json
+            );
+            assert_eq!(reply.content_type, "application/problem+json", "{what}");
         }
     }
 

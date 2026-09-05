@@ -37,6 +37,11 @@ impl Problem {
         Self::new(StatusCode::BAD_REQUEST, detail)
     }
 
+    /// A request a browser made on a web page's behalf.
+    pub fn forbidden(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, detail)
+    }
+
     pub fn not_found(detail: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, detail)
     }
