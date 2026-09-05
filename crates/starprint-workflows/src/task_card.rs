@@ -20,7 +20,7 @@ pub struct TaskCard {
     #[serde(default)]
     pub priority: bool,
     /// A short identifier, such as an issue key, centred between the
-    /// banner and the date.
+    /// banner and the date, reserving the date's space when absent.
     #[serde(default)]
     pub reference: Option<String>,
     /// An ISO date, printed as `28 AUG 2026`, or free text printed as is.
@@ -89,8 +89,11 @@ impl TaskCard {
             .then(|| <Builder<P> as CardStyle>::PRIORITY_TEXT.to_owned());
         let banner = priority.as_ref().map_or(0, |p| p.chars().count());
         let due = due_text(self.due.as_deref());
-        // Centred in the gap the banner and the date leave, not on the line.
-        let gap = columns.saturating_sub(banner + due.as_ref().map_or(0, |d| d.chars().count()));
+        // Reserve a formatted date's width even when no date is supplied.
+        let date_width = due
+            .as_ref()
+            .map_or("28 AUG 2026".len(), |d| d.chars().count());
+        let gap = columns.saturating_sub(banner + date_width);
         let reference = self
             .reference
             .as_deref()
@@ -259,16 +262,39 @@ mod tests {
     }
 
     #[test]
+    fn missing_due_keeps_the_reference_in_place() {
+        fn check<P: Protocol>()
+        where
+            Builder<P>: CardStyle,
+        {
+            for paper in [Paper::Mm80, Paper::Mm112] {
+                for priority in [false, true] {
+                    let mut card = TaskCard {
+                        reference: Some("OPC-123".to_owned()),
+                        ..card("x", priority, Some("2025-01-15"))
+                    };
+                    let expected = card.layout::<P>(paper).reference;
+                    for due in [None, Some(""), Some("  ")] {
+                        card.due = due.map(str::to_owned);
+                        let layout = card.layout::<P>(paper);
+                        assert_eq!(layout.reference, expected);
+                        assert_eq!(layout.due, None);
+                    }
+                }
+            }
+        }
+        check::<StarLine>();
+        check::<Impact>();
+    }
+
+    #[test]
     fn a_reference_alone_still_prints_a_header_line() {
         let card = TaskCard {
             reference: Some("OPC-123".to_owned()),
             ..card("x", false, None)
         };
         let layout = card.layout::<Impact>(Paper::Mm80);
-        assert_eq!(
-            layout.reference.as_deref(),
-            Some("                 OPC-123")
-        );
+        assert_eq!(layout.reference.as_deref(), Some("            OPC-123"));
         let bytes = card
             .document(starprint::impact(), Paper::Mm80, true)
             .as_bytes()
