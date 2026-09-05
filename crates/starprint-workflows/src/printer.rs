@@ -229,8 +229,7 @@ impl Printer {
                     }
                 };
                 if two_color {
-                    Ok(Builder::<StarLine>::without_init()
-                        .raw(doc)
+                    Ok(Builder::<StarLine>::resume(doc)
                         .print_mode(PrintMode::SingleColor)
                         .build())
                 } else {

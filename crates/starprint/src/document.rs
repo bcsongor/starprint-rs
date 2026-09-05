@@ -148,6 +148,15 @@ impl<P: Protocol> Builder<P> {
         }
     }
 
+    /// Continues a finished document where it ended, without copying it.
+    #[must_use]
+    pub fn resume(document: Document) -> Self {
+        Self {
+            buf: document.into_bytes(),
+            _protocol: PhantomData,
+        }
+    }
+
     /// Appends bytes verbatim, for commands this builder does not model
     /// or text pre-encoded for another code page.
     #[must_use]
