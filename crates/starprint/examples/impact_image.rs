@@ -30,11 +30,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if rotate {
         source = source.rotate90();
     }
-    let prepared = ImagePipeline::new().density(density).prepare(&source)?;
+    let image = ImagePipeline::new().density(density).prepare(&source)?;
 
     let doc = starprint::impact()
         .align(Alignment::Center)
-        .bit_image(&prepared.image)
+        .bit_image(&image)
         .feed(2)
         .line(&path)
         .feed(2)
@@ -45,8 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     printer.print(&doc)?;
     println!(
         "printed {}x{} dots ({density:?} density); {} bytes sent",
-        prepared.image.bitmap().width(),
-        prepared.image.bitmap().height(),
+        image.bitmap().width(),
+        image.bitmap().height(),
         doc.as_bytes().len()
     );
     Ok(())

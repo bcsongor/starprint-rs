@@ -8,7 +8,7 @@ mod pipeline;
 
 pub use dither::{Dithering, Grayscale};
 #[cfg(feature = "image")]
-pub use pipeline::{ImagePipeline, PreparedImage, ToneCurve};
+pub use pipeline::{ImagePipeline, ToneCurve};
 
 use crate::error::{Error, Result};
 

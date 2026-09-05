@@ -7,7 +7,7 @@
 use image::DynamicImage;
 use image::imageops::FilterType;
 use serde::Deserialize;
-use starprint::graphics::{Density, DeviceProfile, Dithering, ImagePipeline, PreparedImage};
+use starprint::graphics::{BitImage, Density, DeviceProfile, Dithering, Grayscale, ImagePipeline};
 use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, StarLine};
 
 use crate::{Paper, PrinterKind, finish_graphic};
@@ -64,16 +64,16 @@ impl Default for Picture {
 /// first keeps the sharpening comparable and the sliders responsive.
 const SOURCE_OVERSAMPLE: u32 = 2;
 
-/// Shrinks to at most `max_width`, keeping the aspect ratio. Anything
-/// narrower comes back untouched.
+/// Shrinks to at most `max_width`, keeping the aspect ratio, or `None`
+/// when the image is already no wider.
 #[must_use]
-pub fn fit_width(image: DynamicImage, max_width: u32) -> DynamicImage {
+pub fn fit_width(image: &DynamicImage, max_width: u32) -> Option<DynamicImage> {
     if image.width() <= max_width {
-        return image;
+        return None;
     }
     let height =
         (u64::from(image.height()) * u64::from(max_width) / u64::from(image.width())).max(1) as u32;
-    image.resize_exact(max_width, height, FilterType::Triangle)
+    Some(image.resize_exact(max_width, height, FilterType::Triangle))
 }
 
 impl Picture {
@@ -105,28 +105,39 @@ impl Picture {
         self.profile(kind, paper).max_width(self.density(kind)) * SOURCE_OVERSAMPLE
     }
 
+    /// The picture as it prints.
     pub fn prepare(
         &self,
         kind: PrinterKind,
         paper: Paper,
         source: &DynamicImage,
-    ) -> Result<PreparedImage, String> {
-        let width = self.source_width(kind, paper);
-        let shrunk;
-        let source = if source.width() > width {
-            shrunk = fit_width(source.clone(), width);
-            &shrunk
-        } else {
-            source
-        };
+    ) -> Result<BitImage, String> {
+        let shrunk = fit_width(source, self.source_width(kind, paper));
+        self.pipeline(kind, paper)
+            .prepare(shrunk.as_ref().unwrap_or(source))
+            .map_err(|e| e.to_string())
+    }
+
+    /// The picture for the screen, one head wide.
+    pub fn preview(
+        &self,
+        kind: PrinterKind,
+        paper: Paper,
+        source: &DynamicImage,
+    ) -> Result<Grayscale, String> {
+        let shrunk = fit_width(source, self.source_width(kind, paper));
+        self.pipeline(kind, paper)
+            .prepare_preview(shrunk.as_ref().unwrap_or(source))
+            .map_err(|e| e.to_string())
+    }
+
+    fn pipeline(&self, kind: PrinterKind, paper: Paper) -> ImagePipeline {
         ImagePipeline::new()
             .profile(self.profile(kind, paper))
             .density(self.density(kind))
             .dither(self.dither.dithering(self.threshold))
             .brightness(self.brightness)
             .contrast(self.contrast)
-            .prepare(source)
-            .map_err(|e| e.to_string())
     }
 }
 
@@ -145,7 +156,7 @@ pub(crate) fn thermal(
     source: &DynamicImage,
     mode: PrintMode,
 ) -> Result<Document, String> {
-    let prepared = picture.prepare(PrinterKind::Thermal, paper, source)?;
+    let image = picture.prepare(PrinterKind::Thermal, paper, source)?;
     let mut doc = builder.align(Alignment::Center);
     if picture.double {
         doc = doc.print_mode(PrintMode::DoubleResolution);
@@ -153,7 +164,7 @@ pub(crate) fn thermal(
             doc = doc.print_density(3);
         }
     }
-    doc = doc.raster(&prepared.image, RasterQuality::High);
+    doc = doc.raster(&image, RasterQuality::High);
     if picture.double {
         // The mode outlives ESC @, so go back to the job's own.
         doc = doc.print_mode(mode);
@@ -167,8 +178,8 @@ pub(crate) fn impact(
     cut: bool,
     source: &DynamicImage,
 ) -> Result<Document, String> {
-    let prepared = picture.prepare(PrinterKind::Impact, Paper::Mm80, source)?;
-    let doc = builder.align(Alignment::Center).bit_image(&prepared.image);
+    let image = picture.prepare(PrinterKind::Impact, Paper::Mm80, source)?;
+    let doc = builder.align(Alignment::Center).bit_image(&image);
     Ok(finish_graphic(doc, cut))
 }
 
@@ -208,32 +219,35 @@ mod tests {
             420,
             "210 dots of head, twice over"
         );
-        let shrunk = fit_width(source.clone(), 840);
+        let shrunk = fit_width(&source, 840).unwrap();
         assert_eq!((shrunk.width(), shrunk.height()), (840, 210));
 
         // Shrinking to the same width first changes nothing, so a cache
         // that holds the shrunk source prints what the full one would.
         let direct = picture
-            .prepare(PrinterKind::Impact, Paper::Mm80, &source)
+            .preview(PrinterKind::Impact, Paper::Mm80, &source)
             .unwrap();
         let cached = picture
-            .prepare(
+            .preview(
                 PrinterKind::Impact,
                 Paper::Mm80,
                 &fit_width(
-                    source,
+                    &source,
                     picture.source_width(PrinterKind::Impact, Paper::Mm80),
-                ),
+                )
+                .unwrap(),
             )
             .unwrap();
-        assert_eq!(direct.preview.pixels(), cached.preview.pixels());
+        assert_eq!(direct.pixels(), cached.pixels());
     }
 
     #[test]
     fn fit_width_leaves_a_narrow_image_alone() {
-        let image = sample();
-        assert_eq!(fit_width(image.clone(), 640).width(), 64);
-        assert_eq!(fit_width(image, 64).width(), 64);
+        assert!(fit_width(&sample(), 640).is_none());
+        assert!(
+            fit_width(&sample(), 64).is_none(),
+            "nor one exactly as wide"
+        );
     }
 
     #[test]
@@ -272,9 +286,9 @@ mod tests {
 
     #[test]
     fn the_preview_is_one_head_wide() {
-        let prepared = picture(true)
-            .prepare(PrinterKind::Impact, Paper::Mm80, &sample())
+        let preview = picture(true)
+            .preview(PrinterKind::Impact, Paper::Mm80, &sample())
             .unwrap();
-        assert_eq!(prepared.preview.width(), 210);
+        assert_eq!(preview.width(), 210);
     }
 }

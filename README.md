@@ -58,14 +58,14 @@ On a thermal printer, with the settings that printed best on a TSP800II:
 use starprint::graphics::{DeviceProfile, ImagePipeline};
 use starprint::{PrintSpeed, RasterQuality};
 
-let prepared = ImagePipeline::new()
+let image = ImagePipeline::new()
     .profile(DeviceProfile::THERMAL_80MM)
     .prepare_bytes(&std::fs::read("photo.jpg")?)?;
 
 let doc = starprint::starline()
     .print_speed(PrintSpeed::Slow)
     .print_density(3)
-    .raster(&prepared.image, RasterQuality::High)
+    .raster(&image, RasterQuality::High)
     .build();
 ```
 
@@ -74,14 +74,14 @@ On an SP700:
 ```rust
 use starprint::graphics::{Density, ImagePipeline};
 
-let prepared = ImagePipeline::new()
+let image = ImagePipeline::new()
     .density(Density::Double)
     .prepare_bytes(&std::fs::read("photo.jpg")?)?;
 
-let doc = starprint::impact().bit_image(&prepared.image).build();
+let doc = starprint::impact().bit_image(&image).build();
 ```
 
-`prepared.preview` is a `Grayscale` for the screen. Without the feature, `graphics::Bitmap` prints your own pixels.
+`prepare_preview` gives a `Grayscale` for the screen. Without the feature, `graphics::Bitmap` prints your own pixels.
 
 ## Examples
 

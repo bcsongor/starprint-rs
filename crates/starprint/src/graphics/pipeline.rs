@@ -21,10 +21,10 @@
 //! use starprint::graphics::ImagePipeline;
 //!
 //! let photo = std::fs::read("photo.jpg").unwrap();
-//! let prepared = ImagePipeline::new()
+//! let image = ImagePipeline::new()
 //!     .density(Density::Double)
 //!     .prepare_bytes(&photo)?;
-//! let doc = starprint::impact().bit_image(&prepared.image).build();
+//! let doc = starprint::impact().bit_image(&image).build();
 //! # Ok::<(), starprint::Error>(())
 //! ```
 
@@ -75,8 +75,10 @@ impl ToneCurve {
 }
 
 /// Chain settings, then [`prepare`](Self::prepare) or
-/// [`prepare_bytes`](Self::prepare_bytes). [`new`](Self::new) is the
-/// reference: SP700, single density, Floyd–Steinberg at 128.
+/// [`prepare_bytes`](Self::prepare_bytes) for the printer and
+/// [`prepare_preview`](Self::prepare_preview) for the screen.
+/// [`new`](Self::new) is the reference: SP700, single density,
+/// Floyd–Steinberg at 128.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImagePipeline {
     density: Density,
@@ -146,14 +148,54 @@ impl ImagePipeline {
     }
 
     /// Decodes PNG, JPEG, WebP or BMP, then [`prepare`](Self::prepare).
-    pub fn prepare_bytes(&self, bytes: &[u8]) -> Result<PreparedImage> {
+    pub fn prepare_bytes(&self, bytes: &[u8]) -> Result<BitImage> {
         let decoded = image::load_from_memory(bytes).map_err(|err| Error::InvalidData {
             reason: format!("image decode failed: {err}"),
         })?;
         self.prepare(&decoded)
     }
 
-    pub fn prepare(&self, source: &DynamicImage) -> Result<PreparedImage> {
+    /// The picture as it prints.
+    pub fn prepare(&self, source: &DynamicImage) -> Result<BitImage> {
+        let full = self.adjust(source)?;
+        let (src_w, src_h) = full.dimensions();
+        let width = self.profile.max_width(self.density);
+        let h_dpi = self.profile.horizontal_dpi_at(self.density);
+
+        // Fit the width, then stretch the height for the anisotropic pitch.
+        let aspect_h = ratio_round(src_h, width, src_w);
+        let compensated_h =
+            (f64::from(aspect_h) * self.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
+        if compensated_h == 0 {
+            return Err(Error::InvalidData {
+                reason: "image is too wide and short to print at this width".into(),
+            });
+        }
+        let gray = self.dither.apply(&resize(&full, width, compensated_h));
+        BitImage::with_profile(gray.to_bitmap(), self.density, &self.profile)
+    }
+
+    /// The picture for the screen: display width, square pixels, with
+    /// pixel pairs min-pooled at double density to show the dot overlap.
+    /// At normal thermal resolution these are the dots
+    /// [`prepare`](Self::prepare) prints, without the raster being built.
+    pub fn prepare_preview(&self, source: &DynamicImage) -> Result<Grayscale> {
+        let full = self.adjust(source)?;
+        let (src_w, src_h) = full.dimensions();
+        let width = self.profile.max_width(self.density);
+        let display_w = self.profile.width_dots_single;
+        let display_h = ratio_round(src_h, display_w, src_w).max(1);
+        let gray = self.dither.apply(&resize(&full, width, display_h));
+        Ok(if width == display_w {
+            gray
+        } else {
+            min_pool_pairs(&gray)
+        })
+    }
+
+    /// Stages 1 to 7: grey, toned, sharpened and adjusted at the source
+    /// size, ready to resample.
+    fn adjust(&self, source: &DynamicImage) -> Result<image::GrayImage> {
         let mut gray = to_grayscale_on_white(source);
         let (src_w, src_h) = (gray.width(), gray.height());
         if src_w == 0 || src_h == 0 {
@@ -181,50 +223,9 @@ impl ImagePipeline {
         if self.contrast != 1.0 {
             contrast(&mut gray, self.contrast);
         }
-
-        let width = self.profile.max_width(self.density);
-        let h_dpi = self.profile.horizontal_dpi_at(self.density);
-
-        // Fit the width, then stretch the height for the anisotropic pitch.
-        let aspect_h = ratio_round(src_h, width, src_w);
-        let compensated_h =
-            (f64::from(aspect_h) * self.profile.vertical_dpi / h_dpi).round_ties_even() as u32;
-        if compensated_h == 0 {
-            return Err(Error::InvalidData {
-                reason: "image is too wide and short to print at this width".into(),
-            });
-        }
-        // One source for both resamples.
-        let full = image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
-            .expect("buffer sized from dimensions");
-        let print_gray = self.dither.apply(&resize(&full, width, compensated_h));
-        let image = BitImage::with_profile(print_gray.to_bitmap(), self.density, &self.profile)?;
-
-        // Preview: print width at display height, then pool pairs at double
-        // density.
-        let display_w = self.profile.width_dots_single;
-        let display_h = ratio_round(src_h, display_w, src_w).max(1);
-        let preview_gray = if display_h == compensated_h {
-            print_gray
-        } else {
-            self.dither.apply(&resize(&full, width, display_h))
-        };
-        let preview = if width == display_w {
-            preview_gray
-        } else {
-            min_pool_pairs(&preview_gray)
-        };
-
-        Ok(PreparedImage { image, preview })
+        Ok(image::GrayImage::from_raw(src_w, src_h, gray.into_pixels())
+            .expect("buffer sized from dimensions"))
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct PreparedImage {
-    pub image: BitImage,
-    /// For the screen: single-density width, square pixels. At double
-    /// density, pixel pairs are min-pooled to show the dot overlap.
-    pub preview: Grayscale,
 }
 
 /// `round(a * b / c)`, ties to even like Python.
@@ -528,15 +529,16 @@ mod tests {
         // A 400x300 source at single density: width 210, aspect height
         // round(300 * 210 / 400) = 158, compensated round(158 * 72 / 84.7) = 134.
         let source = DynamicImage::new_luma8(400, 300);
-        let prepared = ImagePipeline::new().prepare(&source).unwrap();
+        let image = ImagePipeline::new().prepare(&source).unwrap();
         let expected_aspect = (300.0f64 * 210.0 / 400.0).round_ties_even();
         let expected_h =
             (expected_aspect * 72.0 / DeviceProfile::SP700.horizontal_dpi).round_ties_even() as u32;
-        assert_eq!(prepared.image.bitmap.width(), 210);
-        assert_eq!(prepared.image.bitmap.height(), expected_h);
+        assert_eq!(image.bitmap.width(), 210);
+        assert_eq!(image.bitmap.height(), expected_h);
         // Preview keeps square pixels at display width.
-        assert_eq!(prepared.preview.width(), 210);
-        assert_eq!(prepared.preview.height(), 158);
+        let preview = ImagePipeline::new().prepare_preview(&source).unwrap();
+        assert_eq!(preview.width(), 210);
+        assert_eq!(preview.height(), 158);
     }
 
     #[test]
@@ -548,14 +550,14 @@ mod tests {
             .profile(DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION)
             .prepare(&source)
             .unwrap();
-        assert_eq!(prepared.image.bitmap().width(), 576);
-        assert_eq!(prepared.image.bitmap().height(), 864);
+        assert_eq!(prepared.bitmap().width(), 576);
+        assert_eq!(prepared.bitmap().height(), 864);
         // Single resolution keeps the aspect ratio as-is.
         let prepared = ImagePipeline::new()
             .profile(DeviceProfile::THERMAL_80MM)
             .prepare(&source)
             .unwrap();
-        assert_eq!(prepared.image.bitmap().height(), 432);
+        assert_eq!(prepared.bitmap().height(), 432);
     }
 
     #[test]
@@ -568,23 +570,22 @@ mod tests {
             Dithering::Threshold { threshold: 128 },
             Dithering::Bayer8x8,
         ] {
-            let prepared = ImagePipeline::new()
+            let pipeline = ImagePipeline::new()
                 .profile(DeviceProfile::THERMAL_80MM)
-                .dither(dither)
-                .prepare(&source)
-                .unwrap();
-            assert_eq!(&prepared.preview.to_bitmap(), prepared.image.bitmap());
+                .dither(dither);
+            let preview = pipeline.prepare_preview(&source).unwrap();
+            assert_eq!(
+                &preview.to_bitmap(),
+                pipeline.prepare(&source).unwrap().bitmap()
+            );
         }
     }
 
     #[test]
     fn double_density_preview_is_min_pooled_to_display_width() {
         let source = DynamicImage::new_luma8(400, 300);
-        let prepared = ImagePipeline::new()
-            .density(Density::Double)
-            .prepare(&source)
-            .unwrap();
-        assert_eq!(prepared.image.bitmap.width(), 420);
-        assert_eq!(prepared.preview.width(), 210);
+        let pipeline = ImagePipeline::new().density(Density::Double);
+        assert_eq!(pipeline.prepare(&source).unwrap().bitmap.width(), 420);
+        assert_eq!(pipeline.prepare_preview(&source).unwrap().width(), 210);
     }
 }

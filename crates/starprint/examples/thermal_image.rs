@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if rotate {
         source = source.rotate90();
     }
-    let prepared = ImagePipeline::new()
+    let image = ImagePipeline::new()
         .profile(profile)
         .tone(tone)
         .brightness(brightness)
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         PrintMode::SingleColor
     });
-    doc = doc.raster(&prepared.image, RasterQuality::High);
+    doc = doc.raster(&image, RasterQuality::High);
     if double {
         doc = doc.print_mode(PrintMode::SingleColor);
     }
@@ -100,8 +100,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     printer.print(&doc)?;
     println!(
         "printed {}x{} dots; {} bytes sent",
-        prepared.image.bitmap().width(),
-        prepared.image.bitmap().height(),
+        image.bitmap().width(),
+        image.bitmap().height(),
         doc.as_bytes().len()
     );
     Ok(())

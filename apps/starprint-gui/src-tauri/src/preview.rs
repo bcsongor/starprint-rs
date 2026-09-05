@@ -106,7 +106,7 @@ pub async fn picture_preview(
     let cache = Arc::clone(&cache);
     tauri::async_runtime::spawn_blocking(move || {
         let source = picture.source(kind, paper, &cache)?;
-        let prepared = picture.picture.prepare(kind, paper, &source)?.preview;
+        let prepared = picture.picture.preview(kind, paper, &source)?;
         let shown = match kind {
             PrinterKind::Thermal => {
                 let dot_size = if picture.picture.double {

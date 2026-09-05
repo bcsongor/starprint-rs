@@ -55,7 +55,8 @@ impl SourceCache {
             return Ok(cached.image.clone());
         }
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-        let image = fit_width(decode(&bytes)?, max_width);
+        let image = decode(&bytes)?;
+        let image = fit_width(&image, max_width).unwrap_or(image);
         *slot = Some(CachedSource {
             path: path.to_owned(),
             max_width,
