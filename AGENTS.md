@@ -67,12 +67,9 @@ with two front ends on the jobs in `crates/starprint-workflows`.
   goes in whichever of those owns it.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
-- `.agents/skills/starprint-print/`: the skill we publish for callers
-  of the API, and the only reference to its endpoints and job fields.
-  Anything the API gains goes in here.
-  `.claude/skills/starprint-print` symlinks here, because Claude Code
-  reads only that path. Windows needs an elevated shell to check the
-  symlink out.
+- `skills/starprint-print/`: the skill users install into their own
+  agents to print through the API, and the only reference to its
+  endpoints and job fields. Anything the API gains goes in here.
 
 ## Conventions
 

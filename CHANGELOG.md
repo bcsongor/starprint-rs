@@ -125,7 +125,7 @@
 
 ### For agents
 
-- A skill at `.agents/skills/starprint-print/` tells an agent how to
+- A skill at `skills/starprint-print/` tells an agent how to
   print through the API: which printers exist, what each job takes and
   what `bytesSent` does not promise. It stands on its own, so it can be
   copied into any agent that reads the format.
