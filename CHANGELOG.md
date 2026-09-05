@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.4.0
+
+### Printing
+
+- Density +4 on a thermal profile, in the desktop app, the API and the
+  profile file, selects the printer's two-colour mode, which prints a
+  darker black than +3 on plain paper. The mode ignores the density and
+  speed commands, so neither is sent at +4, and anything in double
+  resolution prints at +3 instead. The desktop app disables double
+  resolution for pictures at +4.
+- A QR code on a thermal printer now lands where its alignment says.
+  Raster rows start at the raster margin and ignore `ESC GS a`, so
+  left, centre and right all printed at the left edge. The symbol is
+  padded with blank dots to its place; the caption still uses text
+  alignment.
+- A `qr` job's `radius` defaults to 0, square, since no rounded symbol
+  has been checked against a phone on either head yet.
+- A task card without a due date keeps its reference where a dated one
+  puts it. The header reserved no room for the date, so the reference
+  drifted right whenever an issue had none.
+
+### Desktop app
+
+- Only the active workflow's preview is drawn, and preview PNGs are
+  encoded for speed, so switching printers and dragging sliders is
+  quicker. Print is enabled as soon as a QR code has data rather than
+  once its preview lands, so the button no longer flickers on a drag.
+- A picture too short to print at the paper's width is reported by the
+  preview rather than failing at print time.
+- Smaller fixes: note ruling stays crisp when the window is resized,
+  the preview keeps still while a popup opens, switching printers no
+  longer flashes a scrollbar, the task input no longer shrinks below
+  one line, profiles are listed alphabetically and the density
+  selector's digits line up.
+
+### Library
+
+- `ImagePipeline::prepare` returns the `BitImage` and `prepare_preview`
+  the `Grayscale` for the screen, in place of `PreparedImage`, so a
+  preview no longer builds the raster it does not show. Both reject an
+  image too short to print with the same error.
+- Rasters are packed straight into the document and dithering keeps
+  three rows of error rather than a copy of the whole image, so a photo
+  prepares with far less memory and copying. The desktop app shares the
+  decoded picture between previews instead of copying it.
+- `Builder::resume` continues a finished document where it ended, which
+  is how a two-colour job hands the printer back in single colour
+  without copying its bytes.
+
 ## 0.3.0
 
 ### Linear
@@ -9,9 +58,6 @@
   tab; while it is on, the app asks Linear every 10 seconds and prints
   whatever the previous answer did not list. The first answer only takes
   stock, so switching it on does not print the backlog.
-- A task card without a due date keeps its reference where a dated one
-  puts it. The header reserved no room for the date, so the reference
-  drifted right whenever an issue had none.
 
 ### HTTP API
 
@@ -45,18 +91,7 @@
   millimetres it will measure, rather than an approximation of one.
 - A `radius` rounds the corners of the symbol, each as far as its shape
   allows, so a lone module becomes a circle early on while the finder
-  patterns keep rounding. The default is 0, square, since no rounded
-  symbol has been checked against a phone on either head yet.
-
-### Library
-
-- `ImagePipeline::prepare` returns the `BitImage` and `prepare_preview`
-  the `Grayscale` for the screen, in place of `PreparedImage`, so a
-  preview no longer builds the raster it does not show.
-- Rasters are packed straight into the document and dithering keeps
-  three rows of error rather than a copy of the whole image, so a photo
-  prepares with far less memory and copying. The desktop app shares the
-  decoded picture between previews instead of copying it.
+  patterns keep rounding. 100, as round as it goes, by default.
 
 ## 0.2.0
 
