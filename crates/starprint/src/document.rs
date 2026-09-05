@@ -383,9 +383,11 @@ impl Builder<StarLine> {
 
         let bytes_per_row = bitmap.width().div_ceil(8);
         let [n1, n2] = (bytes_per_row as u16).to_le_bytes();
+        self.buf
+            .reserve(bitmap.height() as usize * (3 + bytes_per_row as usize) + 4);
         for y in 0..bitmap.height() {
             self.buf.extend_from_slice(&[b'b', n1, n2]);
-            self.buf.extend_from_slice(&graphics::pack_row(bitmap, y));
+            graphics::pack_row(bitmap, y, &mut self.buf);
         }
         self.buf.extend_from_slice(&[ESC, b'*', b'r', b'B']);
         self
@@ -484,11 +486,13 @@ impl Builder<Impact> {
             b'3',
             graphics::STRIPE_HEIGHT as u8 * graphics::LINE_FEED_UNITS_PER_DOT,
         ]);
+        let stripes = bitmap.height().div_ceil(graphics::STRIPE_HEIGHT) as usize;
+        self.buf
+            .reserve(stripes * (6 + 2 * bitmap.width() as usize) + 2);
         let mut top = 0;
         while top < bitmap.height() {
             self.buf.extend_from_slice(&[ESC, b'^', density, n1, n2]);
-            self.buf
-                .extend_from_slice(&graphics::pack_stripe(bitmap, top));
+            graphics::pack_stripe(bitmap, top, &mut self.buf);
             top += graphics::STRIPE_HEIGHT;
             if top < bitmap.height() {
                 self.buf.push(b'\n');

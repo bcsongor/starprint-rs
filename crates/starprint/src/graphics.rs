@@ -224,21 +224,24 @@ impl AsRef<Bitmap> for BitImage {
     }
 }
 
-/// One raster row, 8 dots per byte, MSB leftmost, padded with blanks.
-pub(crate) fn pack_row(bitmap: &Bitmap, y: u32) -> Vec<u8> {
-    let mut out = vec![0u8; (bitmap.width as usize).div_ceil(8)];
-    for x in 0..bitmap.width {
-        if bitmap.get(x, y) {
-            out[(x / 8) as usize] |= 0x80 >> (x % 8);
-        }
+/// Appends one raster row: 8 dots per byte, MSB leftmost, padded with
+/// blanks. A row past the bottom is blank.
+pub(crate) fn pack_row(bitmap: &Bitmap, y: u32, out: &mut Vec<u8>) {
+    let width = bitmap.width as usize;
+    let start = y as usize * width;
+    match bitmap.ink.get(start..start + width) {
+        Some(row) => out.extend(row.chunks(8).map(|dots| {
+            dots.iter()
+                .enumerate()
+                .fold(0u8, |byte, (bit, &ink)| byte | (u8::from(ink) << (7 - bit)))
+        })),
+        None => out.resize(out.len() + width.div_ceil(8), 0),
     }
-    out
 }
 
-/// One `ESC ^` stripe from row `top`: two bytes per column, rows
+/// Appends one `ESC ^` stripe from row `top`: two bytes per column, rows
 /// `top..top+8` in the first, row `top+8` in the MSB of the second.
-pub(crate) fn pack_stripe(bitmap: &Bitmap, top: u32) -> Vec<u8> {
-    let mut out = Vec::with_capacity(bitmap.width as usize * 2);
+pub(crate) fn pack_stripe(bitmap: &Bitmap, top: u32, out: &mut Vec<u8>) {
     for x in 0..bitmap.width {
         let mut b0 = 0u8;
         for bit in 0..8 {
@@ -247,10 +250,8 @@ pub(crate) fn pack_stripe(bitmap: &Bitmap, top: u32) -> Vec<u8> {
             }
         }
         let b1 = if bitmap.get(x, top + 8) { 0x80 } else { 0 };
-        out.push(b0);
-        out.push(b1);
+        out.extend_from_slice(&[b0, b1]);
     }
-    out
 }
 
 #[cfg(test)]
@@ -278,9 +279,13 @@ mod tests {
     fn row_packing_is_msb_first_and_padded() {
         // 10 dots wide: ink at x = 0, 7, 8 → 0b1000_0001, 0b1000_0000.
         let bmp = Bitmap::from_fn(10, 1, |x, _| matches!(x, 0 | 7 | 8));
-        assert_eq!(pack_row(&bmp, 0), [0b1000_0001, 0b1000_0000]);
+        let mut row = Vec::new();
+        pack_row(&bmp, 0, &mut row);
+        assert_eq!(row, [0b1000_0001, 0b1000_0000]);
         // Out-of-range rows are blank.
-        assert_eq!(pack_row(&bmp, 5), [0, 0]);
+        row.clear();
+        pack_row(&bmp, 5, &mut row);
+        assert_eq!(row, [0, 0]);
     }
 
     #[test]
@@ -289,9 +294,13 @@ mod tests {
         let bmp = Bitmap::from_fn(2, 9, |x, y| {
             (x == 0 && (y == 0 || y == 8)) || (x == 1 && y == 7)
         });
-        assert_eq!(pack_stripe(&bmp, 0), [0b1000_0000, 0x80, 0b0000_0001, 0x00]);
+        let mut stripe = Vec::new();
+        pack_stripe(&bmp, 0, &mut stripe);
+        assert_eq!(stripe, [0b1000_0000, 0x80, 0b0000_0001, 0x00]);
         // A stripe past the bottom edge reads blank rows.
         let short = Bitmap::from_fn(1, 10, |_, y| y == 9);
-        assert_eq!(pack_stripe(&short, 9), [0b1000_0000, 0x00]);
+        stripe.clear();
+        pack_stripe(&short, 9, &mut stripe);
+        assert_eq!(stripe, [0b1000_0000, 0x00]);
     }
 }
