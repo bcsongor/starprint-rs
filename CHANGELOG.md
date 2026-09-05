@@ -9,6 +9,9 @@
   tab; while it is on, the app asks Linear every 10 seconds and prints
   whatever the previous answer did not list. The first answer only takes
   stock, so switching it on does not print the backlog.
+- A task card without a due date keeps its reference where a dated one
+  puts it. The header reserved no room for the date, so the reference
+  drifted right whenever an issue had none.
 
 ### HTTP API
 
