@@ -42,14 +42,8 @@ const THERMAL: Printer = {
 
 const SEED: Profile[] = [
   { ...THERMAL, id: "tsp700ii", name: "TSP700II" },
-  { ...THERMAL, id: "tsp800ii", name: "TSP800II", host: "192.168.1.180" },
-  {
-    ...THERMAL,
-    id: "sp743",
-    name: "SP743",
-    kind: "impact",
-    host: "192.168.1.141",
-  },
+  { ...THERMAL, id: "tsp800ii", name: "TSP800II" },
+  { ...THERMAL, id: "sp743", name: "SP743", kind: "impact" },
 ];
 
 export const DEFAULT_PROFILES: Profiles = {

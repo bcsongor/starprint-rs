@@ -10,6 +10,11 @@
   carrying `Origin`, or a `Host` that is neither an IP nor `localhost`,
   is turned away before a printer is looked up. Programs are unaffected.
 
+### Desktop app
+
+- The seed profiles no longer carry an address, so a first run points at
+  nothing until one is entered.
+
 ## 0.4.0
 
 ### Printing
