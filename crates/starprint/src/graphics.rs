@@ -225,18 +225,15 @@ impl AsRef<Bitmap> for BitImage {
 }
 
 /// Appends one raster row: 8 dots per byte, MSB leftmost, padded with
-/// blanks. A row past the bottom is blank.
+/// blanks in the last byte.
 pub(crate) fn pack_row(bitmap: &Bitmap, y: u32, out: &mut Vec<u8>) {
     let width = bitmap.width as usize;
     let start = y as usize * width;
-    match bitmap.ink.get(start..start + width) {
-        Some(row) => out.extend(row.chunks(8).map(|dots| {
-            dots.iter()
-                .enumerate()
-                .fold(0u8, |byte, (bit, &ink)| byte | (u8::from(ink) << (7 - bit)))
-        })),
-        None => out.resize(out.len() + width.div_ceil(8), 0),
-    }
+    out.extend(bitmap.ink[start..start + width].chunks(8).map(|dots| {
+        dots.iter()
+            .enumerate()
+            .fold(0u8, |byte, (bit, &ink)| byte | (u8::from(ink) << (7 - bit)))
+    }));
 }
 
 /// Appends one `ESC ^` stripe from row `top`: two bytes per column, rows
@@ -282,10 +279,6 @@ mod tests {
         let mut row = Vec::new();
         pack_row(&bmp, 0, &mut row);
         assert_eq!(row, [0b1000_0001, 0b1000_0000]);
-        // Out-of-range rows are blank.
-        row.clear();
-        pack_row(&bmp, 5, &mut row);
-        assert_eq!(row, [0, 0]);
     }
 
     #[test]

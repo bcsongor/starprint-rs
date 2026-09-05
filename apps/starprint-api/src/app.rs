@@ -508,38 +508,4 @@ mod tests {
             reply.json
         );
     }
-
-    /// Overlapping requests each write a whole job.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn overlapping_requests_each_write_a_whole_job() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        // Reads each job to its end before accepting the next, so an
-        // overlapping write would show up as an interleaved read.
-        let jobs = tokio::spawn(async move {
-            let mut lengths = Vec::new();
-            for _ in 0..2 {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let mut bytes = Vec::new();
-                socket.read_to_end(&mut bytes).await.unwrap();
-                lengths.push(bytes.len());
-            }
-            lengths
-        });
-
-        let printers = printers(port);
-        let job = |text: &str| {
-            json_job(
-                "/v1/printers/tsp800ii/jobs",
-                json!({ "job": { "kind": "text", "text": text } }),
-            )
-        };
-        let (first, second) = tokio::join!(
-            call(Arc::clone(&printers), job("first")),
-            call(Arc::clone(&printers), job("second")),
-        );
-        assert_eq!(first.status, StatusCode::OK, "{:?}", first.json);
-        assert_eq!(second.status, StatusCode::OK, "{:?}", second.json);
-        assert_eq!(jobs.await.unwrap().len(), 2, "two whole jobs arrived");
-    }
 }

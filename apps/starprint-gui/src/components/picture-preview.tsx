@@ -41,7 +41,7 @@ export function PicturePreview({ picture, kind, paper, onReady }: Props) {
       ) : (
         <p
           className={cn(
-            "py-[1em] text-center",
+            "py-[1em] text-center text-xl",
             error ? "text-red-700" : "text-black/30",
           )}
         >

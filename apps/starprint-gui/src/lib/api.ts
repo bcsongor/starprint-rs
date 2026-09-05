@@ -245,6 +245,10 @@ export function noteLayout(note: Note, kind: PrinterKind, paper: Paper) {
   return invoke<NoteLayout>("note_layout", { note, kind, paper });
 }
 
+export function notePreview(note: Note, kind: PrinterKind, paper: Paper) {
+  return invoke<ArrayBuffer>("note_preview", { note, kind, paper });
+}
+
 /** Rejects data too long to encode. */
 export function qrLayout(code: Qr, kind: PrinterKind, paper: Paper) {
   return invoke<QrLayout>("qr_layout", { code, kind, paper });

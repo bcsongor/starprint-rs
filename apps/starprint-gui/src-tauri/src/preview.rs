@@ -40,6 +40,24 @@ pub fn note_layout(note: Note, kind: PrinterKind, paper: Paper) -> note::Layout 
     }
 }
 
+#[tauri::command]
+pub async fn note_preview(
+    note: Note,
+    kind: PrinterKind,
+    paper: Paper,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bitmap = match kind {
+            PrinterKind::Thermal => note.bitmap::<StarLine>(paper),
+            PrinterKind::Impact => note.bitmap::<Impact>(paper),
+        };
+        bitmap_png(&bitmap, kind)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(tauri::ipc::Response::new)
+}
+
 /// Returns an error when the data is too long to encode.
 #[tauri::command]
 pub fn qr_layout(code: Qr, kind: PrinterKind, paper: Paper) -> Result<qr::Layout, String> {
@@ -62,16 +80,20 @@ pub async fn qr_preview(
             PrinterKind::Thermal => code.bitmap::<StarLine>(paper),
             PrinterKind::Impact => code.bitmap::<Impact>(paper),
         }?;
-        let drawn = grayscale(&bitmap);
-        let shown = match kind {
-            PrinterKind::Thermal => dot_gain(&drawn, THERMAL_DOT_SIZE),
-            PrinterKind::Impact => drawn,
-        };
-        png(&shown)
+        bitmap_png(&bitmap, kind)
     })
     .await
     .map_err(|e| e.to_string())?
     .map(tauri::ipc::Response::new)
+}
+
+fn bitmap_png(bitmap: &Bitmap, kind: PrinterKind) -> Result<Vec<u8>, String> {
+    let drawn = grayscale(bitmap);
+    let shown = match kind {
+        PrinterKind::Thermal => dot_gain(&drawn, THERMAL_DOT_SIZE),
+        PrinterKind::Impact => drawn,
+    };
+    png(&shown)
 }
 
 /// Ink as black on white.

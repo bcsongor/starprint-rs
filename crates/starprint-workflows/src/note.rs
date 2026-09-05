@@ -51,8 +51,7 @@ impl Default for Note {
     }
 }
 
-/// The slip as it will print, for the preview. The ruling is geometry
-/// the preview draws for itself, in the millimetres it was asked for.
+/// The slip's header. The ruling comes from [`Note::bitmap`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
@@ -134,8 +133,17 @@ impl Note {
         f32::from(self.pitch.clamp(MIN_PITCH_MM, MAX_PITCH_MM))
     }
 
-    fn grid(&self, profile: &DeviceProfile) -> Bitmap {
-        ruling(self.rule, self.rows(), self.pitch(), profile)
+    /// The ruling at the printer's dot pitch, including blank slips.
+    pub fn bitmap<P: Protocol>(&self, paper: Paper) -> Bitmap
+    where
+        Builder<P>: NoteStyle,
+    {
+        ruling(
+            self.rule,
+            self.rows(),
+            self.pitch(),
+            <Builder<P> as NoteStyle>::profile(paper),
+        )
     }
 
     pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
@@ -159,7 +167,7 @@ impl Note {
 
         let doc = match self.rule {
             Rule::Blank => doc.feed_mm(self.rows() as f32 * self.pitch()),
-            _ => doc.rule(self.grid(<Builder<P> as NoteStyle>::profile(paper))),
+            _ => doc.rule(self.bitmap::<P>(paper)),
         };
 
         finish(doc, cut)
@@ -249,7 +257,7 @@ mod tests {
     }
 
     fn thermal(note: &Note) -> Bitmap {
-        note.grid(&DeviceProfile::THERMAL_80MM)
+        note.bitmap::<StarLine>(Paper::Mm80)
     }
 
     fn ink(grid: &Bitmap, y: u32) -> Vec<u32> {
@@ -307,7 +315,7 @@ mod tests {
 
     #[test]
     fn the_impact_head_rules_the_same_millimetres_on_its_own_grid() {
-        let grid = note(Rule::Squares, 4, 5).grid(&DeviceProfile::SP700);
+        let grid = note(Rule::Squares, 4, 5).bitmap::<Impact>(Paper::Mm80);
         assert_eq!(grid.width(), 210, "63 mm at the head's pitch");
         // 72 DPI down: 5 mm is 14.2 rows.
         assert_eq!(grid.height(), 57, "4 rows of 5 mm");

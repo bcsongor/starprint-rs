@@ -47,6 +47,7 @@ pub fn run() {
             preview::task_card_layout,
             preview::text_layout,
             preview::note_layout,
+            preview::note_preview,
             preview::qr_layout,
             preview::qr_preview,
             preview::test_page_sections,

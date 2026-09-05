@@ -17,7 +17,7 @@ const RULES: { value: Rule; label: string; Icon: LucideIcon }[] = [
   { value: "squares", label: "Squares", Icon: Grid3x3Icon },
 ];
 
-/** `MAX_ROWS` and the pitch range in src-tauri/src/note.rs. */
+/** `MAX_ROWS` and the pitch range in starprint-workflows/src/note.rs. */
 const MAX_ROWS = 20;
 const MIN_PITCH_MM = 4;
 const MAX_PITCH_MM = 12;
