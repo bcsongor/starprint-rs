@@ -57,7 +57,7 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 ## Conventions
 
 - Every change lands through a pull request. `main` takes no direct
-  pushes, no force pushes and no merge commits; squash or rebase. The
+  pushes, no force pushes and no merge commits; every PR is squashed. The
   merge button needs CI green and every review thread resolved,
   including the ones Codex and Macroscope open.
 - Before opening one, run `cargo test --all-targets`, clippy with
