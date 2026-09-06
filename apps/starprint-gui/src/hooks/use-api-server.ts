@@ -22,15 +22,15 @@ export interface ApiServer {
 export function useApiServer(
   enabled: boolean,
   profiles: Profile[],
-  listen: Listen,
+  { ip, port }: Listen,
   onFail: () => void,
 ): ApiServer | null {
   const [server, setServer] = useState<ApiServer | null>(null);
   const printers: NamedPrinter[] = profiles
     .filter((p) => p.host.trim().length > 0)
     .map((p) => ({ name: p.name, printer: toPrinter(p) }));
-  // Restart on a change to what is served or where, not on every render.
-  const key = JSON.stringify([listen, printers]);
+  // Compare printer settings by value across renders.
+  const key = JSON.stringify(printers);
   const served = useRef(printers);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const fail = useEffectEvent(onFail);
@@ -43,7 +43,7 @@ export function useApiServer(
       try {
         if (enabled) {
           const token = await loadApiToken();
-          const url = await startApi(served.current, token, listen);
+          const url = await startApi(served.current, token, { ip, port });
           setServer({ url, token });
         } else {
           await stopApi();
@@ -60,7 +60,7 @@ export function useApiServer(
         }
       }
     });
-  }, [enabled, key, listen]);
+  }, [enabled, key, ip, port]);
 
   return server;
 }

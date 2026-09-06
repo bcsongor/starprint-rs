@@ -116,10 +116,15 @@ export default function App() {
   const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
 
   useEffect(() => {
-    loadProfiles().then(setProfiles).catch(console.error);
+    // Restore the API's profiles and address before enabling it.
+    Promise.all([loadProfiles(), loadApiEnabled(), loadApiListen()])
+      .then(([profiles, enabled, listen]) => {
+        setProfiles(profiles);
+        setApiListen(listen);
+        setApiEnabled(enabled);
+      })
+      .catch(console.error);
     loadLinear().then(setLinear).catch(console.error);
-    loadApiEnabled().then(setApiEnabled).catch(console.error);
-    loadApiListen().then(setApiListen).catch(console.error);
   }, []);
 
   const updateProfiles = (next: Profiles) => {

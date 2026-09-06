@@ -17,22 +17,14 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   enabled: boolean;
-  /** Where the API is listening and what it asks for, once it is. */
   server: ApiServer | null;
-  /** Where it listens, or will. */
   listen: Listen;
   onChange: (enabled: boolean) => void;
   onListenChange: (listen: Listen) => void;
   className?: string;
 }
 
-/**
- * The HTTP API's button. Off, a click starts the server. On, it is
- * pressed in with a lit dot, and a click opens the details: where to
- * listen, the URL and token to copy, and Stop. The dot is the one the
- * profiles show, so the two read as the same signal. The serving
- * itself is `useApiServer`.
- */
+/** Starts the API when off and opens its settings when on. */
 export function ApiToggle({
   enabled,
   server,
@@ -43,8 +35,7 @@ export function ApiToggle({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
-  // What is being typed, or null when the field shows the port in use.
-  // Applied on Enter or blur once it is a port; otherwise dropped.
+  // Commit valid port edits on Enter or blur.
   const [draft, setDraft] = useState<string | null>(null);
   const port = draft ?? String(listen.port);
   const applyPort = () => {
@@ -86,9 +77,6 @@ export function ApiToggle({
             aria-label="Serve the HTTP API"
             className={cn(
               DOTTED,
-              // Grey out, green in. Hover from either side is the green
-              // border over a dimmer green, so the grey button previews on
-              // and the green one dips before it goes.
               "bg-secondary aria-pressed:border-emerald-500/40 aria-pressed:bg-emerald-500/15",
               "hover:border-emerald-500/40 hover:bg-emerald-500/10",
               "aria-pressed:hover:border-emerald-500/40 aria-pressed:hover:bg-emerald-500/10",
@@ -159,7 +147,6 @@ export function ApiToggle({
   );
 }
 
-/** A label column of one width, so the rows line up. */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex h-8 items-center gap-2">
@@ -171,10 +158,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/**
- * A value in a box the size of the select, greyed to say it is read
- * only, with a button that copies it.
- */
 function ReadOnlyField({
   value,
   placeholder,

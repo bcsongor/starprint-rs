@@ -15,6 +15,7 @@
 ### Desktop app
 
 - New profiles start without an address.
+- API auto-start waits for the saved profiles and listen address to load.
 
 ## 0.4.0
 

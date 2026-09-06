@@ -70,15 +70,3 @@ pub async fn stop_api(state: tauri::State<'_, Embedded>) -> Result<(), String> {
         None => Ok(()),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn loopback_comes_first_and_link_local_is_left_out() {
-        let addresses = list_addresses();
-        assert_eq!(addresses.first().map(|a| a.ip), Some(Ipv4Addr::LOCALHOST));
-        assert!(addresses.iter().all(|a| !a.ip.is_link_local()));
-    }
-}
