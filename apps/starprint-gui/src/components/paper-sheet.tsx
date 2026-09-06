@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { Paper, PrinterKind } from "@/lib/api";
 import { PX_PER_MM, roll } from "@/lib/paper";
 
@@ -20,7 +20,6 @@ const BOTTOM_MM = 8;
 export function PaperSheet({ kind, paper, children }: Props) {
   const pane = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
 
   const { paperMm, printMm } = roll(kind, paper);
   const width = paperMm * PX_PER_MM;
@@ -31,20 +30,21 @@ export function PaperSheet({ kind, paper, children }: Props) {
     const inner = sheet.current;
     if (!outer || !inner) return;
 
-    const fit = () =>
-      setScale(
-        Math.min(
-          1,
-          outer.clientWidth / inner.offsetWidth,
-          outer.clientHeight / inner.offsetHeight,
-        ),
+    const fit = () => {
+      const scale = Math.min(
+        1,
+        outer.clientWidth / inner.offsetWidth,
+        outer.clientHeight / inner.offsetHeight,
       );
+      // Apply before paint, including resize callbacks outside React commits.
+      inner.style.transform = `translateX(-50%) scale(${scale})`;
+    };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(outer);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, []);
+  }, [kind, paper, children]);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -59,8 +59,6 @@ export function PaperSheet({ kind, paper, children }: Props) {
           width,
           lineHeight: 1.3,
           padding: `${TOP_MM * PX_PER_MM}px ${edge}px ${BOTTOM_MM * PX_PER_MM}px`,
-          // Keep layout dimensions unchanged for both resize observers.
-          transform: `translateX(-50%) scale(${scale})`,
         }}
       >
         {children}

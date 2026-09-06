@@ -16,10 +16,15 @@ interface Props {
  * carries the height and a horizontal scale makes up the width.
  */
 export function TextPreview({ text, kind, paper }: Props) {
-  const layout = useAsync(
-    () => textLayout(text, kind, paper),
+  const preview = useAsync(
+    async () => ({
+      layout: await textLayout(text, kind, paper),
+      printer: { kind, paper },
+    }),
     [text, kind, paper],
   );
+  const layout = preview?.layout;
+  const printer = preview?.printer ?? { kind, paper };
   const lines = layout?.lines ?? [];
   const empty = lines.every((line) => line === "");
   const height = text.tall ? 2 : 1;
@@ -27,7 +32,7 @@ export function TextPreview({ text, kind, paper }: Props) {
 
   return (
     <PreviewPane
-      printer={{ kind, paper }}
+      printer={printer}
       hint={layout && `${layout.columns} columns`}
     >
       <PrintedText columns={layout?.columns ?? 48}>
@@ -55,7 +60,7 @@ export function TextPreview({ text, kind, paper }: Props) {
                   <span
                     className={cn(
                       text.accent &&
-                        (kind === "impact"
+                        (printer.kind === "impact"
                           ? "text-red-600"
                           : "bg-black text-white"),
                     )}

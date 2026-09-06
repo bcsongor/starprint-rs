@@ -21,10 +21,15 @@ interface Props {
  * width and height.
  */
 export function CardPreview({ card, kind, paper }: Props) {
-  const layout = useAsync(
-    () => taskCardLayout(card, kind, paper),
+  const preview = useAsync(
+    async () => ({
+      layout: await taskCardLayout(card, kind, paper),
+      printer: { kind, paper },
+    }),
     [card, kind, paper],
   );
+  const layout = preview?.layout;
+  const printer = preview?.printer ?? { kind, paper };
   const hasHeader = Boolean(
     layout?.priority || layout?.reference || layout?.due,
   );
@@ -33,7 +38,7 @@ export function CardPreview({ card, kind, paper }: Props) {
 
   return (
     <PreviewPane
-      printer={{ kind, paper }}
+      printer={printer}
       hint={layout && `${layout.columns} columns`}
     >
       <PrintedText columns={layout?.columns ?? 48}>
@@ -42,7 +47,9 @@ export function CardPreview({ card, kind, paper }: Props) {
             {layout?.priority && (
               <span
                 className={cn(
-                  kind === "impact" ? "text-red-600" : "bg-black text-white",
+                  printer.kind === "impact"
+                    ? "text-red-600"
+                    : "bg-black text-white",
                 )}
               >
                 {layout.priority}
