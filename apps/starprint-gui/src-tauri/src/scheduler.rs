@@ -2,12 +2,13 @@
 //! Persists run times so missed occurrences print once at the next start.
 
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Days, Local};
 use croner::Cron;
+use croner::errors::CronError;
+use croner::parser::{CronParser, Seconds};
 use serde::{Deserialize, Serialize};
 use starprint_api::PrintQueue;
 use starprint_workflows::{Job, Printer};
@@ -26,6 +27,13 @@ const RAN_EVENT: &str = "schedule-ran";
 /// time spent suspended on every platform, so a machine back from sleep
 /// looks at the clock again within this.
 const MAX_SLEEP: Duration = Duration::from_secs(60);
+
+fn parse_cron(expression: &str) -> Result<Cron, CronError> {
+    CronParser::builder()
+        .seconds(Seconds::Disallowed)
+        .build()
+        .parse(expression)
+}
 
 /// The due date a scheduled task card gets when it prints.
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -131,8 +139,8 @@ impl Scheduler {
         let entries = schedules
             .into_iter()
             .map(|scheduled| {
-                let cron = Cron::from_str(&scheduled.cron)
-                    .map_err(|e| format!("{}: {e}", scheduled.cron))?;
+                let cron =
+                    parse_cron(&scheduled.cron).map_err(|e| format!("{}: {e}", scheduled.cron))?;
                 let last_run = live
                     .get(&scheduled.id)
                     .or_else(|| stored.get(&scheduled.id))
@@ -238,7 +246,7 @@ pub async fn print_scheduled(
 /// When `cron` next fires, or what is wrong with it.
 #[tauri::command]
 pub fn next_run(cron: String) -> Result<DateTime<Local>, String> {
-    let cron = Cron::from_str(&cron).map_err(|e| e.to_string())?;
+    let cron = parse_cron(&cron).map_err(|e| e.to_string())?;
     cron.find_next_occurrence(&Local::now(), false)
         .map_err(|e| e.to_string())
 }
@@ -440,14 +448,13 @@ mod tests {
 
     #[test]
     fn a_bad_expression_is_refused_by_name() {
-        let error = Scheduler::default()
-            .replace(
-                vec![scheduled("a", "0 9 * *", None)],
-                &HashMap::new(),
-                at(6, 12),
-            )
-            .unwrap_err();
-        assert!(error.starts_with("0 9 * *: "), "{error}");
+        for cron in ["0 9 * *", "*/5 * * * * *", "0 0 9 * * * 2026"] {
+            let error = Scheduler::default()
+                .replace(vec![scheduled("a", cron, None)], &HashMap::new(), at(6, 12))
+                .unwrap_err();
+            assert!(error.starts_with(&format!("{cron}: ")), "{error}");
+            assert!(next_run(cron.to_owned()).is_err(), "{cron}");
+        }
     }
 
     #[test]
