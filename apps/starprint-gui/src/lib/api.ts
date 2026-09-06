@@ -348,6 +348,11 @@ export function setSchedules(schedules: Scheduled[]) {
   return invoke<void>("set_schedules", { schedules });
 }
 
+/** Prints a schedule's job now, as a run would. */
+export function printScheduled(scheduled: Scheduled) {
+  return invoke<PrintReport>("print_scheduled", { scheduled });
+}
+
 /** When `cron` next fires, as an ISO string, or what is wrong with it. */
 export function nextRun(cron: string) {
   return invoke<string>("next_run", { cron });

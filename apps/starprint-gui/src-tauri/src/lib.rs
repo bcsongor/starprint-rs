@@ -70,6 +70,7 @@ pub fn run() {
             api::start_api,
             api::stop_api,
             scheduler::set_schedules,
+            scheduler::print_scheduled,
             scheduler::next_run
         ])
         .run(tauri::generate_context!())

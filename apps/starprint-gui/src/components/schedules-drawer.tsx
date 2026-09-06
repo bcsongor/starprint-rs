@@ -129,7 +129,7 @@ export function SchedulesDrawer({
                     </div>
                   </div>
                   <div className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {s.enabled ? <NextRun cron={s.cron} /> : "Off"}
+                    {s.enabled ? <NextRun key={s.cron} cron={s.cron} /> : "Off"}
                   </div>
                 </div>
                 <DropdownMenu modal={false}>

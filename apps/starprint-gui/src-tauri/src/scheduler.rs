@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Notify;
 
-use crate::job::{self, JobRequest};
+use crate::job::{self, JobRequest, PrintReport};
 use crate::picture::SourceCache;
 
 /// The frontend's settings file. Only `RUNS_KEY` is written from here.
@@ -65,6 +65,16 @@ impl Scheduled {
         }
         request
     }
+
+    /// Prints the job now, dated today.
+    async fn print(
+        &self,
+        cache: &Arc<SourceCache>,
+        queue: &PrintQueue,
+    ) -> Result<PrintReport, String> {
+        let job = self.job_at(Local::now());
+        job::print(job, self.printer.clone(), Arc::clone(cache), queue).await
+    }
 }
 
 /// When a schedule last ran, kept in the store under its id. The
@@ -103,21 +113,24 @@ pub struct Scheduler {
 
 impl Scheduler {
     /// Replaces the entries. A schedule keeps its last run while its id
-    /// and expression stay the same; anything else starts from `now`,
-    /// so nothing prints for the time before it was scheduled.
+    /// and expression stay the same, the live one over the stored one so
+    /// a print still in progress is not repeated; anything else starts
+    /// from `now`, so nothing prints for the time before it was scheduled.
     fn replace(
         &self,
         schedules: Vec<Scheduled>,
-        runs: &HashMap<String, Run>,
+        stored: &HashMap<String, Run>,
         now: DateTime<Local>,
     ) -> Result<(), String> {
+        let live = self.runs();
         let entries = schedules
             .into_iter()
             .map(|scheduled| {
                 let cron = Cron::from_str(&scheduled.cron)
                     .map_err(|e| format!("{}: {e}", scheduled.cron))?;
-                let last_run = runs
+                let last_run = live
                     .get(&scheduled.id)
+                    .or_else(|| stored.get(&scheduled.id))
                     .filter(|run| run.cron == scheduled.cron)
                     .map_or(now, |run| run.at);
                 Ok(Entry {
@@ -132,18 +145,16 @@ impl Scheduler {
         Ok(())
     }
 
-    /// The schedules due by `now`, each marked as run at `now`, so a
-    /// backlog of missed occurrences collapses into one print.
-    fn due(&self, now: DateTime<Local>) -> Vec<Scheduled> {
+    /// One schedule due by `now`, marked as run at `now`, so a backlog of
+    /// missed occurrences collapses into one print. One at a time, so a
+    /// schedule removed while another prints does not print after it.
+    fn take_due(&self, now: DateTime<Local>) -> Option<Scheduled> {
         let mut entries = self.entries.lock().unwrap();
-        entries
+        let entry = entries
             .iter_mut()
-            .filter(|entry| entry.next().is_some_and(|next| next <= now))
-            .map(|entry| {
-                entry.last_run = now;
-                entry.scheduled.clone()
-            })
-            .collect()
+            .find(|entry| entry.next().is_some_and(|next| next <= now))?;
+        entry.last_run = now;
+        Some(entry.scheduled.clone())
     }
 
     /// How long until the earliest next run, if there is one.
@@ -197,6 +208,16 @@ pub fn set_schedules(
     persist(&app, &scheduler)
 }
 
+/// Prints a schedule's job now, as a run would.
+#[tauri::command]
+pub async fn print_scheduled(
+    scheduled: Scheduled,
+    cache: tauri::State<'_, Arc<SourceCache>>,
+    queue: tauri::State<'_, Arc<PrintQueue>>,
+) -> Result<PrintReport, String> {
+    scheduled.print(&cache, &queue).await
+}
+
 /// When `cron` next fires, or what is wrong with it.
 #[tauri::command]
 pub fn next_run(cron: String) -> Result<DateTime<Local>, String> {
@@ -212,21 +233,17 @@ pub fn spawn(app: AppHandle) {
         let cache = Arc::clone(&app.state::<Arc<SourceCache>>());
         let queue = Arc::clone(&app.state::<Arc<PrintQueue>>());
         loop {
-            let now = Local::now();
-            let due = scheduler.due(now);
-            for scheduled in &due {
-                let job = scheduled.job_at(now);
-                let printer = scheduled.printer.clone();
-                let error = job::print(job, printer, Arc::clone(&cache), &queue)
-                    .await
-                    .err();
+            let mut ran = false;
+            while let Some(scheduled) = scheduler.take_due(Local::now()) {
+                ran = true;
+                let error = scheduled.print(&cache, &queue).await.err();
                 let outcome = Outcome {
-                    id: scheduled.id.clone(),
+                    id: scheduled.id,
                     error,
                 };
                 let _ = app.emit(RAN_EVENT, outcome);
             }
-            if !due.is_empty() {
+            if ran {
                 if let Err(e) = persist(&app, &scheduler) {
                     eprintln!("could not record schedule runs: {e}");
                 }
@@ -277,8 +294,11 @@ mod tests {
             .replace(vec![scheduled("a", "0 9 * * *", None)], &runs, at(6, 12))
             .unwrap();
 
-        assert_eq!(scheduler.due(at(6, 12)).len(), 1, "three mornings missed");
-        assert!(scheduler.due(at(6, 12)).is_empty());
+        assert!(
+            scheduler.take_due(at(6, 12)).is_some(),
+            "three mornings missed"
+        );
+        assert!(scheduler.take_due(at(6, 12)).is_none());
         assert_eq!(
             scheduler.until_next(at(6, 12)),
             Some(Duration::from_secs(21 * 3600)),
@@ -306,7 +326,36 @@ mod tests {
                 at(6, 12),
             )
             .unwrap();
-        assert!(scheduler.due(at(6, 12)).is_empty());
+        assert!(scheduler.take_due(at(6, 12)).is_none());
+    }
+
+    #[test]
+    fn a_run_in_progress_survives_the_schedules_being_replaced() {
+        let scheduler = Scheduler::default();
+        let stored = HashMap::from([(
+            "a".to_owned(),
+            Run {
+                at: at(5, 9),
+                cron: "0 9 * * *".to_owned(),
+            },
+        )]);
+        scheduler
+            .replace(vec![scheduled("a", "0 9 * * *", None)], &stored, at(6, 12))
+            .unwrap();
+        assert!(scheduler.take_due(at(6, 12)).is_some());
+
+        // The store still says yesterday until the run is persisted.
+        scheduler
+            .replace(
+                vec![
+                    scheduled("a", "0 9 * * *", None),
+                    scheduled("b", "0 9 * * *", None),
+                ],
+                &stored,
+                at(6, 12),
+            )
+            .unwrap();
+        assert!(scheduler.take_due(at(6, 12)).is_none());
     }
 
     #[test]

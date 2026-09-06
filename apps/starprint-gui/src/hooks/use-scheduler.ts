@@ -1,14 +1,9 @@
 import { useEffect, useEffectEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import {
-  SCHEDULE_RAN,
-  setSchedules,
-  type ScheduleOutcome,
-  type Scheduled,
-} from "@/lib/api";
-import { summary } from "@/lib/schedule";
-import { toPrinter, type Profile, type Schedules } from "@/lib/settings";
+import { SCHEDULE_RAN, setSchedules, type ScheduleOutcome } from "@/lib/api";
+import { summary, toScheduled } from "@/lib/schedule";
+import type { Profile, Schedules } from "@/lib/settings";
 
 /**
  * Syncs enabled schedules and reports runs as toasts. Waits for the store
@@ -20,13 +15,10 @@ export function useScheduler(
   profiles: Profile[],
   onFail: () => void,
 ) {
-  const scheduled: Scheduled[] = schedules?.running
-    ? schedules.items.flatMap((s) => {
-        const profile = profiles.find((p) => p.id === s.profileId);
-        if (!s.enabled || !profile) return [];
-        const { id, job, cron, due } = s;
-        return [{ id, job, printer: toPrinter(profile), cron, due }];
-      })
+  const scheduled = schedules?.running
+    ? schedules.items
+        .filter((s) => s.enabled)
+        .flatMap((s) => toScheduled(s, profiles) ?? [])
     : [];
   // Compare by value across renders; null until the store has loaded.
   const key = schedules && JSON.stringify(scheduled);

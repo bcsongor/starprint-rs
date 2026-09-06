@@ -81,7 +81,8 @@ const DUES: Option<Due | "none">[] = [
   { value: "none", label: "No due date" },
 ];
 
-type Next = { at: string } | { error: string };
+/** The next run of an expression, or the parser's complaint about it. */
+type Next = { cron: string; at: string } | { cron: string; error: string };
 
 function ScheduleForm({
   draft: { schedule: initial, editing },
@@ -103,13 +104,16 @@ function ScheduleForm({
   const set = <K extends keyof Schedule>(key: K, value: Schedule[K]) =>
     setSchedule({ ...schedule, [key]: value });
 
-  const next = useAsync<Next>(
+  const { cron } = schedule;
+  const checked = useAsync<Next>(
     () =>
-      nextRun(schedule.cron)
-        .then((at) => ({ at }))
-        .catch((error) => ({ error: String(error) })),
-    [schedule.cron],
+      nextRun(cron)
+        .then((at) => ({ cron, at }))
+        .catch((error) => ({ cron, error: String(error) })),
+    [cron],
   );
+  // The last answer stays until the next lands, and is for an older expression.
+  const next = checked?.cron === cron ? checked : null;
   const valid = next !== null && "at" in next;
 
   return (

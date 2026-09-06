@@ -1,6 +1,11 @@
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import type { Job, Rule } from "@/lib/api";
-import type { Schedule } from "@/lib/settings";
+import {
+  TWO_COLOR_DENSITY,
+  type Job,
+  type Rule,
+  type Scheduled,
+} from "@/lib/api";
+import { toPrinter, type Profile, type Schedule } from "@/lib/settings";
 
 /** The common timetables, each as the day fields of its expression. */
 export const PRESETS = {
@@ -94,6 +99,30 @@ export function summary(job: Job): string {
     case "test-page":
       return "Test page";
   }
+}
+
+/**
+ * A schedule as the Rust side runs it, or null once its profile is gone.
+ * A picture loses double resolution on a two-colour profile, which has
+ * none, as it does in the form.
+ */
+export function toScheduled(
+  schedule: Schedule,
+  profiles: Profile[],
+): Scheduled | null {
+  const profile = profiles.find((p) => p.id === schedule.profileId);
+  if (!profile) return null;
+  const printer = toPrinter(profile);
+  const { id, job, cron, due } = schedule;
+  const twoColor =
+    printer.kind === "thermal" && printer.density === TWO_COLOR_DENSITY;
+  return {
+    id,
+    job: job.kind === "picture" && twoColor ? { ...job, double: false } : job,
+    printer,
+    cron,
+    due,
+  };
 }
 
 /** A schedule for `job` on `profileId`, every weekday at nine. A task

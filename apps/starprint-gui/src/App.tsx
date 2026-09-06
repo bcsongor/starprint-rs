@@ -50,10 +50,12 @@ import {
   TWO_COLOR_DENSITY,
   jobHexdump,
   printJob,
+  printScheduled,
   type HexDump,
   type Job,
   type Note,
   type Picture,
+  type PrintReport,
   type Printer,
   type Qr,
   type Listen,
@@ -61,7 +63,7 @@ import {
   type TestPage,
   type Text,
 } from "@/lib/api";
-import { NAMES, newSchedule, summary } from "@/lib/schedule";
+import { NAMES, newSchedule, summary, toScheduled } from "@/lib/schedule";
 import {
   DEFAULT_LISTEN,
   DEFAULT_PROFILES,
@@ -78,7 +80,6 @@ import {
   saveSchedules,
   toPrinter,
   type Linear,
-  type Profile,
   type Profiles,
   type Schedule,
   type Schedules,
@@ -118,22 +119,29 @@ export default function App() {
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
   const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
-  // Null until loaded; the scheduler must not be handed an empty list first.
+  // Null until loaded with the profiles; the scheduler must not be handed
+  // a list missing any of them, or their run record goes with it.
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   useEffect(() => {
-    // Restore the API's profiles and address before enabling it.
-    Promise.all([loadProfiles(), loadApiEnabled(), loadApiListen()])
-      .then(([profiles, enabled, listen]) => {
+    // Restore the API's profiles and address before enabling it, and the
+    // schedules in the same render as their profiles.
+    Promise.all([
+      loadProfiles(),
+      loadApiEnabled(),
+      loadApiListen(),
+      loadSchedules(),
+    ])
+      .then(([profiles, enabled, listen, schedules]) => {
         setProfiles(profiles);
         setApiListen(listen);
         setApiEnabled(enabled);
+        setSchedules(schedules);
       })
       .catch(console.error);
     loadLinear().then(setLinear).catch(console.error);
-    loadSchedules().then(setSchedules).catch(console.error);
   }, []);
 
   const updateProfiles = (next: Profiles) => {
@@ -210,12 +218,16 @@ export default function App() {
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
-  /** Sends one job to a profile and reports it; `what` names the job. */
-  const send = async (job: Job, what: string, to: Profile = profile) => {
+  /** Runs one print and reports it; `what` names the job, `on` the profile. */
+  const send = async (
+    what: string,
+    on: string,
+    print: () => Promise<PrintReport>,
+  ) => {
     setPrinting(true);
     try {
-      const report = await printJob(job, toPrinter(to));
-      toast.success(`Printed ${what} on ${to.name}`, {
+      const report = await print();
+      toast.success(`Printed ${what} on ${on}`, {
         description: `${report.bytes} bytes sent.`,
       });
     } catch (error) {
@@ -227,11 +239,13 @@ export default function App() {
 
   const print = async () => {
     if (!canPrint) return;
-    await send(job, NAMES[workflow]);
+    await send(NAMES[workflow], profile.name, () => printJob(job, printer));
   };
 
   useAutoPrint(linear, (card) =>
-    send({ kind: "task-card", ...card }, card.reference ?? "task card"),
+    send(card.reference ?? "task card", profile.name, () =>
+      printJob({ kind: "task-card", ...card }, printer),
+    ),
   );
 
   /** Puts a scheduled job back in its form, to change and schedule again. */
@@ -452,8 +466,13 @@ export default function App() {
           profiles={profiles.profiles}
           onEdit={(schedule) => setDraft({ schedule, editing: true })}
           onPrint={(schedule) => {
+            const scheduled = toScheduled(schedule, profiles.profiles);
             const to = profiles.profiles.find((p) => p.id === schedule.profileId);
-            if (to) send(schedule.job, summary(schedule.job), to);
+            if (scheduled && to) {
+              send(summary(schedule.job), to.name, () =>
+                printScheduled(scheduled),
+              );
+            }
           }}
           onLoad={(schedule) => {
             loadJob(schedule.job);
