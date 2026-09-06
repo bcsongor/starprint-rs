@@ -36,9 +36,7 @@ interface Props {
   onChange: (printer: Printer) => void;
 }
 
-/** The printer's paper, density and speed: settings that apply to every
- * workflow. Thermal only; kept in place and disabled for impact so the
- * toolbar does not reflow when profiles change. */
+/** Paper width, with density and speed controls for thermal printers. */
 export function PrintOptions({ printer, onChange }: Props) {
   const set = <K extends keyof Printer>(key: K, value: Printer[K]) =>
     onChange({ ...printer, [key]: value });
@@ -66,32 +64,35 @@ export function PrintOptions({ printer, onChange }: Props) {
         )}
       </Field>
 
-      <Field data-disabled={!thermal}>
-        <FieldLabel htmlFor="density">Density</FieldLabel>
-        <OptionSelect
-          id="density"
-          value={String(printer.density)}
-          options={DENSITIES}
-          disabled={!thermal}
-          labelClassName="w-6 text-right tabular-nums"
-          onChange={(density) => set("density", Number(density))}
-        />
-      </Field>
+      {thermal && (
+        <>
+          <Field>
+            <FieldLabel htmlFor="density">Density</FieldLabel>
+            <OptionSelect
+              id="density"
+              value={String(printer.density)}
+              options={DENSITIES}
+              labelClassName="w-6 text-right tabular-nums"
+              onChange={(density) => set("density", Number(density))}
+            />
+          </Field>
 
-      <Field
-        data-disabled={!thermal || twoColor}
-        title={twoColor ? "Two-colour mode has one speed." : undefined}
-      >
-        <FieldLabel htmlFor="speed">Speed</FieldLabel>
-        <OptionSelect
-          id="speed"
-          value={printer.speed}
-          options={SPEEDS}
-          disabled={!thermal || twoColor}
-          labelClassName="w-14"
-          onChange={(speed) => set("speed", speed)}
-        />
-      </Field>
+          <Field
+            data-disabled={twoColor}
+            title={twoColor ? "Two-colour mode has one speed." : undefined}
+          >
+            <FieldLabel htmlFor="speed">Speed</FieldLabel>
+            <OptionSelect
+              id="speed"
+              value={printer.speed}
+              options={SPEEDS}
+              disabled={twoColor}
+              labelClassName="w-14"
+              onChange={(speed) => set("speed", speed)}
+            />
+          </Field>
+        </>
+      )}
     </>
   );
 }
