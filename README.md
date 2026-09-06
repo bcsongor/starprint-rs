@@ -65,6 +65,12 @@ The desktop app and HTTP API support **task cards**, **text**, **note slips**,
 Turn Linear issues into printed task cards. Connect with a personal API key,
 then enable auto-print for issues newly assigned to you while the app runs.
 
+Print any job on a timetable. Set it up under its tab, press **Schedule**, and
+pick a preset such as every weekday at nine or write a cron expression. The
+clock button in the header lists the schedules and switches them on and off.
+They run while the app is open; a run missed while it was closed prints once
+at the next start. A scheduled task card is dated the day it prints.
+
 The **API** button lets scripts and AI agents print through your saved profiles.
 It shows the URL and the token every request needs, and lets you choose the
 address and port to listen on. See the
