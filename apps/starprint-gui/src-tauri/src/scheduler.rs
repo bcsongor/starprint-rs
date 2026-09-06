@@ -66,14 +66,15 @@ impl Scheduled {
         request
     }
 
-    /// Prints the job now, dated today.
+    /// Prints the job, dated the day its turn on the printer comes.
     async fn print(
         &self,
         cache: &Arc<SourceCache>,
         queue: &PrintQueue,
     ) -> Result<PrintReport, String> {
+        let turn = queue.lock(&self.printer.host, self.printer.port).await;
         let job = self.job_at(Local::now());
-        job::print(job, self.printer.clone(), Arc::clone(cache), queue).await
+        job::print_on(turn, job, self.printer.clone(), Arc::clone(cache)).await
     }
 }
 
@@ -157,6 +158,16 @@ impl Scheduler {
         Some(entry.scheduled.clone())
     }
 
+    /// Moves a schedule's last run to `at` once its print has finished,
+    /// so the next occurrence counts from the end of a long print rather
+    /// than following it at once.
+    fn ran(&self, id: &str, at: DateTime<Local>) {
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries.iter_mut().find(|entry| entry.scheduled.id == id) {
+            entry.last_run = at;
+        }
+    }
+
     /// How long until the earliest next run, if there is one.
     fn until_next(&self, now: DateTime<Local>) -> Option<Duration> {
         self.entries
@@ -232,21 +243,24 @@ pub fn spawn(app: AppHandle) {
         let scheduler = app.state::<Scheduler>();
         let cache = Arc::clone(&app.state::<Arc<SourceCache>>());
         let queue = Arc::clone(&app.state::<Arc<PrintQueue>>());
+        let record = |scheduler: &Scheduler| {
+            if let Err(e) = persist(&app, scheduler) {
+                eprintln!("could not record schedule runs: {e}");
+            }
+        };
         loop {
-            let mut ran = false;
             while let Some(scheduled) = scheduler.take_due(Local::now()) {
-                ran = true;
+                // Recorded before the print, so an exit during it does not
+                // repeat the run at the next start.
+                record(&scheduler);
                 let error = scheduled.print(&cache, &queue).await.err();
+                scheduler.ran(&scheduled.id, Local::now());
+                record(&scheduler);
                 let outcome = Outcome {
                     id: scheduled.id,
                     error,
                 };
                 let _ = app.emit(RAN_EVENT, outcome);
-            }
-            if ran {
-                if let Err(e) = persist(&app, &scheduler) {
-                    eprintln!("could not record schedule runs: {e}");
-                }
             }
             let wait = scheduler
                 .until_next(Local::now())
@@ -356,6 +370,32 @@ mod tests {
             )
             .unwrap();
         assert!(scheduler.take_due(at(6, 12)).is_none());
+    }
+
+    #[test]
+    fn a_print_longer_than_its_interval_is_followed_by_a_gap() {
+        let scheduler = Scheduler::default();
+        scheduler
+            .replace(
+                vec![scheduled("a", "* * * * *", None)],
+                &HashMap::new(),
+                at(6, 9),
+            )
+            .unwrap();
+        assert!(
+            scheduler.take_due(at(6, 9)).is_none(),
+            "nothing before the first minute"
+        );
+        assert!(scheduler.take_due(at(6, 10)).is_some());
+
+        let finished = Local.with_ymd_and_hms(2026, 9, 6, 10, 1, 30).unwrap();
+        scheduler.ran("a", finished);
+        assert!(scheduler.take_due(finished).is_none());
+        assert_eq!(
+            scheduler.until_next(finished),
+            Some(Duration::from_secs(30)),
+            "the minute after the print ends"
+        );
     }
 
     #[test]

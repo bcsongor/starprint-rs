@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   EllipsisIcon,
   FlaskConicalIcon,
@@ -181,6 +182,12 @@ export function SchedulesDrawer({
 }
 
 function NextRun({ cron }: { cron: string }) {
-  const next = useAsync(() => nextRun(cron).catch(() => null), [cron]);
+  // Once a minute, so a row left open across its run moves on.
+  const [minute, setMinute] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setMinute((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const next = useAsync(() => nextRun(cron).catch(() => null), [cron, minute]);
   return next ? formatSoon(next) : null;
 }

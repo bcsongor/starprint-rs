@@ -115,6 +115,8 @@ function ScheduleForm({
   // The last answer stays until the next lands, and is for an older expression.
   const next = checked?.cron === cron ? checked : null;
   const valid = next !== null && "at" in next;
+  const printer = profiles.find((p) => p.id === schedule.profileId);
+  const hasHost = Boolean(printer?.host.trim());
 
   return (
     <DialogContent className="gap-4 sm:max-w-md">
@@ -147,9 +149,7 @@ function ScheduleForm({
             }}
           >
             <SelectTrigger id="schedule-printer" className="w-full">
-              <SelectValue>
-                {profiles.find((p) => p.id === schedule.profileId)?.name}
-              </SelectValue>
+              <SelectValue>{printer?.name}</SelectValue>
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false} align="start">
               {profiles.map((p) => (
@@ -243,7 +243,10 @@ function ScheduleForm({
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button disabled={!valid} onClick={() => onSave(schedule)}>
+        <Button
+          disabled={!valid || !hasHost}
+          onClick={() => onSave(schedule)}
+        >
           {editing ? "Save" : "Schedule"}
         </Button>
       </DialogFooter>
