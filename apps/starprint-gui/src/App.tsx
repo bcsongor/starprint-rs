@@ -403,7 +403,7 @@ export default function App() {
               </Button>
               <Button
                 variant="outline"
-                disabled={!ready || !hasHost || !schedules}
+                disabled={!ready || !schedules}
                 onClick={() =>
                   setDraft({
                     schedule: newSchedule(job, profile.id),

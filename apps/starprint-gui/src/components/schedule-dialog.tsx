@@ -81,7 +81,6 @@ const DUES: Option<Due | "none">[] = [
   { value: "none", label: "No due date" },
 ];
 
-/** The next run of an expression, or the parser's complaint about it. */
 type Next = { cron: string; at: string } | { cron: string; error: string };
 
 function ScheduleForm({

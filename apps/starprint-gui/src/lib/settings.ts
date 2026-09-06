@@ -126,8 +126,14 @@ export async function loadSchedules(): Promise<Schedules> {
   return (await read<Schedules>(SCHEDULES_KEY)) ?? { running: false, items: [] };
 }
 
+let scheduleWrites = Promise.resolve();
+
 export function saveSchedules(schedules: Schedules): Promise<void> {
-  return write(SCHEDULES_KEY, schedules);
+  // Keep edit order even if a previous save failed.
+  scheduleWrites = scheduleWrites
+    .catch(() => {})
+    .then(() => write(SCHEDULES_KEY, schedules));
+  return scheduleWrites;
 }
 
 export async function loadApiEnabled(): Promise<boolean> {

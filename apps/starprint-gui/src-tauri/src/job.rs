@@ -50,18 +50,8 @@ pub async fn print_job(
     cache: tauri::State<'_, Arc<SourceCache>>,
     queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<PrintReport, String> {
-    print(job, printer, Arc::clone(&cache), &queue).await
-}
-
-/// Sends one job, waiting for its turn on the printer.
-pub async fn print(
-    job: JobRequest,
-    printer: Printer,
-    cache: Arc<SourceCache>,
-    queue: &PrintQueue,
-) -> Result<PrintReport, String> {
     let turn = queue.lock(&printer.host, printer.port).await;
-    print_on(turn, job, printer, cache).await
+    print_on(turn, job, printer, Arc::clone(&cache)).await
 }
 
 /// Sends one job on a turn already taken. The scheduler takes the turn

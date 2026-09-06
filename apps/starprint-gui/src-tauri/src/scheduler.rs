@@ -249,8 +249,8 @@ pub fn spawn(app: AppHandle) {
         let scheduler = app.state::<Scheduler>();
         let cache = Arc::clone(&app.state::<Arc<SourceCache>>());
         let queue = Arc::clone(&app.state::<Arc<PrintQueue>>());
-        let record = |scheduler: &Scheduler| {
-            if let Err(e) = persist(&app, scheduler) {
+        let record = || {
+            if let Err(e) = persist(&app, &scheduler) {
                 eprintln!("could not record schedule runs: {e}");
             }
         };
@@ -258,10 +258,10 @@ pub fn spawn(app: AppHandle) {
             while let Some(scheduled) = scheduler.take_due(Local::now()) {
                 // Recorded before the print, so an exit during it does not
                 // repeat the run at the next start.
-                record(&scheduler);
+                record();
                 let error = scheduled.print(&cache, &queue).await.err();
                 scheduler.ran(&scheduled, Local::now());
-                record(&scheduler);
+                record();
                 let outcome = Outcome {
                     id: scheduled.id,
                     error,
