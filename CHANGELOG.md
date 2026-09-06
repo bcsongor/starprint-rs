@@ -28,6 +28,7 @@
 - The Print button stays enabled while picture settings refresh the preview.
 - Impact profiles show 76 mm paper in the toolbar, matching the preview,
   and hide the thermal-only density and speed controls.
+- Preview scaling keeps layout measurements stable when paper sizes change.
 
 ## 0.4.0
 

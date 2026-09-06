@@ -59,9 +59,8 @@ export function PaperSheet({ kind, paper, children }: Props) {
           width,
           lineHeight: 1.3,
           padding: `${TOP_MM * PX_PER_MM}px ${edge}px ${BOTTOM_MM * PX_PER_MM}px`,
-          // Lay out at the display scale so thin rules can snap to pixels.
-          zoom: scale,
-          transform: "translateX(-50%)",
+          // Keep layout dimensions unchanged for both resize observers.
+          transform: `translateX(-50%) scale(${scale})`,
         }}
       >
         {children}
