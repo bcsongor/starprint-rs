@@ -97,6 +97,7 @@ export function SchedulesDrawer({
           {items.map((s) => {
             const Icon = ICONS[s.job.kind];
             const profile = profiles.find((p) => p.id === s.profileId);
+            const hasHost = Boolean(profile?.host.trim());
             return (
               <li
                 key={s.id}
@@ -130,7 +131,13 @@ export function SchedulesDrawer({
                     </div>
                   </div>
                   <div className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {s.enabled ? <NextRun key={s.cron} cron={s.cron} /> : "Off"}
+                    {!s.enabled ? (
+                      "Off"
+                    ) : hasHost ? (
+                      <NextRun key={s.cron} cron={s.cron} />
+                    ) : (
+                      "Waiting for host"
+                    )}
                   </div>
                 </div>
                 <DropdownMenu modal={false}>
@@ -150,7 +157,7 @@ export function SchedulesDrawer({
                       Edit…
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={!profile?.host.trim()}
+                      disabled={!hasHost}
                       onClick={() => onPrint(s)}
                     >
                       Print now
