@@ -1,11 +1,13 @@
 import { OptionSelect, type Option } from "@/components/option-select";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   TWO_COLOR_DENSITY,
   type Paper,
   type Printer,
   type Speed,
 } from "@/lib/api";
+import { roll } from "@/lib/paper";
 
 const PAPERS: Option<Paper>[] = [
   { value: "80", label: "80 mm", hint: "576 dots" },
@@ -47,14 +49,21 @@ export function PrintOptions({ printer, onChange }: Props) {
     <>
       <Field data-disabled={!thermal}>
         <FieldLabel htmlFor="paper">Paper</FieldLabel>
-        <OptionSelect
-          id="paper"
-          value={printer.paper}
-          options={PAPERS}
-          disabled={!thermal}
-          labelClassName="w-14"
-          onChange={(paper) => set("paper", paper)}
-        />
+        {thermal ? (
+          <OptionSelect
+            id="paper"
+            value={printer.paper}
+            options={PAPERS}
+            labelClassName="w-14"
+            onChange={(paper) => set("paper", paper)}
+          />
+        ) : (
+          <Input
+            id="paper"
+            value={`${roll(printer.kind, printer.paper).paperMm} mm`}
+            disabled
+          />
+        )}
       </Field>
 
       <Field data-disabled={!thermal}>
