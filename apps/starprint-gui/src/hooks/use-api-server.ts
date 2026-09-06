@@ -10,14 +10,9 @@ export interface ApiServer {
 }
 
 /**
- * Runs the HTTP API inside the app while `enabled`, on the profiles
- * that have a host, named as the picker shows them, at `listen`, behind
- * the stored token. A profile edit or a new address starts it again.
- * Starts and stops are queued so one cannot overtake the other. When
- * the server cannot start, because the port is taken or the address is
- * no longer this machine's, the error is shown and `onFail` runs so
- * the button pops back out. Returns the URL and token while running,
- * for the button to show.
+ * Runs the API for profiles with a host, using the stored token.
+ * Profile and address changes queue a restart. A failed start shows
+ * the error and calls `onFail` to turn the toggle off.
  */
 export function useApiServer(
   enabled: boolean,

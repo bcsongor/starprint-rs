@@ -46,9 +46,7 @@ export function NoteForm({ note, onChange }: Props) {
               variant={note.rule === value ? "default" : "secondary"}
               className="px-2.5"
               aria-pressed={note.rule === value}
-              // Each ruling comes at its standard pitch, and at the rows
-              // that keep the slip the same length; the sliders are
-              // there to argue with it.
+              // Each ruling's defaults keep the slip the same length.
               onClick={() =>
                 onChange({ rule: value, ...NOTEBOOK_RULING[value] })
               }

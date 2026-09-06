@@ -1,6 +1,5 @@
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Slider } from "@/components/ui/slider";
-import { cn } from "@/lib/utils";
 
 interface Props {
   id: string;
@@ -28,7 +27,7 @@ export function SliderField({
   onChange,
 }: Props) {
   return (
-    <Field data-disabled={disabled} className={cn(className)}>
+    <Field data-disabled={disabled} className={className}>
       <div className="flex items-center justify-between">
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -37,12 +36,12 @@ export function SliderField({
       </div>
       <Slider
         id={id}
-        value={[value]}
+        value={value}
         min={min}
         max={max}
         step={1}
         disabled={disabled}
-        onValueChange={(next) => onChange(Array.isArray(next) ? next[0] : next)}
+        onValueChange={onChange}
       />
     </Field>
   );

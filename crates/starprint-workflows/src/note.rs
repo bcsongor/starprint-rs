@@ -1,6 +1,4 @@
-//! A slip to write on by hand. The Python GUI's `note_slip` printed the
-//! date and fed 24 blank lines; this one keeps the date and rules the
-//! paper at a pitch in millimetres.
+//! A dated slip, blank or ruled at a pitch in millimetres.
 //!
 //! The ruling is drawn as dots rather than underlined spaces, because a
 //! pitch in millimetres and the vertical lines of squared paper are not
@@ -15,11 +13,11 @@ use crate::task_card::format_date;
 use crate::text::TextStyle;
 use crate::{MM_PER_INCH, Paper, finish};
 
-/// What is drawn for the hand to follow.
+/// The slip's ruling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Rule {
-    /// Bare paper, as the Python GUI printed.
+    /// Bare paper.
     Blank,
     /// A dot at each corner of the grid.
     Dots,
@@ -56,13 +54,11 @@ impl Default for Note {
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
     pub columns: usize,
-    /// Right-aligned to fill the header line, as the Python GUI had it.
+    /// Right-aligned to fill the header line.
     pub date: String,
 }
 
-/// A slip longer than this is a roll, not a note.
 const MAX_ROWS: u8 = 20;
-/// Tight enough for squared paper, wide enough for a large hand.
 const MIN_PITCH_MM: u8 = 4;
 const MAX_PITCH_MM: u8 = 12;
 
@@ -85,10 +81,7 @@ pub trait NoteStyle: TextStyle + Sized {
 
 impl NoteStyle for Builder<StarLine> {
     fn profile(paper: Paper) -> &'static DeviceProfile {
-        match paper {
-            Paper::Mm80 => &DeviceProfile::THERMAL_80MM,
-            Paper::Mm112 => &DeviceProfile::THERMAL_112MM,
-        }
+        paper.profile()
     }
 
     fn feed_mm(self, mm: f32) -> Self {
@@ -124,7 +117,6 @@ fn lines(mm: f32, pitch: f32) -> u8 {
 }
 
 impl Note {
-    /// Clamped, so a dragged slider cannot ask for a roll of paper.
     fn rows(&self) -> u32 {
         u32::from(self.rows.clamp(1, MAX_ROWS))
     }

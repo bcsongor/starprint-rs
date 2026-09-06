@@ -99,7 +99,6 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
-                mode="single"
                 selected={selected}
                 defaultMonth={selected}
                 onSelect={setDate}

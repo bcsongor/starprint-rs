@@ -1,5 +1,4 @@
-//! Plain text in the styles the head offers, wrapped to the paper. The
-//! Python GUI's `simple_text` workflow.
+//! Plain text in the styles the head offers, wrapped to the paper.
 
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};

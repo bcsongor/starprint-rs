@@ -11,20 +11,23 @@ export type Status = "checking" | "online" | "offline";
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
+const endpoint = ({ host, port }: Pick<Profile, "host" | "port">) =>
+  `${host.trim()}:${port}`;
+
 /**
- * Status per profile id; the active profile is probed first. A failed
+ * Status per endpoint; the active profile is probed first. A failed
  * probe is retried once, and probing pauses while a job prints.
  */
 export function useProbes(
   profiles: Profile[],
   activeId: string,
   paused: boolean,
-): Record<string, Status> {
+): (profile: Profile) => Status {
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   // Re-probe when a host or port changes, not on every profile edit.
   const targets = [...profiles]
     .sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId))
-    .map((p) => ({ id: p.id, host: p.host, port: p.port }));
+    .map((p) => ({ host: p.host, port: p.port }));
   const key = JSON.stringify(targets);
   const latest = useRef(targets);
   useEffect(() => {
@@ -35,16 +38,9 @@ export function useProbes(
     if (paused) return;
 
     // One probe per endpoint; two at once would refuse each other.
-    const endpoints = new Map<
-      string,
-      { host: string; port: number; ids: string[] }
-    >();
-    for (const { id, host, port } of latest.current) {
-      const endpoint = `${host}:${port}`;
-      const existing = endpoints.get(endpoint);
-      if (existing) existing.ids.push(id);
-      else endpoints.set(endpoint, { host, port, ids: [id] });
-    }
+    const endpoints = new Map(
+      latest.current.map((printer) => [endpoint(printer), printer]),
+    );
 
     let cancelled = false;
     const probe = (host: string, port: number) =>
@@ -52,7 +48,7 @@ export function useProbes(
 
     const round = () =>
       Promise.all(
-        [...endpoints.values()].map(async ({ host, port, ids }) => {
+        [...endpoints].map(async ([address, { host, port }]) => {
           let up = await probe(host, port);
           if (!up && !cancelled && host.trim()) {
             await sleep(RETRY_MS);
@@ -61,11 +57,7 @@ export function useProbes(
           }
           if (cancelled) return;
           const status = up ? "online" : "offline";
-          setStatuses((prev) => {
-            const next = { ...prev };
-            for (const id of ids) next[id] = status;
-            return next;
-          });
+          setStatuses((prev) => ({ ...prev, [address]: status }));
         }),
       );
 
@@ -78,7 +70,7 @@ export function useProbes(
     };
   }, [key, paused]);
 
-  return statuses;
+  return (profile) => statuses[endpoint(profile)] ?? "checking";
 }
 
 export function statusLabel(profile: Profile, status: Status): string {

@@ -129,7 +129,6 @@ impl Default for Qr {
 /// rather than left to the paper, since a caption sits right above it.
 const QUIET_MODULES: u32 = 4;
 
-/// Below this nothing scans; above it the code is a poster.
 const MIN_SIZE_MM: u8 = 10;
 const MAX_SIZE_MM: u8 = 80;
 
@@ -154,10 +153,7 @@ impl QrStyle for Builder<StarLine> {
     const DENSITY: Density = Density::Single;
 
     fn profile(paper: Paper) -> &'static DeviceProfile {
-        match paper {
-            Paper::Mm80 => &DeviceProfile::THERMAL_80MM,
-            Paper::Mm112 => &DeviceProfile::THERMAL_112MM,
-        }
+        paper.profile()
     }
 
     fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String> {

@@ -3,6 +3,7 @@
 
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
+use starprint::graphics::DeviceProfile;
 use starprint::{Builder, Color, Document, PrintMode, PrintSpeed, StarLine};
 
 use crate::{Job, picture, test_page};
@@ -27,11 +28,16 @@ pub enum Paper {
 }
 
 impl Paper {
-    pub fn dots(self) -> u32 {
+    /// Thermal head geometry at normal resolution.
+    pub fn profile(self) -> &'static DeviceProfile {
         match self {
-            Self::Mm80 => 576,
-            Self::Mm112 => 832,
+            Self::Mm80 => &DeviceProfile::THERMAL_80MM,
+            Self::Mm112 => &DeviceProfile::THERMAL_112MM,
         }
+    }
+
+    pub fn dots(self) -> u32 {
+        self.profile().width_dots_single
     }
 
     /// Font A is 12 dots wide.

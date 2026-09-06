@@ -1,6 +1,5 @@
 //! A bold, quad-size task with an optional "HIGH PRIORITY" banner, a
-//! reference and a due date above it. Without a reference the card is
-//! byte-identical to the Python GUI's.
+//! reference and a due date above it.
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};

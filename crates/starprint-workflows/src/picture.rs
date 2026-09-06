@@ -80,11 +80,10 @@ impl Picture {
     fn profile(&self, kind: PrinterKind, paper: Paper) -> DeviceProfile {
         match (kind, paper, self.double) {
             (PrinterKind::Impact, _, _) => DeviceProfile::SP700,
-            (PrinterKind::Thermal, Paper::Mm80, false) => DeviceProfile::THERMAL_80MM,
+            (PrinterKind::Thermal, _, false) => paper.profile().clone(),
             (PrinterKind::Thermal, Paper::Mm80, true) => {
                 DeviceProfile::THERMAL_80MM_DOUBLE_RESOLUTION
             }
-            (PrinterKind::Thermal, Paper::Mm112, false) => DeviceProfile::THERMAL_112MM,
             (PrinterKind::Thermal, Paper::Mm112, true) => {
                 DeviceProfile::THERMAL_112MM_DOUBLE_RESOLUTION
             }

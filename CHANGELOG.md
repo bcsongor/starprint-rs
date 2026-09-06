@@ -16,6 +16,8 @@
 
 - New profiles start without an address.
 - API auto-start waits for the saved profiles and listen address to load.
+- Task-card previews preserve blank lines, matching the printed card.
+- Arrow keys move focus between dates in the calendar.
 
 ## 0.4.0
 

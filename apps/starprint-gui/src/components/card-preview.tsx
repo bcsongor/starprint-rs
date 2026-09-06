@@ -28,8 +28,8 @@ export function CardPreview({ card, kind, paper }: Props) {
   const hasHeader = Boolean(
     layout?.priority || layout?.reference || layout?.due,
   );
-  const lines = layout?.lines.filter((line) => line !== "") ?? [];
-  const empty = lines.length === 0;
+  const lines = layout?.lines ?? [];
+  const empty = lines.every((line) => line === "");
 
   return (
     <PreviewPane

@@ -54,7 +54,7 @@ interface Props {
 export function ProfileToolbar({ state, onChange, printing }: Props) {
   const [editing, setEditing] = useState(false);
   const profile = activeProfile(state);
-  const statuses = useProbes(state.profiles, state.activeId, printing);
+  const status = useProbes(state.profiles, state.activeId, printing);
   const listed = byName(state.profiles);
 
   const add = (next: Profile) =>
@@ -75,11 +75,8 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
             <SelectValue>
               <span className={DOTTED}>
                 <ConnectionDot
-                  status={statuses[profile.id] ?? "checking"}
-                  label={statusLabel(
-                    profile,
-                    statuses[profile.id] ?? "checking",
-                  )}
+                  status={status(profile)}
+                  label={statusLabel(profile, status(profile))}
                 />
                 {profile.name}
               </span>
@@ -94,8 +91,8 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
               <SelectItem key={p.id} value={p.id}>
                 <span className={DOTTED}>
                   <ConnectionDot
-                    status={statuses[p.id] ?? "checking"}
-                    label={statusLabel(p, statuses[p.id] ?? "checking")}
+                    status={status(p)}
+                    label={statusLabel(p, status(p))}
                   />
                   {p.name}
                 </span>
