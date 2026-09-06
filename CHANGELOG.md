@@ -2,33 +2,37 @@
 
 ## Unreleased
 
+## 1.0.0
+
+**Print to Star receipt printers from Windows, macOS, scripts and AI agents.**
+Starprint 1.0 is the first public release.
+
 ### Printing
 
 - Jobs to the same host and port share a queue, including duplicate
-  profiles and manual, Linear and API jobs in the desktop app. Probes
-  wait for jobs, and cancelling a request no longer releases a write
-  still in progress.
+  profiles and manual, Linear and API jobs. Probes wait for jobs, and
+  cancelling a request no longer lets another job interrupt its write.
 
 ### HTTP API
 
-- Every request needs a bearer token, or gets a `401`. The server takes
-  one as `--token` or generates one and prints it beside its address.
-  The desktop app makes one the first time the API button goes on and
-  keeps it. The button opens to show the URL and the token with copy
-  buttons, to pick the address and port to listen on, loopback on 9110
-  by default, and to stop the server. A web page cannot know the token,
-  so a site the user visits cannot print.
+- **Every API request now requires a bearer token.** Requests without
+  one get a `401`. Pass `--token` to the server or use the token it
+  generates and prints at startup.
+- The desktop app generates and saves its own token. The **API** button
+  shows the URL and token with copy buttons, lets you choose the listen
+  address and port, and stops the server. It listens on loopback port
+  9110 by default.
 
 ### Desktop app
 
+- **Task and Text previews no longer jump when you change paper size.**
+  Previews on macOS also stop repeatedly resizing.
+- The **Print** button stays enabled while picture settings refresh the preview.
+- Impact profiles show **76 mm paper** and hide density and speed controls.
 - New profiles start without an address.
 - API auto-start waits for the saved profiles and listen address to load.
 - Task-card previews preserve blank lines, matching the printed card.
 - Arrow keys move focus between dates in the calendar.
-- The Print button stays enabled while picture settings refresh the preview.
-- Impact profiles show 76 mm paper in the toolbar, matching the preview,
-  and hide the thermal-only density and speed controls.
-- Preview scaling keeps layout measurements stable when paper sizes change.
 
 ## 0.4.0
 

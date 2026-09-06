@@ -52,19 +52,18 @@ jobs:
           install=$(cat <<'EOF'
           ### Install
 
-          **Windows, installed.** Run `Starprint_*_x64-setup.exe`.
+          **Windows installer.** Run `Starprint_*_x64-setup.exe`.
 
-          **Windows, portable.** `Starprint_*_x64-portable.exe` is the
-          whole app in one file. Put it anywhere and run it. It still
-          keeps printer profiles in `%APPDATA%\com.csongorbokay.starprint`,
-          so it travels between folders, not between machines.
+          **Windows portable.** Run `Starprint_*_x64-portable.exe` from
+          any folder. It saves printer profiles on the current machine
+          in `%APPDATA%\com.csongorbokay.starprint`.
 
-          Neither is signed, so SmartScreen will say the publisher is
-          unknown. Choose **More info**, then **Run anyway**.
+          Both Windows builds are unsigned. If SmartScreen blocks the
+          app, choose **More info**, then **Run anyway**.
 
-          **macOS (Apple silicon).** Open the `.dmg` and drag Starprint to
-          Applications. This build is unsigned too, so macOS quarantines
-          it and reports it as damaged until you clear the flag once.
+          **macOS, Apple silicon.** Open the `.dmg` and drag Starprint to
+          Applications. This build is unsigned. If macOS reports the app
+          as damaged, clear its quarantine flag:
 
           ```
           xattr -d com.apple.quarantine /Applications/Starprint.app
