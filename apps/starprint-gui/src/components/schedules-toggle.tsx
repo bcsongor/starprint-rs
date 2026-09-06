@@ -9,7 +9,6 @@ interface Props {
   onOpen: () => void;
 }
 
-/** Like the API button: pressed while schedules run, and opens the drawer. */
 export function SchedulesToggle({ running, onOpen }: Props) {
   return (
     <Toggle

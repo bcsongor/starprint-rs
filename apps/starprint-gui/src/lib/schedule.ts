@@ -7,7 +7,6 @@ import {
 } from "@/lib/api";
 import { toPrinter, type Profile, type Schedule } from "@/lib/settings";
 
-/** The common timetables, each as the day fields of its expression. */
 export const PRESETS = {
   weekday: {
     label: "Every weekday",
@@ -67,7 +66,6 @@ export function formatNext(iso: string): string {
   return format(parseISO(iso), "EEE d MMM, HH:mm");
 }
 
-/** Names a job kind in a toast or a title. */
 export const NAMES: Record<Job["kind"], string> = {
   "task-card": "task card",
   text: "text",

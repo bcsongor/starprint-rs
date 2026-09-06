@@ -119,8 +119,6 @@ export default function App() {
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
   const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
-  // Null until loaded with the profiles; the scheduler must not be handed
-  // a list missing any of them, or their run record goes with it.
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -278,7 +276,6 @@ export default function App() {
     const items = draft.editing
       ? schedules.items.map((s) => (s.id === schedule.id ? schedule : s))
       : [...schedules.items, schedule];
-    // A first schedule is meant to run, so scheduling turns them on.
     updateSchedules({ running: schedules.running || !draft.editing, items });
     setDraft(null);
   };

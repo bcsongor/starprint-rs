@@ -4,8 +4,6 @@ import type { Due, Job, Listen, Printer } from "./api";
 const FILE = "settings.json";
 const KEY = "profiles";
 const LINEAR_KEY = "linear";
-/** The schedules and whether they run. The Rust side keeps when each
- * one last ran under `scheduleRuns`, which nothing here touches. */
 const SCHEDULES_KEY = "schedules";
 /** Whether the HTTP API runs inside the app. */
 const API_KEY = "api";

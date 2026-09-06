@@ -29,15 +29,13 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   came off the printer. A schedule is a job as its form stood, a
   profile and a five-field cron expression, kept in the settings store
   by the frontend and shown in a drawer off the header. The Rust side
-  (`src-tauri/src/scheduler.rs`) owns the clock: it is handed the
-  enabled schedules on every change, sleeps until the next one, prints
-  through the shared queue, and records each run under `scheduleRuns`
-  in the same store, so a run missed while the app was closed prints
-  once at the next start. Schedules without a host keep their run record
-  and wait for an address. A task card's due date is filled in when it
-  prints. The API button runs `starprint-api`'s server in-process on
-  the profiles that have a host, at an address and port picked under
-  the button, behind a token kept in the settings store, and starts it
+  (`src-tauri/src/scheduler.rs`) checks the current local minute with
+  `croner` and spawns matching jobs through the shared print queue.
+  Only schedule definitions are stored. Schedules without a host do
+  not run. A task card's due date follows its rule when it prints.
+  The API button runs `starprint-api`'s server in-process on the
+  profiles that have a host, at an address and port picked under the
+  button, behind a token kept in the settings store, and starts it
   again when a profile or the address changes. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each

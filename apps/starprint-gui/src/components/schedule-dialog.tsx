@@ -32,7 +32,6 @@ import {
 } from "@/lib/schedule";
 import type { Profile, Schedule } from "@/lib/settings";
 
-/** What the dialog opens on: a schedule, and whether it exists yet. */
 export interface Draft {
   schedule: Schedule;
   editing: boolean;
@@ -45,7 +44,6 @@ interface Props {
   onSave: (schedule: Schedule) => void;
 }
 
-/** Sets a schedule's printer and timetable. The job is fixed. */
 export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
   return (
     <Dialog
@@ -125,8 +123,8 @@ function ScheduleForm({
         </DialogTitle>
         <DialogDescription>
           {editing
-            ? "Prints as it was scheduled. Load it into its form to change the job."
-            : "Prints it as set up now, at these times, while schedules run."}
+            ? "Load into form to change the job itself."
+            : "Print this job at the chosen times while the app is open."}
         </DialogDescription>
       </DialogHeader>
 
