@@ -110,7 +110,6 @@ export default function App() {
   const [pictureSettings, setPicture] = useState<Picture>(DEFAULT_PICTURE);
   const [hexdump, setHexdump] = useState<HexDump | null>(null);
   const [printing, setPrinting] = useState(false);
-  const [pictureReady, setPictureReady] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
   const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
@@ -187,7 +186,7 @@ export default function App() {
       : job.kind === "qr"
         ? job.data.trim().length > 0
         : job.kind === "picture"
-          ? pictureReady
+          ? job.path.trim().length > 0
           : true;
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
@@ -365,7 +364,6 @@ export default function App() {
             picture={picture}
             kind={kind}
             paper={paper}
-            onReady={setPictureReady}
           />
         )}
       </div>

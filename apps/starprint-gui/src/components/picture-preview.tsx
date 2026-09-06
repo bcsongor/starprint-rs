@@ -13,7 +13,6 @@ interface Props {
   picture: Picture;
   kind: PrinterKind;
   paper: Paper;
-  onReady: (ready: boolean) => void;
 }
 
 /**
@@ -21,14 +20,13 @@ interface Props {
  * is already square-pixelled at the head's single-density width, so it
  * fills the print region at its own aspect ratio.
  */
-export function PicturePreview({ picture, kind, paper, onReady }: Props) {
+export function PicturePreview({ picture, kind, paper }: Props) {
   const { url, error } = usePreview(
     async () => {
       if (picture.path === "") return null;
       return { value: null, png: await picturePreview(picture, kind, paper) };
     },
     [picture, kind, paper],
-    onReady,
   );
 
   return (
