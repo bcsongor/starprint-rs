@@ -211,8 +211,10 @@ function ScheduleForm({
             aria-invalid={next !== null && !valid}
             value={schedule.cron}
             onChange={(e) => {
+              const spelled = fromCron(e.target.value);
               set("cron", e.target.value);
-              setPreset(fromCron(e.target.value)?.preset ?? "custom");
+              setPreset(spelled?.preset ?? "custom");
+              if (spelled) setTime(spelled.time);
             }}
           />
           <p className="min-h-5 text-sm">

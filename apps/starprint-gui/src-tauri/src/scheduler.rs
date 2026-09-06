@@ -160,10 +160,12 @@ impl Scheduler {
 
     /// Moves a schedule's last run to `at` once its print has finished,
     /// so the next occurrence counts from the end of a long print rather
-    /// than following it at once.
-    fn ran(&self, id: &str, at: DateTime<Local>) {
+    /// than following it at once. A schedule edited meanwhile keeps its own.
+    fn ran(&self, scheduled: &Scheduled, at: DateTime<Local>) {
         let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.iter_mut().find(|entry| entry.scheduled.id == id) {
+        if let Some(entry) = entries.iter_mut().find(|entry| {
+            entry.scheduled.id == scheduled.id && entry.scheduled.cron == scheduled.cron
+        }) {
             entry.last_run = at;
         }
     }
@@ -254,7 +256,7 @@ pub fn spawn(app: AppHandle) {
                 // repeat the run at the next start.
                 record(&scheduler);
                 let error = scheduled.print(&cache, &queue).await.err();
-                scheduler.ran(&scheduled.id, Local::now());
+                scheduler.ran(&scheduled, Local::now());
                 record(&scheduler);
                 let outcome = Outcome {
                     id: scheduled.id,
@@ -389,7 +391,7 @@ mod tests {
         assert!(scheduler.take_due(at(6, 10)).is_some());
 
         let finished = Local.with_ymd_and_hms(2026, 9, 6, 10, 1, 30).unwrap();
-        scheduler.ran("a", finished);
+        scheduler.ran(&scheduled("a", "* * * * *", None), finished);
         assert!(scheduler.take_due(finished).is_none());
         assert_eq!(
             scheduler.until_next(finished),
