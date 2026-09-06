@@ -6,6 +6,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use starprint::Document;
 use starprint::transport::TcpTransport;
+use starprint_api::PrintQueue;
 use starprint_workflows::{Job, Printer};
 
 use crate::hexdump::{self, HexDump};
@@ -46,11 +47,14 @@ pub async fn print_job(
     job: JobRequest,
     printer: Printer,
     cache: tauri::State<'_, Arc<SourceCache>>,
+    queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<PrintReport, String> {
     let cache = Arc::clone(&cache);
+    let turn = queue.lock(&printer.host, printer.port).await;
     // Image preparation is CPU-bound and the transport sleeps between
     // chunks; neither belongs on the async runtime.
     tauri::async_runtime::spawn_blocking(move || {
+        let _turn = turn;
         let document = job.document(&printer, &cache)?;
         let mut transport = TcpTransport::connect(&printer.address()).map_err(|e| e.to_string())?;
         transport.print(&document).map_err(|e| e.to_string())?;

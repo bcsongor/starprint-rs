@@ -10,7 +10,7 @@ use tokio::task::JoinHandle;
 
 use crate::app;
 use crate::config::Profile;
-use crate::printers::Printers;
+use crate::printers::{PrintQueue, Printers};
 
 /// Loopback, so only this machine can print.
 pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9110);
@@ -24,13 +24,13 @@ pub struct Server {
 }
 
 impl Server {
-    /// Binds `listen` and serves `profiles` to callers that present
-    /// `token`. A port already in use is an error here, not a request
-    /// that fails later.
+    /// Binds `listen` and serves `profiles` to callers with `token`.
+    /// Share `queue` with other clients of these printers in this process.
     pub async fn bind(
         listen: SocketAddr,
         profiles: Vec<Profile>,
         token: String,
+        queue: Arc<PrintQueue>,
     ) -> Result<Self, String> {
         let listener = TcpListener::bind(listen)
             .await
@@ -39,7 +39,7 @@ impl Server {
             .local_addr()
             .map_err(|e| format!("{listen} has no address: {e}"))?;
         let (stop, stopped) = oneshot::channel();
-        let router = app::router(Arc::new(Printers::new(profiles)), token);
+        let router = app::router(Arc::new(Printers::new(profiles, queue)), token);
         let done = tokio::spawn(
             axum::serve(listener, router)
                 .with_graceful_shutdown(async {
@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn serves_until_shut_down_and_then_releases_the_port() {
-        let server = Server::bind(any_port(), Vec::new(), "t".to_owned())
+        let server = Server::bind(any_port(), Vec::new(), "t".to_owned(), Arc::default())
             .await
             .unwrap();
         let addr = server.local_addr();
@@ -109,13 +109,18 @@ mod tests {
 
     #[tokio::test]
     async fn a_port_in_use_is_reported_at_bind() {
-        let first = Server::bind(any_port(), Vec::new(), "t".to_owned())
+        let first = Server::bind(any_port(), Vec::new(), "t".to_owned(), Arc::default())
             .await
             .unwrap();
-        let error = Server::bind(first.local_addr(), Vec::new(), "t".to_owned())
-            .await
-            .err()
-            .expect("in use");
+        let error = Server::bind(
+            first.local_addr(),
+            Vec::new(),
+            "t".to_owned(),
+            Arc::default(),
+        )
+        .await
+        .err()
+        .expect("in use");
         assert!(error.contains("could not be bound"), "{error}");
     }
 }

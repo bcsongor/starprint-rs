@@ -3,6 +3,7 @@
 mod args;
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use starprint_api::{Server, config};
 
@@ -42,7 +43,7 @@ fn run() -> Result<(), String> {
             let token = args
                 .token
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            let server = Server::bind(args.listen, profiles, token.clone()).await?;
+            let server = Server::bind(args.listen, profiles, token.clone(), Arc::default()).await?;
             println!(
                 "starprint-api: listening on http://{} with token {token}",
                 server.local_addr()

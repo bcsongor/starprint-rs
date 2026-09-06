@@ -1,12 +1,8 @@
-//! A small HTTP server that prints the same jobs the desktop app does,
-//! for other local programs to call.
+//! An HTTP server for the desktop app's print jobs.
 //!
-//! The binary in this crate runs one from a profile file until Ctrl-C.
-//! The desktop app runs one behind a toggle, on the profiles it has.
-//! Either way it is a [`Server`], which binds loopback by default and
-//! takes a bearer token that every request must carry. The token is
-//! the whole of the access control: a web page cannot know it, and a
-//! caller on the network cannot print without it.
+//! The command line reads a profile file; the desktop app supplies its
+//! profiles. Both run a [`Server`] with bearer authentication, bound to
+//! loopback by default.
 
 mod app;
 mod body;
@@ -17,4 +13,5 @@ mod problem;
 mod server;
 
 pub use config::Profile;
+pub use printers::PrintQueue;
 pub use server::{DEFAULT_LISTEN, Server};

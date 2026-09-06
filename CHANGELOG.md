@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Printing
+
+- Jobs to the same host and port share a queue, including duplicate
+  profiles and manual, Linear and API jobs in the desktop app. Probes
+  wait for jobs, and cancelling a request no longer releases a write
+  still in progress.
+
 ### HTTP API
 
 - Every request needs a bearer token, or gets a `401`. The server takes

@@ -10,18 +10,25 @@ mod window;
 use std::sync::Arc;
 
 use picture::SourceCache;
+use starprint_api::PrintQueue;
 
-/// Connects and drops without writing, so it cannot disturb a job.
+/// Checks connectivity between jobs without writing to the printer.
 #[tauri::command]
-async fn probe_printer(host: String, port: u16) -> bool {
+async fn probe_printer(
+    host: String,
+    port: u16,
+    queue: tauri::State<'_, Arc<PrintQueue>>,
+) -> Result<bool, ()> {
     // Only bounds how long a missing printer takes to show as offline.
     const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(400);
 
     let host = host.trim().to_owned();
     if host.is_empty() {
-        return false;
+        return Ok(false);
     }
+    let turn = queue.lock(&host, port).await;
     tauri::async_runtime::spawn_blocking(move || {
+        let _turn = turn;
         let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), port)) else {
             return false;
         };
@@ -30,12 +37,13 @@ async fn probe_printer(host: String, port: u16) -> bool {
             .any(|addr| std::net::TcpStream::connect_timeout(&addr, TIMEOUT).is_ok())
     })
     .await
-    .unwrap_or(false)
+    .map_err(|_| ())
 }
 
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(SourceCache::default()))
+        .manage(Arc::new(PrintQueue::default()))
         .manage(api::Embedded::default())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())

@@ -52,6 +52,11 @@ user did not say which, ask.
 Post to `/v1/printers/<name>/jobs`. Only the content is required;
 everything else has a default.
 
+Jobs to the same host and port wait for each other, even through different
+profiles. The desktop app shares this queue with manual and Linear jobs.
+Separate processes and different hostnames for the same printer have
+separate queues.
+
 Task card, the common case:
 
 ```bash

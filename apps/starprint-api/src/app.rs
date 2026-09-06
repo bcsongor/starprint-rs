@@ -200,22 +200,25 @@ mod tests {
     }
 
     fn printers(port: u16) -> Arc<Printers> {
-        Arc::new(Printers::new(vec![
-            Profile {
-                name: "tsp800ii".to_owned(),
-                printer: Printer::thermal(
-                    "127.0.0.1".to_owned(),
-                    port,
-                    Paper::Mm80,
-                    3,
-                    Speed::Slow,
-                ),
-            },
-            Profile {
-                name: "sp743".to_owned(),
-                printer: Printer::impact("127.0.0.1".to_owned(), port),
-            },
-        ]))
+        Arc::new(Printers::new(
+            vec![
+                Profile {
+                    name: "tsp800ii".to_owned(),
+                    printer: Printer::thermal(
+                        "127.0.0.1".to_owned(),
+                        port,
+                        Paper::Mm80,
+                        3,
+                        Speed::Slow,
+                    ),
+                },
+                Profile {
+                    name: "sp743".to_owned(),
+                    printer: Printer::impact("127.0.0.1".to_owned(), port),
+                },
+            ],
+            Arc::default(),
+        ))
     }
 
     struct Reply {

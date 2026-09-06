@@ -38,7 +38,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   local programs. A library with a thin command line on top, so the
   desktop app can run the same server. One concern per module; anything
   new goes in whichever of `body`, `job`, `printers`, `config`,
-  `problem`, `app` or `server` owns it.
+  `problem`, `app` or `server` owns it. `printers::PrintQueue`, exported
+  at the crate root, serialises connections by host and port. The GUI
+  shares one queue across manual jobs, Linear jobs, probes and the
+  embedded API, including API restarts. Its guard must live inside the
+  blocking task so cancellation cannot release a write still in progress.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own

@@ -25,5 +25,5 @@ uuid = { version = "1", features = ["v4"] }
 # driven without a socket. `macros` is for `#[tokio::test]`; startup
 # builds its runtime by hand.
 image = { version = "0.25", default-features = false, features = ["png"] }
-tokio = { version = "1", features = ["io-util", "macros"] }
+tokio = { version = "1", features = ["io-util", "macros", "time"] }
 tower = { version = "0.5", features = ["util"] }

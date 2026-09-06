@@ -1,11 +1,10 @@
-//! The HTTP API, embedded. The frontend starts it on the profiles it
-//! has and stops it again; the server itself is the one
-//! `starprint-api` runs on its own.
+//! Starts and stops `starprint-api` on the desktop app's profiles.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 
 use serde::Serialize;
-use starprint_api::{Profile, Server};
+use starprint_api::{PrintQueue, Profile, Server};
 use tauri::async_runtime::Mutex;
 
 /// The running server, if any. Held across a whole start or stop so
@@ -50,12 +49,19 @@ pub async fn start_api(
     ip: IpAddr,
     port: u16,
     state: tauri::State<'_, Embedded>,
+    queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<String, String> {
     let mut slot = state.0.lock().await;
     if let Some(running) = slot.take() {
         running.shutdown().await?;
     }
-    let server = Server::bind(SocketAddr::new(ip, port), printers, token).await?;
+    let server = Server::bind(
+        SocketAddr::new(ip, port),
+        printers,
+        token,
+        Arc::clone(&queue),
+    )
+    .await?;
     let url = format!("http://{}", server.local_addr());
     *slot = Some(server);
     Ok(url)
