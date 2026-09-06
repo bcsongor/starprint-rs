@@ -48,10 +48,19 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 - `skills/starprint-print/`: the skill users install into their own
   agents to print through the API, and the only reference to its
   endpoints and job fields. Anything the API gains goes in here.
+- `.macroscope/`: what Macroscope skips (`ignore.md`) and the check-run
+  agent that holds the hardware rules below for it. Macroscope reads
+  nothing else, so a rule added here that a reviewer should enforce
+  goes in that agent too. Codex reads the code review rules at the end
+  of this file.
 
 ## Conventions
 
-- Before committing, run `cargo test --all-targets`, clippy with
+- Every change lands through a pull request. `main` takes no direct
+  pushes, no force pushes and no merge commits; squash or rebase. The
+  merge button needs CI green and every review thread resolved,
+  including the ones Codex and Macroscope open.
+- Before opening one, run `cargo test --all-targets`, clippy with
   `-D warnings` and `cargo fmt --all --check`, both with and without
   `--features image`, then the same for
   `-p starprint-workflows -p starprint-api`. CI does the same. The
@@ -135,3 +144,42 @@ Behaviour that shapes how jobs are written:
   since the red drive is the hotter one), `thermal_text_probe` (double
   resolution on the printer's fonts) and `thermal_speed_probe` (times
   each `ESC RS r` value).
+
+## Code Review Rules
+
+Codex reads this section on every pull request. CI already runs the
+tests, clippy and fmt, so style is not a finding. Review only changed
+lines against these rules; untouched code is not a finding either.
+
+### Measured values
+
+The values under Hardware were tuned on the printers: both tone curves,
+the Ethernet pacing, the preview dot sizes, the QR module size and
+radius ceiling, and what density +4 sends. A change to one with no
+hardware test described in the pull request is a finding.
+
+### Command bytes
+
+Every command `document.rs` emits cites the manual it comes from. A new
+or changed byte sequence without a citation is a finding.
+
+### Golden fixtures
+
+A change to `crates/starprint/tests/fixtures/`, or to the impact
+pipeline, dithering or `ESC ^` serialisation that would alter their
+output, is a finding unless the pull request says the Python reference
+was rerun.
+
+### Where job behaviour lives
+
+Jobs are defined in `crates/starprint-workflows` and the front ends
+call them. A front end that adds a printing rule of its own is a
+finding, and so is a preview drawn from anything but the bitmap that
+prints. A QR symbol is a bitmap on both heads; `ESC GS y` is a finding.
+A job that selects `PrintMode::DoubleResolution` and does not switch
+back at the end is a finding.
+
+### The API skill
+
+An endpoint or job field added to `apps/starprint-api` without the
+matching change in `skills/starprint-print/` is a finding.
