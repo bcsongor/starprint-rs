@@ -37,4 +37,4 @@ tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 # Paints the title bar in the app's own colour (DwmSetWindowAttribute).
-windows-sys = { version = "0.60", features = ["Win32_Graphics_Dwm"] }
+windows-sys = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
