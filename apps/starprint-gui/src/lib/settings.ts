@@ -10,8 +10,6 @@ const API_KEY = "api";
 const API_TOKEN_KEY = "apiToken";
 /** Where the API listens. */
 const API_LISTEN_KEY = "apiListen";
-/** From before profiles existed; migrated on first load. */
-const LEGACY_KEY = "printer";
 
 /** Loopback on the standalone server's port. */
 export const DEFAULT_LISTEN: Listen = { ip: "127.0.0.1", port: 9110 };
@@ -81,32 +79,14 @@ async function write(key: string, value: unknown): Promise<void> {
 }
 
 export async function loadProfiles(): Promise<Profiles> {
-  const store = await load(FILE, { defaults: {} });
-  const saved = await store.get<Profiles>(KEY);
-  if (saved?.profiles?.length) {
-    return {
-      // Profiles saved before paper existed.
-      profiles: saved.profiles.map((p) => ({ ...p, paper: p.paper ?? "80" })),
-      activeId: saved.profiles.some((p) => p.id === saved.activeId)
-        ? saved.activeId
-        : saved.profiles[0].id,
-    };
-  }
-
-  // First run after the single-printer version.
-  const legacy = await store.get<Partial<Printer>>(LEGACY_KEY);
-  if (legacy?.kind) {
-    const target = legacy.kind === "impact" ? "sp743" : "tsp800ii";
-    const profiles = SEED.map((p) =>
-      p.id === target ? { ...p, ...legacy, id: p.id, name: p.name } : p,
-    );
-    const state = { profiles, activeId: target };
-    await saveProfiles(state);
-    await store.delete(LEGACY_KEY);
-    await store.save();
-    return state;
-  }
-  return DEFAULT_PROFILES;
+  const saved = await read<Profiles>(KEY);
+  if (!saved?.profiles?.length) return DEFAULT_PROFILES;
+  return {
+    profiles: saved.profiles,
+    activeId: saved.profiles.some((p) => p.id === saved.activeId)
+      ? saved.activeId
+      : saved.profiles[0].id,
+  };
 }
 
 export function saveProfiles(state: Profiles): Promise<void> {

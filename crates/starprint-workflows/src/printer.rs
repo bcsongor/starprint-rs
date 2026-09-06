@@ -117,16 +117,11 @@ pub struct Printer {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Head {
     Thermal {
-        #[serde(default = "default_paper")]
         paper: Paper,
         density: i8,
         speed: Speed,
     },
     Impact,
-}
-
-fn default_paper() -> Paper {
-    Paper::Mm80
 }
 
 impl Head {
@@ -142,7 +137,7 @@ impl Head {
     pub fn paper(self) -> Paper {
         match self {
             Self::Thermal { paper, .. } => paper,
-            Self::Impact => default_paper(),
+            Self::Impact => Paper::Mm80,
         }
     }
 }
@@ -461,9 +456,9 @@ mod tests {
         }
     }
 
-    /// The desktop app stores a profile as one flat object and has done
-    /// since before the head was a variant, so the settings sit beside
-    /// `host` on the wire whatever shape they take in Rust.
+    /// The desktop app stores a profile as one flat object, so the head's
+    /// settings sit beside `host` on the wire whatever shape they take in
+    /// Rust.
     #[test]
     fn a_profile_deserialises_from_one_flat_object() {
         let json = r#"{"kind":"thermal","host":"h","port":9100,
@@ -479,7 +474,7 @@ mod tests {
         );
         assert!(!printer.cut);
 
-        // Impact profiles the app saved carry leftover thermal fields.
+        // The app keeps the thermal fields on an impact profile too.
         let json = r#"{"kind":"impact","host":"h","port":9100,
                        "density":3,"speed":"slow","paper":"80","cut":true}"#;
         let printer: Printer = serde_json::from_str(json).unwrap();
