@@ -2,7 +2,7 @@
 name: Printer report
 about: Report a working printer or a problem with printed output.
 title: ""
-labels: ""
+labels: "printer-report"
 assignees: ""
 ---
 
