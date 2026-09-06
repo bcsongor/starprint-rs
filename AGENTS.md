@@ -49,10 +49,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   agents to print through the API, and the only reference to its
   endpoints and job fields. Anything the API gains goes in here.
 - `.macroscope/`: what Macroscope skips (`ignore.md`) and the check-run
-  agent that holds the hardware rules below for it. Macroscope reads
-  nothing else, so a rule added here that a reviewer should enforce
-  goes in that agent too. Codex reads the code review rules at the end
-  of this file.
+  agent that holds the rules under Hardware and Code Review Rules for
+  it. Macroscope reads nothing else, so a rule added here that a
+  reviewer should enforce goes in that agent too. Codex reads the code
+  review rules at the end of this file.
 
 ## Conventions
 

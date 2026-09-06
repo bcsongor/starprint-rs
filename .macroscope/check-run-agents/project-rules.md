@@ -1,5 +1,5 @@
 ---
-title: Hardware rules
+title: Project rules
 effort: medium
 input: full_diff
 include:
@@ -16,7 +16,7 @@ maxBudgetPerRun: 2
 maxBudgetPerPR: 6
 ---
 
-# Hardware rules
+# Project rules
 
 This repository drives Star thermal and impact printers. Several values
 in it were measured on the printers and cannot be checked from a screen,
