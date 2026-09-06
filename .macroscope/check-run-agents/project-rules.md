@@ -9,7 +9,7 @@ include:
   - "apps/starprint-gui/src-tauri/**"
   - "skills/**"
 requires:
-  - lint
+  - "CI / lint"
 conclusion: failure
 requiredStatusCheck: true
 maxBudgetPerRun: 2
