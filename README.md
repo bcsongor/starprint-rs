@@ -70,6 +70,7 @@ pick a preset such as every weekday at nine or write a cron expression. The
 clock button in the header lists the schedules and switches them on and off.
 They run while the app is open; a run missed while it was closed prints once
 at the next start. A scheduled task card is dated the day it prints.
+Clearing a printer profile's host pauses its schedules until an address is set.
 
 The **API** button lets scripts and AI agents print through your saved profiles.
 It shows the URL and the token every request needs, and lets you choose the

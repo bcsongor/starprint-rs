@@ -150,7 +150,7 @@ export function SchedulesDrawer({
                       Edit…
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={!profile}
+                      disabled={!profile?.host.trim()}
                       onClick={() => onPrint(s)}
                     >
                       Print now

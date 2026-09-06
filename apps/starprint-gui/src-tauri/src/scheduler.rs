@@ -95,6 +95,10 @@ struct Entry {
 
 impl Entry {
     fn next(&self) -> Option<DateTime<Local>> {
+        // Keep the run record while its profile has no address.
+        if self.scheduled.printer.host.trim().is_empty() {
+            return None;
+        }
         self.cron.find_next_occurrence(&self.last_run, false).ok()
     }
 }
@@ -319,6 +323,40 @@ mod tests {
             scheduler.until_next(at(6, 12)),
             Some(Duration::from_secs(21 * 3600)),
             "tomorrow at nine"
+        );
+    }
+
+    #[test]
+    fn a_schedule_without_a_host_waits_and_catches_up_when_restored() {
+        let scheduler = Scheduler::default();
+        let original = scheduled("a", "0 9 * * *", None);
+        scheduler
+            .replace(vec![original.clone()], &HashMap::new(), at(3, 8))
+            .unwrap();
+
+        let mut without_host = original.clone();
+        without_host.printer.host = " \t".to_owned();
+        scheduler
+            .replace(vec![without_host.clone()], &HashMap::new(), at(3, 8))
+            .unwrap();
+        assert!(scheduler.take_due(at(6, 12)).is_none());
+        assert!(scheduler.until_next(at(6, 12)).is_none());
+        let stored = scheduler.runs();
+        assert_eq!(stored["a"].at, at(3, 8));
+
+        let restarted = Scheduler::default();
+        restarted
+            .replace(vec![without_host], &stored, at(6, 12))
+            .unwrap();
+        assert!(restarted.take_due(at(6, 12)).is_none());
+        restarted
+            .replace(vec![original], &stored, at(6, 12))
+            .unwrap();
+        assert!(restarted.take_due(at(6, 12)).is_some());
+        assert!(restarted.take_due(at(6, 12)).is_none());
+        assert_eq!(
+            restarted.until_next(at(6, 12)),
+            Some(Duration::from_secs(21 * 3600)),
         );
     }
 
