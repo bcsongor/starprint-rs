@@ -7,9 +7,16 @@ description: Print task cards, text, note slips, QR codes, pictures and test pag
 
 `starprint-api` prints to Star receipt printers on the local network.
 It listens on `http://127.0.0.1:9110` unless it was started with
-`--listen`. The Starprint desktop app serves the same API at the same
-address while its API button is pressed, with printers named as its
-profiles are.
+`--listen`. The Starprint desktop app serves the same API while its
+API button is pressed, at loopback on port 9110 unless another of the
+machine's addresses or another port was chosen under that button, with
+printers named as its profiles are.
+
+Every request carries a bearer token, or gets a `401`. The server
+prints its token on the line that says where it is listening, or uses
+the one it was started with as `--token`. In the desktop app, the API
+button shows the token with a copy button while it serves. Ask the
+user for the token if you do not have it; there is no way to fetch it.
 
 Printing is physical and cannot be undone. It spends paper, and ribbon
 on the impact printer. Ask before printing anything the user did not
@@ -25,7 +32,7 @@ Every job goes to a printer by name, so find out what exists before
 printing:
 
 ```bash
-curl -s http://127.0.0.1:9110/v1/printers
+curl -s -H 'Authorization: Bearer <token>' http://127.0.0.1:9110/v1/printers
 ```
 
 ```json
@@ -49,6 +56,7 @@ Task card, the common case:
 
 ```bash
 curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{"job":{"kind":"task-card","text":"Renew passport","priority":true,"reference":"OPC-123","due":"2026-09-15"}}'
 ```
@@ -102,6 +110,7 @@ plain JSON it is a `400`:
 
 ```bash
 curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
+  -H 'Authorization: Bearer <token>' \
   -F 'job={"job":{"kind":"picture","double":true}}' \
   -F 'image=@photo.jpg'
 ```
@@ -139,7 +148,7 @@ a sentence worth reading back to the user.
 | Status | Meaning |
 | --- | --- |
 | `400` | Bad JSON, an invalid option, or a job that could not be built |
-| `403` | Sent from a web page, or with a `Host` that is not this server's IP or `localhost` |
+| `401` | No token, or not this server's; ask the user for it |
 | `404` | No printer by that name; list them again |
 | `413` | Too big: 1 MiB of JSON, 16 MiB for a form |
 | `415` | Wrong content type |

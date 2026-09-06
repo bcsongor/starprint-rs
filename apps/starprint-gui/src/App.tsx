@@ -47,17 +47,21 @@ import {
   type Picture,
   type Printer,
   type Qr,
+  type Listen,
   type TaskCard,
   type TestPage,
   type Text,
 } from "@/lib/api";
 import {
+  DEFAULT_LISTEN,
   DEFAULT_PROFILES,
   activeProfile,
   loadApiEnabled,
+  loadApiListen,
   loadLinear,
   loadProfiles,
   saveApiEnabled,
+  saveApiListen,
   saveLinear,
   saveProfiles,
   toPrinter,
@@ -109,11 +113,13 @@ export default function App() {
   const [pictureReady, setPictureReady] = useState(false);
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
+  const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
 
   useEffect(() => {
     loadProfiles().then(setProfiles).catch(console.error);
     loadLinear().then(setLinear).catch(console.error);
     loadApiEnabled().then(setApiEnabled).catch(console.error);
+    loadApiListen().then(setApiListen).catch(console.error);
   }, []);
 
   const updateProfiles = (next: Profiles) => {
@@ -131,8 +137,16 @@ export default function App() {
     saveApiEnabled(next).catch(console.error);
   };
 
-  const apiUrl = useApiServer(apiEnabled, profiles.profiles, () =>
-    updateApiEnabled(false),
+  const updateApiListen = (next: Listen) => {
+    setApiListen(next);
+    saveApiListen(next).catch(console.error);
+  };
+
+  const apiServer = useApiServer(
+    apiEnabled,
+    profiles.profiles,
+    apiListen,
+    () => updateApiEnabled(false),
   );
 
   const profile = activeProfile(profiles);
@@ -234,8 +248,10 @@ export default function App() {
           />
           <ApiToggle
             enabled={apiEnabled}
-            url={apiUrl}
+            server={apiServer}
+            listen={apiListen}
             onChange={updateApiEnabled}
+            onListenChange={updateApiListen}
             className="ml-auto"
           />
         </div>

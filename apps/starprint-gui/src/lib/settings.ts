@@ -1,13 +1,20 @@
 import { load } from "@tauri-apps/plugin-store";
-import type { Printer } from "./api";
+import type { Listen, Printer } from "./api";
 
 const FILE = "settings.json";
 const KEY = "profiles";
 const LINEAR_KEY = "linear";
 /** Whether the HTTP API runs inside the app. */
 const API_KEY = "api";
+/** The bearer token the API requires; made once, kept so clients stay set up. */
+const API_TOKEN_KEY = "apiToken";
+/** Where the API listens. */
+const API_LISTEN_KEY = "apiListen";
 /** From before profiles existed; migrated on first load. */
 const LEGACY_KEY = "printer";
+
+/** Loopback on the standalone server's port. */
+export const DEFAULT_LISTEN: Listen = { ip: "127.0.0.1", port: 9110 };
 
 export interface Profile extends Printer {
   id: string;
@@ -120,4 +127,21 @@ export async function loadApiEnabled(): Promise<boolean> {
 
 export function saveApiEnabled(enabled: boolean): Promise<void> {
   return write(API_KEY, enabled);
+}
+
+export async function loadApiListen(): Promise<Listen> {
+  return (await read<Listen>(API_LISTEN_KEY)) ?? DEFAULT_LISTEN;
+}
+
+export function saveApiListen(listen: Listen): Promise<void> {
+  return write(API_LISTEN_KEY, listen);
+}
+
+/** The API token, generated on first use and kept from then on. */
+export async function loadApiToken(): Promise<string> {
+  const saved = await read<string>(API_TOKEN_KEY);
+  if (saved) return saved;
+  const token = crypto.randomUUID();
+  await write(API_TOKEN_KEY, token);
+  return token;
 }

@@ -27,11 +27,13 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   that print. A preview that kept a rule of its own drifted once, and
   squared finder patterns went unnoticed until they came off the
   printer. The API button runs `starprint-api`'s server in-process on
-  the profiles that have a host, and starts it again when a profile
-  changes. Auto-print is frontend only: a personal API key in the
-  settings store, a `fetch` against Linear's GraphQL endpoint every 10
-  seconds, and a task card for each newly assigned open issue. Linear
-  answers the webview's CORS preflight, so no HTTP plugin is involved.
+  the profiles that have a host, at an address and port picked under
+  the button, behind a token kept in the settings store, and starts it
+  again when a profile or the address changes. Auto-print is frontend
+  only: a personal API key in the settings store, a `fetch` against
+  Linear's GraphQL endpoint every 10 seconds, and a task card for each
+  newly assigned open issue. Linear answers the webview's CORS
+  preflight, so no HTTP plugin is involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs. A library with a thin command line on top, so the
   desktop app can run the same server. One concern per module; anything

@@ -17,6 +17,8 @@ starprint-workflows = { path = "../../crates/starprint-workflows" }
 # `preserve_order` keeps GET /v1/printers in the order the file lists.
 toml = { version = "0.9", default-features = false, features = ["parse", "serde", "preserve_order"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal"] }
+# A token for the command line when none is given.
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 # A sample PNG to post, a stand-in printer to write to, and the router

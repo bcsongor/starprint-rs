@@ -66,8 +66,10 @@ Turn Linear issues into printed task cards. Connect with a personal API key,
 then enable auto-print for issues newly assigned to you while the app runs.
 
 The **API** button lets scripts and AI agents print through your saved profiles.
-See the [API reference](skills/starprint-print/SKILL.md) for jobs and setup,
-including running the server on its own.
+It shows the URL and the token every request needs, and lets you choose the
+address and port to listen on. See the
+[API reference](skills/starprint-print/SKILL.md) for jobs and setup, including
+running the server on its own.
 
 ## Rust library
 

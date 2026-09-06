@@ -2,7 +2,10 @@
 //! has and stops it again; the server itself is the one
 //! `starprint-api` runs on its own.
 
-use starprint_api::{DEFAULT_LISTEN, Profile, Server};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use serde::Serialize;
+use starprint_api::{Profile, Server};
 use tauri::async_runtime::Mutex;
 
 /// The running server, if any. Held across a whole start or stop so
@@ -10,20 +13,49 @@ use tauri::async_runtime::Mutex;
 #[derive(Default)]
 pub struct Embedded(Mutex<Option<Server>>);
 
-/// Starts the server on `printers`, replacing one already running, so
-/// a changed profile takes effect by starting again. Returns the URL.
-/// Loopback on the standalone server's port, so a client set up for
-/// one finds the other.
+/// An IPv4 address of this machine and the adapter it belongs to.
+#[derive(Serialize)]
+pub struct Address {
+    pub ip: Ipv4Addr,
+    pub name: String,
+}
+
+/// Loopback first, then each adapter's IPv4 address. Link-local
+/// addresses are left out.
+#[tauri::command]
+pub fn list_addresses() -> Vec<Address> {
+    let mut addresses: Vec<Address> = if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|interface| match interface.ip() {
+            IpAddr::V4(ip) if !ip.is_link_local() => Some(Address {
+                ip,
+                name: interface.name,
+            }),
+            _ => None,
+        })
+        .collect();
+    addresses.sort_by_key(|a| (!a.ip.is_loopback(), a.ip));
+    addresses.dedup_by_key(|a| a.ip);
+    addresses
+}
+
+/// Starts the server on `printers` behind `token`, at `ip` and `port`,
+/// replacing one already running, so a changed profile or address
+/// takes effect by starting again. Returns the URL.
 #[tauri::command]
 pub async fn start_api(
     printers: Vec<Profile>,
+    token: String,
+    ip: IpAddr,
+    port: u16,
     state: tauri::State<'_, Embedded>,
 ) -> Result<String, String> {
     let mut slot = state.0.lock().await;
     if let Some(running) = slot.take() {
         running.shutdown().await?;
     }
-    let server = Server::bind(DEFAULT_LISTEN, printers).await?;
+    let server = Server::bind(SocketAddr::new(ip, port), printers, token).await?;
     let url = format!("http://{}", server.local_addr());
     *slot = Some(server);
     Ok(url)
@@ -36,5 +68,17 @@ pub async fn stop_api(state: tauri::State<'_, Embedded>) -> Result<(), String> {
     match slot.take() {
         Some(running) => running.shutdown().await,
         None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_comes_first_and_link_local_is_left_out() {
+        let addresses = list_addresses();
+        assert_eq!(addresses.first().map(|a| a.ip), Some(Ipv4Addr::LOCALHOST));
+        assert!(addresses.iter().all(|a| !a.ip.is_link_local()));
     }
 }

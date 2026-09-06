@@ -8,10 +8,11 @@ use starprint_api::DEFAULT_LISTEN;
 pub const USAGE: &str = "\
 starprint-api. Print starprint jobs over HTTP.
 
-Usage: starprint-api [--config <path>] [--listen <addr>]
+Usage: starprint-api [--config <path>] [--listen <addr>] [--token <value>]
 
   --config <path>  Printer profiles, in TOML (default: printers.toml)
   --listen <addr>  Address to bind (default: 127.0.0.1:9110)
+  --token <value>  Bearer token every request must carry (default: generated)
   -h, --help       Print this message
 ";
 
@@ -21,12 +22,15 @@ const DEFAULT_CONFIG: &str = "printers.toml";
 pub struct Args {
     pub config: PathBuf,
     pub listen: SocketAddr,
+    /// `None` means the caller wants one generated.
+    pub token: Option<String>,
 }
 
 /// `None` when the caller asked for help and wants no work done.
 pub fn parse(raw: impl IntoIterator<Item = String>) -> Result<Option<Args>, String> {
     let mut config = None;
     let mut listen = None;
+    let mut token = None;
     let mut raw = raw.into_iter();
     while let Some(arg) = raw.next() {
         let mut value = |name: &str| {
@@ -37,6 +41,7 @@ pub fn parse(raw: impl IntoIterator<Item = String>) -> Result<Option<Args>, Stri
             "-h" | "--help" => return Ok(None),
             "--config" => config = Some(PathBuf::from(value("--config")?)),
             "--listen" => listen = Some(value("--listen")?),
+            "--token" => token = Some(value("--token")?),
             other => return Err(format!("`{other}` is not an option; see --help")),
         }
     }
@@ -47,9 +52,13 @@ pub fn parse(raw: impl IntoIterator<Item = String>) -> Result<Option<Args>, Stri
             .map_err(|e| format!("`--listen {listen}` is not an address with a port: {e}"))?,
         None => DEFAULT_LISTEN,
     };
+    if token.as_deref().is_some_and(|t| t.trim().is_empty()) {
+        return Err("`--token` is empty".to_owned());
+    }
     Ok(Some(Args {
         config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG)),
         listen,
+        token,
     }))
 }
 
@@ -66,15 +75,24 @@ mod tests {
         let args = args(&[]).unwrap().expect("not help");
         assert_eq!(args.config, PathBuf::from(DEFAULT_CONFIG));
         assert_eq!(args.listen, DEFAULT_LISTEN);
+        assert_eq!(args.token, None);
     }
 
     #[test]
     fn both_options_are_read() {
-        let args = args(&["--config", "p.toml", "--listen", "127.0.0.1:8080"])
-            .unwrap()
-            .expect("not help");
+        let args = args(&[
+            "--config",
+            "p.toml",
+            "--listen",
+            "127.0.0.1:8080",
+            "--token",
+            "s3cret",
+        ])
+        .unwrap()
+        .expect("not help");
         assert_eq!(args.config, PathBuf::from("p.toml"));
         assert_eq!(args.listen.to_string(), "127.0.0.1:8080");
+        assert_eq!(args.token.as_deref(), Some("s3cret"));
     }
 
     #[test]
@@ -96,6 +114,7 @@ mod tests {
     fn a_malformed_command_line_is_reported() {
         assert!(args(&["--config"]).unwrap_err().contains("needs a value"));
         assert!(args(&["--listen", "9110"]).unwrap_err().contains("address"));
+        assert!(args(&["--token", " "]).unwrap_err().contains("empty"));
         assert!(
             args(&["--port", "1"])
                 .unwrap_err()

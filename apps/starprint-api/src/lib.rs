@@ -4,10 +4,9 @@
 //! The binary in this crate runs one from a profile file until Ctrl-C.
 //! The desktop app runs one behind a toggle, on the profiles it has.
 //! Either way it is a [`Server`], which binds loopback by default and
-//! refuses requests made from web pages, so a site the user visits
-//! cannot print through it. It has no authentication, so binding an
-//! address the network can reach hands every printer it knows to
-//! anyone on that network.
+//! takes a bearer token that every request must carry. The token is
+//! the whole of the access control: a web page cannot know it, and a
+//! caller on the network cannot print without it.
 
 mod app;
 mod body;

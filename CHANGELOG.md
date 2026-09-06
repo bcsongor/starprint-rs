@@ -4,10 +4,13 @@
 
 ### HTTP API
 
-- Requests from web pages are refused with a `403`. A page on any site
-  could post a form to the loopback server without a CORS preflight, so
-  a request carrying `Origin`, or a `Host` that is neither an IP nor
-  `localhost`, is turned away. Programs are unaffected.
+- Every request needs a bearer token, or gets a `401`. The server takes
+  one as `--token` or generates one and prints it beside its address.
+  The desktop app makes one the first time the API button goes on and
+  keeps it. The button opens to show the URL and the token with copy
+  buttons, to pick the address and port to listen on, loopback on 9110
+  by default, and to stop the server. A web page cannot know the token,
+  so a site the user visits cannot print.
 
 ### Desktop app
 

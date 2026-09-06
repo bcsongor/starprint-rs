@@ -39,8 +39,14 @@ fn run() -> Result<(), String> {
     tokio::runtime::Runtime::new()
         .map_err(|e| format!("the runtime could not start: {e}"))?
         .block_on(async {
-            let server = Server::bind(args.listen, profiles).await?;
-            println!("starprint-api: listening on http://{}", server.local_addr());
+            let token = args
+                .token
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let server = Server::bind(args.listen, profiles, token.clone()).await?;
+            println!(
+                "starprint-api: listening on http://{} with token {token}",
+                server.local_addr()
+            );
             let _ = tokio::signal::ctrl_c().await;
             server.shutdown().await
         })

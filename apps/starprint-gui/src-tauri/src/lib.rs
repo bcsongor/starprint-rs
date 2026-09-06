@@ -55,6 +55,7 @@ pub fn run() {
             job::job_hexdump,
             preview::picture_preview,
             probe_printer,
+            api::list_addresses,
             api::start_api,
             api::stop_api
         ])

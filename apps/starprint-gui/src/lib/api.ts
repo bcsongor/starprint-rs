@@ -293,12 +293,35 @@ export interface NamedPrinter {
   printer: Printer;
 }
 
+/** Mirrors `Address` in src-tauri/src/api.rs. */
+export interface Address {
+  ip: string;
+  /** The adapter, such as `Wi-Fi` or `en0`. */
+  name: string;
+}
+
+/** Loopback first, then each adapter's IPv4 address. */
+export function listAddresses() {
+  return invoke<Address[]>("list_addresses");
+}
+
+/** Where the API listens. */
+export interface Listen {
+  ip: string;
+  port: number;
+}
+
 /**
- * Starts the HTTP API inside the app on these printers, replacing one
- * already running, and returns its URL. Loopback only.
+ * Starts the HTTP API inside the app on these printers, behind the
+ * token every request must carry, at `listen`, replacing one already
+ * running, and returns its URL.
  */
-export function startApi(printers: NamedPrinter[]) {
-  return invoke<string>("start_api", { printers });
+export function startApi(
+  printers: NamedPrinter[],
+  token: string,
+  listen: Listen,
+) {
+  return invoke<string>("start_api", { printers, token, ...listen });
 }
 
 /** Lets requests in flight finish first. */

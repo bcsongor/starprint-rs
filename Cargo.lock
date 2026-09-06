@@ -1507,6 +1507,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "if-addrs"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "image"
 version = "0.25.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3014,12 +3024,14 @@ dependencies = [
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "tower",
+ "uuid",
 ]
 
 [[package]]
 name = "starprint-gui"
 version = "0.4.0"
 dependencies = [
+ "if-addrs",
  "image",
  "serde",
  "serde_json",

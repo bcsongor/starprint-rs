@@ -24,9 +24,14 @@ pub struct Server {
 }
 
 impl Server {
-    /// Binds `listen` and serves `profiles`. A port already in use is
-    /// an error here, not a request that fails later.
-    pub async fn bind(listen: SocketAddr, profiles: Vec<Profile>) -> Result<Self, String> {
+    /// Binds `listen` and serves `profiles` to callers that present
+    /// `token`. A port already in use is an error here, not a request
+    /// that fails later.
+    pub async fn bind(
+        listen: SocketAddr,
+        profiles: Vec<Profile>,
+        token: String,
+    ) -> Result<Self, String> {
         let listener = TcpListener::bind(listen)
             .await
             .map_err(|e| format!("{listen} could not be bound: {e}"))?;
@@ -34,7 +39,7 @@ impl Server {
             .local_addr()
             .map_err(|e| format!("{listen} has no address: {e}"))?;
         let (stop, stopped) = oneshot::channel();
-        let router = app::router(Arc::new(Printers::new(profiles)));
+        let router = app::router(Arc::new(Printers::new(profiles)), token);
         let done = tokio::spawn(
             axum::serve(listener, router)
                 .with_graceful_shutdown(async {
@@ -76,7 +81,9 @@ mod tests {
     async fn get_printers(addr: SocketAddr) -> String {
         let mut stream = TcpStream::connect(addr).await.unwrap();
         stream
-            .write_all(b"GET /v1/printers HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .write_all(
+                b"GET /v1/printers HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer t\r\nConnection: close\r\n\r\n",
+            )
             .await
             .unwrap();
         let mut reply = String::new();
@@ -86,7 +93,9 @@ mod tests {
 
     #[tokio::test]
     async fn serves_until_shut_down_and_then_releases_the_port() {
-        let server = Server::bind(any_port(), Vec::new()).await.unwrap();
+        let server = Server::bind(any_port(), Vec::new(), "t".to_owned())
+            .await
+            .unwrap();
         let addr = server.local_addr();
         assert_ne!(addr.port(), 0);
 
@@ -100,8 +109,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_port_in_use_is_reported_at_bind() {
-        let first = Server::bind(any_port(), Vec::new()).await.unwrap();
-        let error = Server::bind(first.local_addr(), Vec::new())
+        let first = Server::bind(any_port(), Vec::new(), "t".to_owned())
+            .await
+            .unwrap();
+        let error = Server::bind(first.local_addr(), Vec::new(), "t".to_owned())
             .await
             .err()
             .expect("in use");
