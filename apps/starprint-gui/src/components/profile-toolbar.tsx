@@ -89,7 +89,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
           <SelectContent
             alignItemWithTrigger={false}
             align="start"
-            className="w-max min-w-(--anchor-width)"
+            className="w-max max-w-(--available-width) min-w-(--anchor-width)"
           >
             {listed.map((p) => (
               <SelectItem key={p.id} value={p.id}>
