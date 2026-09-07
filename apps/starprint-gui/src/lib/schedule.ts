@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, format, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   TWO_COLOR_DENSITY,
   type Job,
@@ -51,14 +51,6 @@ export function describe(cron: string): string {
   const match = fromCron(cron);
   if (!match) return cron;
   return `At ${match.time}, ${PRESETS[match.preset].readout}`;
-}
-
-/** "Mon 09:00" within the week, "5 Oct 09:00" beyond it. */
-export function formatSoon(iso: string): string {
-  const at = parseISO(iso);
-  const pattern =
-    differenceInCalendarDays(at, new Date()) < 7 ? "EEE HH:mm" : "d MMM HH:mm";
-  return format(at, pattern);
 }
 
 /** "Mon 8 Sep, 09:00". */

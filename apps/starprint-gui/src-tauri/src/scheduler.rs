@@ -12,7 +12,7 @@ use starprint_api::PrintQueue;
 use starprint_workflows::{Job, Printer};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::job::{self, JobRequest, PrintReport};
+use crate::job::{self, JobRequest};
 use crate::picture::SourceCache;
 
 const RAN_EVENT: &str = "schedule-ran";
@@ -42,6 +42,7 @@ pub struct Scheduled {
 }
 
 impl Scheduled {
+    /// The job as it prints at `at`: a task card takes its due date then.
     fn job_at(&self, at: DateTime<Local>) -> JobRequest {
         let mut request = self.job.clone();
         if let Job::TaskCard(card) = &mut request.job {
@@ -56,17 +57,6 @@ impl Scheduled {
         }
         request
     }
-
-    /// Prints the job, dated the day its turn on the printer comes.
-    async fn print(
-        &self,
-        cache: &Arc<SourceCache>,
-        queue: &PrintQueue,
-    ) -> Result<PrintReport, String> {
-        let turn = queue.lock(&self.printer.host, self.printer.port).await;
-        let job = self.job_at(Local::now());
-        job::print_on(turn, job, self.printer.clone(), Arc::clone(cache)).await
-    }
 }
 
 #[derive(Clone, Serialize)]
@@ -79,17 +69,17 @@ struct Outcome {
 pub struct Scheduler(Mutex<Vec<(Scheduled, Cron)>>);
 
 impl Scheduler {
-    fn replace(&self, schedules: Vec<Scheduled>) -> Result<(), String> {
+    /// Keeps the schedules that have a host and a five-field expression.
+    fn replace(&self, schedules: Vec<Scheduled>) {
         let entries = schedules
             .into_iter()
             .filter(|scheduled| !scheduled.printer.host.trim().is_empty())
-            .map(|scheduled| {
-                let cron = parse_cron(&scheduled.cron).map_err(|e| e.to_string())?;
-                Ok((scheduled, cron))
+            .filter_map(|scheduled| {
+                let cron = parse_cron(&scheduled.cron).ok()?;
+                Some((scheduled, cron))
             })
-            .collect::<Result<_, String>>()?;
+            .collect();
         *self.0.lock().unwrap() = entries;
-        Ok(())
     }
 
     fn matching(&self, now: DateTime<Local>) -> Vec<Scheduled> {
@@ -105,24 +95,26 @@ impl Scheduler {
 }
 
 #[tauri::command]
-pub fn set_schedules(
-    schedules: Vec<Scheduled>,
-    scheduler: tauri::State<'_, Scheduler>,
-) -> Result<(), String> {
+pub fn set_schedules(schedules: Vec<Scheduled>, scheduler: tauri::State<'_, Scheduler>) {
     scheduler.replace(schedules)
 }
 
+/// Prints whatever matches each minute and reports how it went.
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             let wait = 60_000 - Local::now().timestamp_millis().rem_euclid(60_000);
             tokio::time::sleep(Duration::from_millis(wait as u64)).await;
-            for scheduled in app.state::<Scheduler>().matching(Local::now()) {
+            let now = Local::now();
+            for scheduled in app.state::<Scheduler>().matching(now) {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let cache = app.state::<Arc<SourceCache>>();
+                    let cache = Arc::clone(&app.state::<Arc<SourceCache>>());
                     let queue = app.state::<Arc<PrintQueue>>();
-                    let error = scheduled.print(&cache, &queue).await.err();
+                    let job = scheduled.job_at(now);
+                    let error = job::print(job, scheduled.printer, cache, &queue)
+                        .await
+                        .err();
                     let _ = app.emit(
                         RAN_EVENT,
                         Outcome {
@@ -134,16 +126,6 @@ pub fn spawn(app: AppHandle) {
             }
         }
     });
-}
-
-/// Prints a schedule's job now, as a run would.
-#[tauri::command]
-pub async fn print_scheduled(
-    scheduled: Scheduled,
-    cache: tauri::State<'_, Arc<SourceCache>>,
-    queue: tauri::State<'_, Arc<PrintQueue>>,
-) -> Result<PrintReport, String> {
-    scheduled.print(&cache, &queue).await
 }
 
 /// When `cron` next fires, or what is wrong with it.
@@ -180,21 +162,20 @@ mod tests {
         let scheduler = Scheduler::default();
         let mut no_host = scheduled("no-host", "* * * * *", None);
         no_host.printer.host.clear();
-        scheduler
-            .replace(vec![scheduled("a", "0 9 * * *", None), no_host])
-            .unwrap();
+        scheduler.replace(vec![
+            scheduled("a", "0 9 * * *", None),
+            scheduled("bad", "0 9 * *", None),
+            no_host,
+        ]);
         assert!(scheduler.matching(at(8, 8)).is_empty());
-        assert_eq!(
-            scheduler.matching(at(8, 9).with_second(17).unwrap())[0].id,
-            "a"
-        );
+        let nine = scheduler.matching(at(8, 9).with_second(17).unwrap());
+        assert_eq!(nine.len(), 1);
+        assert_eq!(nine[0].id, "a");
         assert!(scheduler.matching(at(8, 10)).is_empty());
-        scheduler
-            .replace(vec![scheduled("b", "0 10 * * *", None)])
-            .unwrap();
+        scheduler.replace(vec![scheduled("b", "0 10 * * *", None)]);
         assert!(scheduler.matching(at(8, 9)).is_empty());
         assert_eq!(scheduler.matching(at(8, 10))[0].id, "b");
-        scheduler.replace(Vec::new()).unwrap();
+        scheduler.replace(Vec::new());
         assert!(scheduler.matching(at(8, 10)).is_empty());
     }
 

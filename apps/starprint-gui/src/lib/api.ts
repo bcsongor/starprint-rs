@@ -343,14 +343,9 @@ export interface Scheduled {
   due: Due | null;
 }
 
-/** Replaces the schedules the Rust side runs. Rejects a bad expression. */
+/** Replaces the schedules the Rust side runs. */
 export function setSchedules(schedules: Scheduled[]) {
   return invoke<void>("set_schedules", { schedules });
-}
-
-/** Prints a schedule's job now, as a run would. */
-export function printScheduled(scheduled: Scheduled) {
-  return invoke<PrintReport>("print_scheduled", { scheduled });
 }
 
 /** When `cron` next fires, as an ISO string, or what is wrong with it. */

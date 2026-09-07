@@ -48,12 +48,6 @@ export interface Schedule {
   enabled: boolean;
 }
 
-export interface Schedules {
-  /** Off keeps the list but prints nothing. */
-  running: boolean;
-  items: Schedule[];
-}
-
 const THERMAL: Printer = {
   kind: "thermal",
   host: "",
@@ -120,18 +114,12 @@ export function saveLinear(linear: Linear): Promise<void> {
   return write(LINEAR_KEY, linear);
 }
 
-export async function loadSchedules(): Promise<Schedules> {
-  return (await read<Schedules>(SCHEDULES_KEY)) ?? { running: false, items: [] };
+export async function loadSchedules(): Promise<Schedule[]> {
+  return (await read<Schedule[]>(SCHEDULES_KEY)) ?? [];
 }
 
-let scheduleWrites = Promise.resolve();
-
-export function saveSchedules(schedules: Schedules): Promise<void> {
-  // Keep edit order even if a previous save failed.
-  scheduleWrites = scheduleWrites
-    .catch(() => {})
-    .then(() => write(SCHEDULES_KEY, schedules));
-  return scheduleWrites;
+export function saveSchedules(schedules: Schedule[]): Promise<void> {
+  return write(SCHEDULES_KEY, schedules);
 }
 
 export async function loadApiEnabled(): Promise<boolean> {

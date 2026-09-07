@@ -8,7 +8,6 @@ use starprint::Document;
 use starprint::transport::TcpTransport;
 use starprint_api::PrintQueue;
 use starprint_workflows::{Job, Printer};
-use tokio::sync::OwnedMutexGuard;
 
 use crate::hexdump::{self, HexDump};
 use crate::picture::{PicturePath, SourceCache};
@@ -50,18 +49,17 @@ pub async fn print_job(
     cache: tauri::State<'_, Arc<SourceCache>>,
     queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<PrintReport, String> {
-    let turn = queue.lock(&printer.host, printer.port).await;
-    print_on(turn, job, printer, Arc::clone(&cache)).await
+    print(job, printer, Arc::clone(&cache), &queue).await
 }
 
-/// Sends one job on a turn already taken. The scheduler takes the turn
-/// first, so a card is dated the day it prints, not the day it queued.
-pub async fn print_on(
-    turn: OwnedMutexGuard<()>,
+/// Sends one job once the printer is free.
+pub async fn print(
     job: JobRequest,
     printer: Printer,
     cache: Arc<SourceCache>,
+    queue: &PrintQueue,
 ) -> Result<PrintReport, String> {
+    let turn = queue.lock(&printer.host, printer.port).await;
     // Image preparation is CPU-bound and the transport sleeps between
     // chunks; neither belongs on the async runtime.
     tauri::async_runtime::spawn_blocking(move || {

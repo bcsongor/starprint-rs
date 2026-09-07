@@ -32,19 +32,23 @@ import {
 } from "@/lib/schedule";
 import type { Profile, Schedule } from "@/lib/settings";
 
-export interface Draft {
-  schedule: Schedule;
-  editing: boolean;
-}
-
 interface Props {
-  draft: Draft | null;
+  /** The schedule to edit, or null when closed. */
+  draft: Schedule | null;
+  /** Whether `draft` is already in the list. */
+  editing: boolean;
   profiles: Profile[];
   onClose: () => void;
   onSave: (schedule: Schedule) => void;
 }
 
-export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
+export function ScheduleDialog({
+  draft,
+  editing,
+  profiles,
+  onClose,
+  onSave,
+}: Props) {
   return (
     <Dialog
       open={draft !== null}
@@ -55,7 +59,8 @@ export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
       {/* Mounted per opening so the form starts from the draft. */}
       {draft && (
         <ScheduleForm
-          draft={draft}
+          initial={draft}
+          editing={editing}
           profiles={profiles}
           onCancel={onClose}
           onSave={onSave}
@@ -82,26 +87,26 @@ const DUES: Option<Due | "none">[] = [
 type Next = { cron: string; at: string } | { cron: string; error: string };
 
 function ScheduleForm({
-  draft: { schedule: initial, editing },
+  initial,
+  editing,
   profiles,
   onCancel,
   onSave,
 }: {
-  draft: Draft;
+  initial: Schedule;
+  editing: boolean;
   profiles: Profile[];
   onCancel: () => void;
   onSave: (schedule: Schedule) => void;
 }) {
   const [schedule, setSchedule] = useState(initial);
-  const spelled = fromCron(initial.cron);
-  const [preset, setPreset] = useState<Preset | "custom">(
-    spelled?.preset ?? "custom",
-  );
-  const [time, setTime] = useState(spelled?.time ?? "09:00");
   const set = <K extends keyof Schedule>(key: K, value: Schedule[K]) =>
     setSchedule({ ...schedule, [key]: value });
 
+  // A preset and the time write the cron field; Custom opens it for typing.
   const { cron } = schedule;
+  const spelled = fromCron(cron);
+  const [custom, setCustom] = useState(spelled === null);
   const checked = useAsync<Next>(
     () =>
       nextRun(cron)
@@ -168,27 +173,28 @@ function ScheduleForm({
             <div className="flex-1">
               <OptionSelect
                 id="schedule-when"
-                value={preset}
+                value={custom ? "custom" : (spelled?.preset ?? "custom")}
                 options={WHEN}
                 align="start"
                 labelClassName="w-52"
-                onChange={(next) => {
-                  setPreset(next);
-                  if (next !== "custom") set("cron", toCron(next, time));
+                onChange={(preset) => {
+                  setCustom(preset === "custom");
+                  if (preset !== "custom") {
+                    set("cron", toCron(preset, spelled?.time ?? "09:00"));
+                  }
                 }}
               />
             </div>
+            {/* Typed, not picked: the browser's clock button is hidden. */}
             <Input
               type="time"
               aria-label="Time"
-              className="w-28 shrink-0 tabular-nums"
-              value={time}
-              disabled={preset === "custom"}
+              className="w-24 shrink-0 tabular-nums [&::-webkit-calendar-picker-indicator]:hidden"
+              value={spelled?.time ?? ""}
+              disabled={custom}
               onChange={(e) => {
-                setTime(e.target.value);
-                if (preset !== "custom") {
-                  set("cron", toCron(preset, e.target.value));
-                }
+                if (spelled)
+                  set("cron", toCron(spelled.preset, e.target.value));
               }}
             />
           </div>
@@ -205,20 +211,16 @@ function ScheduleForm({
             id="schedule-cron"
             className="font-mono"
             spellCheck={false}
+            disabled={!custom}
             aria-invalid={next !== null && !valid}
-            value={schedule.cron}
-            onChange={(e) => {
-              const spelled = fromCron(e.target.value);
-              set("cron", e.target.value);
-              setPreset(spelled?.preset ?? "custom");
-              if (spelled) setTime(spelled.time);
-            }}
+            value={cron}
+            onChange={(e) => set("cron", e.target.value)}
           />
           <p className="min-h-5 text-sm">
             {next === null
               ? null
               : "at" in next
-                ? `${describe(schedule.cron)}. Next ${formatNext(next.at)}.`
+                ? `${describe(cron)}. Next ${formatNext(next.at)}.`
                 : next.error}
           </p>
         </Field>

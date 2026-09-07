@@ -18,9 +18,8 @@ import { PrintOptions } from "@/components/print-options";
 import { ProfileToolbar } from "@/components/profile-toolbar";
 import { QrForm } from "@/components/qr-form";
 import { QrPreview } from "@/components/qr-preview";
-import { ScheduleDialog, type Draft } from "@/components/schedule-dialog";
+import { ScheduleDialog } from "@/components/schedule-dialog";
 import { SchedulesDrawer } from "@/components/schedules-drawer";
-import { SchedulesToggle } from "@/components/schedules-toggle";
 import { TaskCardForm } from "@/components/task-card-form";
 import { TestPageForm } from "@/components/test-page-form";
 import { TestPagePreview } from "@/components/test-page-preview";
@@ -50,12 +49,10 @@ import {
   TWO_COLOR_DENSITY,
   jobHexdump,
   printJob,
-  printScheduled,
   type HexDump,
   type Job,
   type Note,
   type Picture,
-  type PrintReport,
   type Printer,
   type Qr,
   type Listen,
@@ -63,7 +60,7 @@ import {
   type TestPage,
   type Text,
 } from "@/lib/api";
-import { NAMES, newSchedule, summary, toScheduled } from "@/lib/schedule";
+import { NAMES, newSchedule } from "@/lib/schedule";
 import {
   DEFAULT_LISTEN,
   DEFAULT_PROFILES,
@@ -82,7 +79,6 @@ import {
   type Linear,
   type Profiles,
   type Schedule,
-  type Schedules,
 } from "@/lib/settings";
 
 type Workflow = Job["kind"];
@@ -119,9 +115,9 @@ export default function App() {
   const [linear, setLinear] = useState<Linear | null>(null);
   const [apiEnabled, setApiEnabled] = useState(false);
   const [apiListen, setApiListen] = useState(DEFAULT_LISTEN);
-  const [schedules, setSchedules] = useState<Schedules | null>(null);
+  const [schedules, setSchedules] = useState<Schedule[] | null>(null);
   const [drawer, setDrawer] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Schedule | null>(null);
 
   useEffect(() => {
     // Restore the API's profiles and address before enabling it, and the
@@ -162,7 +158,7 @@ export default function App() {
     saveApiListen(next).catch(console.error);
   };
 
-  const updateSchedules = (next: Schedules) => {
+  const updateSchedules = (next: Schedule[]) => {
     setSchedules(next);
     saveSchedules(next).catch(console.error);
   };
@@ -174,9 +170,7 @@ export default function App() {
     () => updateApiEnabled(false),
   );
 
-  useScheduler(schedules, profiles.profiles, () => {
-    if (schedules) updateSchedules({ ...schedules, running: false });
-  });
+  useScheduler(schedules, profiles.profiles);
 
   const profile = activeProfile(profiles);
   const printer = toPrinter(profile);
@@ -216,16 +210,12 @@ export default function App() {
   const hasHost = printer.host.trim().length > 0;
   const canPrint = ready && hasHost && !printing;
 
-  /** Runs one print and reports it; `what` names the job, `on` the profile. */
-  const send = async (
-    what: string,
-    on: string,
-    print: () => Promise<PrintReport>,
-  ) => {
+  /** Sends one job to the active profile and reports it; `what` names it. */
+  const send = async (job: Job, what: string) => {
     setPrinting(true);
     try {
-      const report = await print();
-      toast.success(`Printed ${what} on ${on}`, {
+      const report = await printJob(job, printer);
+      toast.success(`Printed ${what} on ${profile.name}`, {
         description: `${report.bytes} bytes sent.`,
       });
     } catch (error) {
@@ -237,13 +227,11 @@ export default function App() {
 
   const print = async () => {
     if (!canPrint) return;
-    await send(NAMES[workflow], profile.name, () => printJob(job, printer));
+    await send(job, NAMES[workflow]);
   };
 
   useAutoPrint(linear, (card) =>
-    send(card.reference ?? "task card", profile.name, () =>
-      printJob({ kind: "task-card", ...card }, printer),
-    ),
+    send({ kind: "task-card", ...card }, card.reference ?? "task card"),
   );
 
   /** Puts a scheduled job back in its form, to change and schedule again. */
@@ -271,12 +259,15 @@ export default function App() {
     setWorkflow(job.kind);
   };
 
+  const editing = schedules?.some((s) => s.id === draft?.id) ?? false;
+
   const saveSchedule = (schedule: Schedule) => {
-    if (!schedules || !draft) return;
-    const items = draft.editing
-      ? schedules.items.map((s) => (s.id === schedule.id ? schedule : s))
-      : [...schedules.items, schedule];
-    updateSchedules({ running: schedules.running || !draft.editing, items });
+    if (!schedules) return;
+    updateSchedules(
+      editing
+        ? schedules.map((s) => (s.id === schedule.id ? schedule : s))
+        : [...schedules, schedule],
+    );
     setDraft(null);
   };
 
@@ -322,15 +313,16 @@ export default function App() {
             onChange={updateApiEnabled}
             onListenChange={updateApiListen}
           />
-          <SchedulesToggle
-            running={schedules?.running ?? false}
-            onOpen={() => {
-              if (schedules && !schedules.running) {
-                updateSchedules({ ...schedules, running: true });
-              }
-              setDrawer(true);
-            }}
-          />
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Schedules"
+            title="Schedules"
+            disabled={!schedules}
+            onClick={() => setDrawer(true)}
+          >
+            <CalendarClockIcon />
+          </Button>
         </div>
         {/* Paper label starts where the Preview label does. */}
         <div className="grid grid-cols-3 items-end gap-3 px-4">
@@ -401,12 +393,7 @@ export default function App() {
               <Button
                 variant="outline"
                 disabled={!ready || !schedules}
-                onClick={() =>
-                  setDraft({
-                    schedule: newSchedule(job, profile.id),
-                    editing: false,
-                  })
-                }
+                onClick={() => setDraft(newSchedule(job, profile.id))}
               >
                 <CalendarClockIcon />
                 Schedule
@@ -461,16 +448,7 @@ export default function App() {
           schedules={schedules}
           onChange={updateSchedules}
           profiles={profiles.profiles}
-          onEdit={(schedule) => setDraft({ schedule, editing: true })}
-          onPrint={(schedule) => {
-            const scheduled = toScheduled(schedule, profiles.profiles);
-            const to = profiles.profiles.find((p) => p.id === schedule.profileId);
-            if (scheduled && to) {
-              send(summary(schedule.job), to.name, () =>
-                printScheduled(scheduled),
-              );
-            }
-          }}
+          onEdit={setDraft}
           onLoad={(schedule) => {
             loadJob(schedule.job);
             setDrawer(false);
@@ -480,6 +458,7 @@ export default function App() {
 
       <ScheduleDialog
         draft={draft}
+        editing={editing}
         profiles={profiles.profiles}
         onClose={() => setDraft(null)}
         onSave={saveSchedule}
