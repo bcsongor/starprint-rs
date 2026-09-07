@@ -5,6 +5,7 @@ mod hexdump;
 mod job;
 mod picture;
 mod preview;
+mod scheduler;
 mod window;
 
 use std::sync::Arc;
@@ -45,10 +46,12 @@ pub fn run() {
         .manage(Arc::new(SourceCache::default()))
         .manage(Arc::new(PrintQueue::default()))
         .manage(api::Embedded::default())
+        .manage(scheduler::Scheduler::default())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             window::colour_title_bar(app);
+            scheduler::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -65,7 +68,9 @@ pub fn run() {
             probe_printer,
             api::list_addresses,
             api::start_api,
-            api::stop_api
+            api::stop_api,
+            scheduler::set_schedules,
+            scheduler::next_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

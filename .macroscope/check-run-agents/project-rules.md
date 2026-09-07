@@ -9,7 +9,7 @@ include:
   - "apps/starprint-gui/src-tauri/**"
   - "skills/**"
 requires:
-  - "CI / lint"
+  - "lint"
 conclusion: failure
 requiredStatusCheck: true
 maxBudgetPerRun: 2
@@ -34,6 +34,9 @@ test described in the PR is a finding.
   size and the 1.7 module ceiling on the corner radius.
 - Density +4 selects two-colour mode and sends neither the density nor
   the speed command. Double-resolution sections use +3.
+- The GUI disables picture double resolution at density +4 for both
+  preview and printing. Apply this existing restriction when resolving
+  a saved job against its selected profile, including scheduled jobs.
 
 ## Command bytes
 
@@ -59,6 +62,10 @@ call them. Findings:
   both printers.
 - A job that selects `PrintMode::DoubleResolution` and does not switch
   back at the end. The mode survives `ESC @`.
+
+The GUI's density +4 picture restriction above is intentional. Applying
+it to a saved job is not a new printing rule. The shared workflow's +3
+fallback for double-resolution sections does not replace that GUI policy.
 
 ## The API skill
 

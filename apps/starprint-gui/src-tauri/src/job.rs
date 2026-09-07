@@ -15,7 +15,7 @@ use crate::picture::{PicturePath, SourceCache};
 #[derive(Debug, Clone, Deserialize)]
 pub struct JobRequest {
     #[serde(flatten)]
-    job: Job,
+    pub(crate) job: Job,
     #[serde(default)]
     path: String,
 }
@@ -49,7 +49,16 @@ pub async fn print_job(
     cache: tauri::State<'_, Arc<SourceCache>>,
     queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<PrintReport, String> {
-    let cache = Arc::clone(&cache);
+    print(job, printer, Arc::clone(&cache), &queue).await
+}
+
+/// Sends one job once the printer is free.
+pub async fn print(
+    job: JobRequest,
+    printer: Printer,
+    cache: Arc<SourceCache>,
+    queue: &PrintQueue,
+) -> Result<PrintReport, String> {
     let turn = queue.lock(&printer.host, printer.port).await;
     // Image preparation is CPU-bound and the transport sleeps between
     // chunks; neither belongs on the async runtime.

@@ -1,9 +1,10 @@
 import { load } from "@tauri-apps/plugin-store";
-import type { Listen, Printer } from "./api";
+import type { Due, Job, Listen, Printer } from "./api";
 
 const FILE = "settings.json";
 const KEY = "profiles";
 const LINEAR_KEY = "linear";
+const SCHEDULES_KEY = "schedules";
 /** Whether the HTTP API runs inside the app. */
 const API_KEY = "api";
 /** The bearer token the API requires; made once, kept so clients stay set up. */
@@ -33,6 +34,18 @@ export interface Linear {
   user: string | null;
   /** Whether newly assigned issues print as they arrive. */
   autoPrint: boolean;
+}
+
+/** A job printed on a timetable. */
+export interface Schedule {
+  id: string;
+  /** The job as its form stood when it was scheduled. */
+  job: Job;
+  profileId: string;
+  cron: string;
+  /** Task cards only: the due date filled in when it prints. */
+  due: Due | null;
+  enabled: boolean;
 }
 
 const THERMAL: Printer = {
@@ -99,6 +112,14 @@ export async function loadLinear(): Promise<Linear | null> {
 
 export function saveLinear(linear: Linear): Promise<void> {
   return write(LINEAR_KEY, linear);
+}
+
+export async function loadSchedules(): Promise<Schedule[]> {
+  return (await read<Schedule[]>(SCHEDULES_KEY)) ?? [];
+}
+
+export function saveSchedules(schedules: Schedule[]): Promise<void> {
+  return write(SCHEDULES_KEY, schedules);
 }
 
 export async function loadApiEnabled(): Promise<boolean> {

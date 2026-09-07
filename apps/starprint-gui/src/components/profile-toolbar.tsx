@@ -61,7 +61,7 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
     onChange({ profiles: [...state.profiles, next], activeId: next.id });
 
   return (
-    <Field className="w-80">
+    <Field className="min-w-0 flex-1">
       <FieldLabel htmlFor="profile">Profile</FieldLabel>
       <div className="flex items-center gap-2">
         <Select

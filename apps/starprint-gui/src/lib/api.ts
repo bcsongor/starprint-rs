@@ -328,3 +328,35 @@ export function startApi(
 export function stopApi() {
   return invoke<void>("stop_api");
 }
+
+/** Mirrors `Due` in src-tauri/src/scheduler.rs: the due date a scheduled
+ * task card gets when it prints. */
+export type Due = "run-day" | "next-day";
+
+/** Mirrors `Scheduled` in src-tauri/src/scheduler.rs. */
+export interface Scheduled {
+  id: string;
+  job: Job;
+  printer: Printer;
+  /** Five fields: minute, hour, day, month, weekday. */
+  cron: string;
+  due: Due | null;
+}
+
+/** Replaces the schedules the Rust side runs. */
+export function setSchedules(schedules: Scheduled[]) {
+  return invoke<void>("set_schedules", { schedules });
+}
+
+/** When `cron` next fires, as an ISO string, or what is wrong with it. */
+export function nextRun(cron: string) {
+  return invoke<string>("next_run", { cron });
+}
+
+/** Sent after each scheduled print; mirrors `Outcome` in scheduler.rs. */
+export const SCHEDULE_RAN = "schedule-ran";
+
+export interface ScheduleOutcome {
+  id: string;
+  error: string | null;
+}

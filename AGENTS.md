@@ -23,12 +23,19 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 - `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the previews, the API button and the Linear
-  auto-print. Previews are PNGs the Rust side draws from the bitmaps
-  that print. A preview that kept a rule of its own drifted once, and
-  squared finder patterns went unnoticed until they came off the
-  printer. The API button runs `starprint-api`'s server in-process on
-  the profiles that have a host, at an address and port picked under
-  the button, behind a token kept in the settings store, and starts it
+  auto-print, and the schedules. Previews are PNGs the Rust side draws
+  from the bitmaps that print. A preview that kept a rule of its own
+  drifted once, and squared finder patterns went unnoticed until they
+  came off the printer. A schedule is a job as its form stood, a
+  profile and a five-field cron expression, kept in the settings store
+  by the frontend and shown in a drawer off the header. The Rust side
+  (`src-tauri/src/scheduler.rs`) checks the current local minute with
+  `croner` and spawns matching jobs through the shared print queue.
+  Only schedule definitions are stored. Schedules without a host do
+  not run. A task card's due date follows its rule when it prints.
+  The API button runs `starprint-api`'s server in-process on the
+  profiles that have a host, at an address and port picked under the
+  button, behind a token kept in the settings store, and starts it
   again when a profile or the address changes. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
