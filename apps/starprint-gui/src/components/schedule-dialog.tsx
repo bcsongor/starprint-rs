@@ -153,7 +153,11 @@ function ScheduleForm({
             <SelectTrigger id="schedule-printer" className="w-full">
               <SelectValue>{printer?.name}</SelectValue>
             </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false} align="start">
+            <SelectContent
+              alignItemWithTrigger={false}
+              align="start"
+              className="w-max max-w-(--available-width) min-w-(--anchor-width)"
+            >
               {profiles.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}

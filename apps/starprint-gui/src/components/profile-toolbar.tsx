@@ -80,13 +80,17 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
                 />
                 {profile.name}
               </span>
-              <span className="text-muted-foreground">
+              <span className="truncate text-muted-foreground">
                 {" "}
                 · {profile.host || "no host"}
               </span>
             </SelectValue>
           </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
+          <SelectContent
+            alignItemWithTrigger={false}
+            align="start"
+            className="w-max max-w-(--available-width) min-w-(--anchor-width)"
+          >
             {listed.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 <span className={DOTTED}>
