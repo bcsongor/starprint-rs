@@ -128,6 +128,9 @@ default, keeps them square. 100 rounds each corner as far as its shape allows,
 so a lone module becomes a circle early on and the finder patterns keep
 going. Both printers can print one.
 
+`size` and `radius` accept integers from 0 to 255. The workflow clamps
+`size` to 10 to 80 mm and caps `radius` at 100 instead of rejecting them.
+
 Test page:
 
 ```json
@@ -238,6 +241,8 @@ Only one server can open a data directory at a time; a `lock` file holds
 the exclusive lock until the store closes. Use separate directories for
 separate servers. Unknown fields inside a `job` are ignored, so check
 field names against this skill before sending a job.
+Writes replace whole files, but the latest change may be lost after a
+power loss even if the request succeeded.
 
 The server keeps its profiles, schedules and token in one directory:
 `starprint` under the platform's configuration directory, or wherever

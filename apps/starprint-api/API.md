@@ -184,8 +184,8 @@ but the ones marked required has a default.
 | `data` | string | Required. What the code carries |
 | `caption` | string | Printed above the symbol |
 | `errorCorrection` | `l`, `m`, `q` or `h` | `m` |
-| `size` | integer, 10 to 80 | `30`. Width in millimetres |
-| `radius` | integer, 0 to 100 | `0`. Corner rounding; 0 is square |
+| `size` | integer, 0 to 255 | `30`. Width in millimetres, clamped to 10 to 80 |
+| `radius` | integer, 0 to 255 | `0`. Corner rounding, capped at 100; 0 is square |
 | `align` | `left`, `center` or `right` | `center` |
 
 **`test-page`**
@@ -296,6 +296,8 @@ saying what went wrong.
 Each file is read once at startup and rewritten whole whenever the API
 changes it, so a hand edit means a restart and does not survive the
 next change made over the API. A file the server cannot read stops it.
+Writes replace complete files atomically. A successful response does
+not guarantee that the latest change survives a power loss.
 
 The directory is trusted configuration. It and its parent directories
 must not be writable by untrusted users. Anyone who can replace these
