@@ -18,6 +18,9 @@
 - Schedules run on the server: `GET`, `POST`, `PUT` and `DELETE` under
   `/v1/schedules`, printed on the server's local clock. The reference
   is [`apps/starprint-api/API.md`](apps/starprint-api/API.md).
+- `POST /v1/printers/{name}/preview` takes a job's body and answers
+  with how it will look: the lines for a text job, a PNG for anything
+  drawn as dots. Nothing reaches the printer.
 
 ### Desktop app
 

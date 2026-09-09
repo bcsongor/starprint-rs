@@ -3145,6 +3145,7 @@ dependencies = [
 name = "starprint-workflows"
 version = "1.0.0"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
  "image",
  "qrcodegen",

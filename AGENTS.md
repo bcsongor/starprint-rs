@@ -16,15 +16,18 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   and the six jobs: task cards, text, note slips, QR codes, pictures and
   test pages. It reads no files and opens no sockets, so a picture job
   is handed its image. Job behaviour belongs here, not in a front end,
-  or the two drift. QR symbols are encoded here by `qrcodegen` and
+  or the two drift. `preview` draws what a job will look like: a
+  layout for the printer's own fonts, and a PNG from the bitmap that
+  prints, with thermal dots widened to the measured size. Both front
+  ends show previews from it and nothing else. QR symbols are encoded here by `qrcodegen` and
   printed as dots on both heads. The SP700 has no QR command, and one
   bitmap gives one path, a known version, a preview that draws what
   prints and rounded modules, none of which `ESC GS y` would.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the previews, the API button and the Linear
-  auto-print, and the schedules. Previews are PNGs the Rust side draws
-  from the bitmaps that print. A preview that kept a rule of its own
+  auto-print, and the schedules. Its preview commands call the
+  workflows crate's `preview`. A preview that kept a rule of its own
   drifted once, and squared finder patterns went unnoticed until they
   came off the printer. A schedule is a job as its form stood, a
   profile and a five-field cron expression, kept in the settings store
@@ -61,7 +64,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   server does. Shutdown cancels queued scheduled jobs before draining
   HTTP requests; blocking writes already in progress finish under
   their queue guards. Profiles are addressed by name, `PUT` creates or
-  replaces, and jobs still cannot carry `host` or `port`. The connection
+  replaces, and jobs still cannot carry `host` or `port`. `/preview`
+  takes a job's body and answers with the workflows crate's `Preview`,
+  so a client needs no job code of its own. The connection
   probe lives here too, behind `/status` and exported as `reachable`,
   so it takes the printer's turn like a job. `printers::PrintQueue`,
   exported at the crate root, serialises connections by host and port.
@@ -109,7 +114,7 @@ them, so do not retune these values from a screen:
   reference and must not change. `ToneCurve::THERMAL` (gamma 0.55, no
   equalise) was dialled in at slow speed, density +3, `RasterQuality::High`;
   those are the settings photos print best with.
-- The GUI preview draws thermal dots at 150 % of the pitch at normal
+- The preview draws thermal dots at 150 % of the pitch at normal
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job.

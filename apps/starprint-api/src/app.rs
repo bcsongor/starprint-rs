@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
@@ -12,6 +13,7 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
+use starprint_workflows::Preview;
 
 use crate::body;
 use crate::config::{Profile, ProfileSpec};
@@ -34,6 +36,10 @@ pub fn router(printers: Arc<Printers>) -> Router {
             // Covers the multipart form, which is streamed rather than
             // collected; the JSON branch holds itself to its own limit.
             post(create_job).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
+        )
+        .route(
+            "/v1/printers/{name}/preview",
+            post(preview_job).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
         )
         .route("/v1/printers/{name}/raw", post(create_raw_job))
         .route("/v1/schedules", get(list_schedules).post(create_schedule))
@@ -180,31 +186,44 @@ async fn printer_status(
     }))
 }
 
+/// A job request as JSON, or as a form with the picture beside it.
+async fn job_request(request: Request) -> Result<(JobRequest, Option<Bytes>), Problem> {
+    match body::media_type(request.headers()).as_deref() {
+        Some("application/json") => Ok((body::json(request).await?, None)),
+        Some("multipart/form-data") => {
+            let (job, image) = body::form(request).await?;
+            Ok((JobRequest::parse(&job)?, image))
+        }
+        other => Err(body::unsupported(
+            other,
+            "application/json or multipart/form-data",
+        )),
+    }
+}
+
 async fn create_job(
     State(printers): State<Arc<Printers>>,
     Path(name): Path<String>,
     request: Request,
 ) -> Result<Json<PrintReport>, Problem> {
     let printer = printers.find(&name)?.printer;
-
-    let (job, image): (JobRequest, _) = match body::media_type(request.headers()).as_deref() {
-        Some("application/json") => (body::json(request).await?, None),
-        Some("multipart/form-data") => {
-            let (job, image) = body::form(request).await?;
-            (JobRequest::parse(&job)?, image)
-        }
-        other => {
-            return Err(body::unsupported(
-                other,
-                "application/json or multipart/form-data",
-            ));
-        }
-    };
-
+    let (job, image) = job_request(request).await?;
     let payload = job.document(&printer, image).await?;
     Ok(Json(PrintReport {
         bytes_sent: printers::send(&printer, payload, &printers.queue).await?,
     }))
+}
+
+/// The same request as a job, answered with how it would look instead
+/// of sending it.
+async fn preview_job(
+    State(printers): State<Arc<Printers>>,
+    Path(name): Path<String>,
+    request: Request,
+) -> Result<Json<Preview>, Problem> {
+    let printer = printers.find(&name)?.printer;
+    let (job, image) = job_request(request).await?;
+    Ok(Json(job.preview(&printer, image).await?))
 }
 
 async fn create_raw_job(
@@ -728,6 +747,56 @@ mod tests {
         assert!(
             bytes.windows(3).any(|w| w == [0x1b, b'^', 1]),
             "a double-density bit image"
+        );
+    }
+
+    /// A preview takes the same body as a job and touches no printer,
+    /// so it answers for a printer that is off.
+    #[tokio::test]
+    async fn a_preview_shows_the_job_without_printing_it() {
+        let port = closed_port().await;
+        let reply = call(
+            printers(port),
+            post_json(
+                "/v1/printers/tsp800ii/preview",
+                json!({ "job": { "kind": "task-card", "text": "Standup" }, "density": 4 }),
+            ),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{:?}", reply.json);
+        assert_eq!(reply.json["kind"], "task-card");
+        assert_eq!(reply.json["lines"][0], "Standup");
+
+        let reply = call(
+            printers(port),
+            multipart(
+                "/v1/printers/sp743/preview",
+                form(json!({ "job": { "kind": "picture" } }), Some(&png())),
+            ),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{:?}", reply.json);
+        assert_eq!(reply.json["kind"], "picture");
+        assert!(
+            reply.json["image"]
+                .as_str()
+                .is_some_and(|url| url.starts_with("data:image/png;base64,")),
+            "{:?}",
+            reply.json
+        );
+
+        let reply = call(
+            printers(port),
+            post_json(
+                "/v1/printers/sp743/preview",
+                json!({ "job": { "kind": "picture" } }),
+            ),
+        )
+        .await;
+        assert_eq!(
+            reply.status,
+            StatusCode::BAD_REQUEST,
+            "a picture needs its image"
         );
     }
 

@@ -94,6 +94,13 @@ curl -s -X POST http://127.0.0.1:9110/v1/printers/tsp800ii/jobs \
 an issue key, printed between the banner and the date; it and `due` may
 be left out.
 
+To see a job before spending paper on it, post the same body to
+`/v1/printers/<name>/preview`. The reply is the job as it will print:
+for text jobs the `lines` the printer will set and how many `columns`
+it has, and for anything drawn as dots an `image`, a `data:` URL of a
+PNG you can show the user or open yourself. Nothing reaches the
+printer, so it works while the printer is off.
+
 Text, for anything freeform:
 
 ```json

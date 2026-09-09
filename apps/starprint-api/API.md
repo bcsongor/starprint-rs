@@ -19,6 +19,7 @@ cause. For how to use the API from an agent, see the
 | `DELETE` | [`/v1/printers/{name}`](#delete-v1printersname) | Remove a profile |
 | `GET` | [`/v1/printers/{name}/status`](#get-v1printersnamestatus) | Whether the printer answers |
 | `POST` | [`/v1/printers/{name}/jobs`](#post-v1printersnamejobs) | Print a job |
+| `POST` | [`/v1/printers/{name}/preview`](#post-v1printersnamepreview) | Show a job without printing it |
 | `POST` | [`/v1/printers/{name}/raw`](#post-v1printersnameraw) | Send bytes as they are |
 | `GET` | [`/v1/schedules`](#get-v1schedules) | List the schedules |
 | `POST` | [`/v1/schedules`](#post-v1schedules) | Create a schedule |
@@ -147,6 +148,29 @@ whether the printer accepted or printed the job.
 
 Jobs to the same host and port are written one at a time, whichever
 profile they came through.
+
+### `POST /v1/printers/{name}/preview`
+
+Body: as [`jobs`](#post-v1printersnamejobs). Nothing is sent to the
+printer, so it answers while the printer is off.
+
+Response: the job as it will look on that printer, tagged by `kind`
+like the job. A text job is its layout: `columns` and the `lines` the
+printer's own font will set. A job printed as dots carries `image`, a
+`data:` URL of a PNG drawn from the bitmap that prints, dot for dot,
+with thermal dots widened as the head widens them.
+
+```json
+{ "kind": "task-card", "columns": 48, "lines": ["Renew passport"], "priority": null, "reference": null, "due": "                                     15 SEP 2026" }
+```
+
+```json
+{ "kind": "qr", "columns": 48, "caption": [], "align": "center", "modules": 33, "widthMm": 53.625, "heightMm": 53.625, "image": "data:image/png;base64,iVBORw0K..." }
+```
+
+`note` has its layout and an `image`, `picture` an `image` alone, and
+`test-page` its `sections`, each a `title` and what a fault looks like
+in `check`. Empty text previews as an empty layout rather than a `400`.
 
 ### Job kinds
 

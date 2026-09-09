@@ -3,8 +3,9 @@
 
 use axum::body::Bytes;
 use axum::http::StatusCode;
+use image::DynamicImage;
 use serde::Deserialize;
-use starprint_workflows::{Head, Job, Printer, Speed, check_density};
+use starprint_workflows::{Head, Job, Preview, Printer, Speed, check_density};
 
 use crate::problem::Problem;
 
@@ -31,6 +32,32 @@ impl JobRequest {
     /// runtime. The caller does this before taking the printer's turn,
     /// so a slow photo does not hold the printer up.
     pub async fn document(self, profile: &Printer, image: Option<Bytes>) -> Result<Bytes, Problem> {
+        self.build(profile, image, |printer, job, image| {
+            printer
+                .document(job, image)
+                .map(|document| Bytes::from(document.into_bytes()))
+        })
+        .await
+    }
+
+    /// What this job looks like on `profile`, without printing it.
+    pub async fn preview(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+    ) -> Result<Preview, Problem> {
+        self.build(profile, image, |printer, job, image| {
+            printer.preview(job, image)
+        })
+        .await
+    }
+
+    async fn build<T: Send + 'static>(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+        build: impl FnOnce(&Printer, &Job, Option<&DynamicImage>) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, Problem> {
         if self.job.needs_image() && image.is_none() {
             return Err(Problem::bad_request(
                 "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
@@ -42,9 +69,7 @@ impl JobRequest {
             let image = image
                 .map(|bytes| starprint_workflows::picture::decode(&bytes))
                 .transpose()?;
-            printer
-                .document(&job, image.as_ref())
-                .map(|document| Bytes::from(document.into_bytes()))
+            build(&printer, &job, image.as_ref())
         })
         .await
         .map_err(|e| {

@@ -16,6 +16,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 croner = "4"
 # The platform's configuration directory, for the default data directory.
 dirs = "6"
+# The decoded picture a job or preview is built from.
+image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 # `preserve_order` keeps GET /v1/printers in the order the file lists.
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -26,10 +28,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal",
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-# A sample PNG to post, a stand-in printer to write to, and the router
-# driven without a socket. `macros` is for `#[tokio::test]`; startup
-# builds its runtime by hand.
-image = { version = "0.25", default-features = false, features = ["png"] }
+# A stand-in printer to write to, and the router driven without a
+# socket. `macros` is for `#[tokio::test]`; startup builds its runtime
+# by hand.
 # A data directory that is thrown away after the test.
 tempfile = "3"
 tokio = { version = "1", features = ["io-util", "macros", "time", "test-util"] }
