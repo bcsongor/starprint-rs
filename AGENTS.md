@@ -53,10 +53,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   goes in whichever of `body`, `job`, `printers`, `config`, `data`,
   `schedule`, `problem`, `app` or `server` owns it. `data` is the data
   directory: `printers.json`, `schedules.json` and `token`, each read
-  once at startup and written whole under a mutation lock after every
-  change, off the request workers. Readers keep the previous snapshot
-  during a write. A directory lock prevents two servers from sharing
-  the files. Data stays in memory when the desktop app supplies profiles.
+  once at startup and written whole under its lock after every change,
+  or kept in memory when the desktop app supplies the profiles. The
+  directory is locked while open, so two servers cannot share one.
   `schedule` holds the schedule shape and the loop that prints each one
   on the local clock through the queue; it runs for as long as the
   server does. Shutdown cancels queued scheduled jobs before draining

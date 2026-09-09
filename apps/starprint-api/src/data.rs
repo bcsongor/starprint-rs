@@ -2,16 +2,19 @@
 //! in memory.
 //!
 //! Each file is read once at startup and written whole after every
-//! change, under a mutation lock, so the file always holds a complete
-//! list. Readers keep the previous snapshot during disk I/O. A change
-//! is written before it is kept, so a failed write leaves memory and disk as they
+//! change, under the lock that guards its contents, so the last write
+//! wins and the file always holds a complete list. A change is written
+//! before it is kept, so a failed write leaves memory and disk as they
 //! were. A hand edit while the server runs is overwritten by the next
-//! change made over the API.
+//! change made over the API. One server at a time: the directory is
+//! locked for as long as it is open, since two would overwrite each
+//! other's files.
 
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 
 use crate::config::{self, Profile};
 use crate::schedule::ScheduleSpec;
@@ -19,15 +22,14 @@ use crate::schedule::ScheduleSpec;
 const PROFILES: &str = "printers.json";
 const SCHEDULES: &str = "schedules.json";
 const TOKEN: &str = "token";
+const LOCK: &str = "lock";
 
 pub struct Data {
     /// `None` keeps everything in memory: the desktop app's embedded
     /// server, and the tests.
     dir: Option<PathBuf>,
-    /// Held until the store closes, including while a write is in progress.
-    _directory_lock: Option<std::fs::File>,
-    /// Serialises mutations without holding a read lock across disk I/O.
-    mutations: Mutex<()>,
+    /// Held for as long as the directory is open.
+    _lock: Option<File>,
     token: String,
     profiles: RwLock<Vec<Profile>>,
     schedules: RwLock<BTreeMap<String, ScheduleSpec>>,
@@ -47,15 +49,9 @@ impl Data {
     /// A file the server cannot work from is an error here.
     pub fn open(dir: &Path, token: Option<String>) -> Result<Self, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let lock_path = dir.join("lock");
-        let directory_lock = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|e| format!("{}: {e}", lock_path.display()))?;
-        fs2::FileExt::try_lock_exclusive(&directory_lock)
-            .map_err(|e| format!("{}: cannot lock data directory: {e}", dir.display()))?;
+        let lock = File::create(dir.join(LOCK)).map_err(|e| format!("{}: {e}", dir.display()))?;
+        lock.try_lock()
+            .map_err(|_| format!("{}: another server has it open", dir.display()))?;
         let profiles = config::read(&dir.join(PROFILES))?;
         let schedules = read_schedules(&dir.join(SCHEDULES))?;
         let token_path = dir.join(TOKEN);
@@ -75,8 +71,7 @@ impl Data {
         };
         Ok(Self {
             dir: Some(dir.to_owned()),
-            _directory_lock: Some(directory_lock),
-            mutations: Mutex::default(),
+            _lock: Some(lock),
             token,
             profiles: RwLock::new(profiles),
             schedules: RwLock::new(schedules),
@@ -87,8 +82,7 @@ impl Data {
     pub fn ephemeral(profiles: Vec<Profile>, token: String) -> Self {
         Self {
             dir: None,
-            _directory_lock: None,
-            mutations: Mutex::default(),
+            _lock: None,
             token,
             profiles: RwLock::new(profiles),
             schedules: RwLock::default(),
@@ -116,8 +110,8 @@ impl Data {
     /// Replaces the profile of that name in place, or adds one. `true`
     /// when it was new.
     pub fn put_profile(&self, profile: Profile) -> Result<bool, String> {
-        let _mutation = self.mutations.lock().unwrap();
-        let mut next = self.profiles();
+        let mut profiles = self.profiles.write().unwrap();
+        let mut next = profiles.clone();
         let created = match next.iter_mut().find(|p| p.name == profile.name) {
             Some(existing) => {
                 *existing = profile;
@@ -129,20 +123,20 @@ impl Data {
             }
         };
         self.save_profiles(&next)?;
-        *self.profiles.write().unwrap() = next;
+        *profiles = next;
         Ok(created)
     }
 
     /// `false` when there was none. Its schedules stay, and do not run.
     pub fn remove_profile(&self, name: &str) -> Result<bool, String> {
-        let _mutation = self.mutations.lock().unwrap();
-        let mut next = self.profiles();
-        let Some(index) = next.iter().position(|p| p.name == name) else {
+        let mut profiles = self.profiles.write().unwrap();
+        let Some(index) = profiles.iter().position(|p| p.name == name) else {
             return Ok(false);
         };
+        let mut next = profiles.clone();
         next.remove(index);
         self.save_profiles(&next)?;
-        *self.profiles.write().unwrap() = next;
+        *profiles = next;
         Ok(true)
     }
 
@@ -159,36 +153,36 @@ impl Data {
     /// Returns the id the schedule was given.
     pub fn add_schedule(&self, spec: ScheduleSpec) -> Result<String, String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let _mutation = self.mutations.lock().unwrap();
-        let mut next = self.schedules.read().unwrap().clone();
+        let mut schedules = self.schedules.write().unwrap();
+        let mut next = schedules.clone();
         next.insert(id.clone(), spec);
         self.save_schedules(&next)?;
-        *self.schedules.write().unwrap() = next;
+        *schedules = next;
         Ok(id)
     }
 
     /// `false` when there is no schedule with that id.
     pub fn put_schedule(&self, id: &str, spec: ScheduleSpec) -> Result<bool, String> {
-        let _mutation = self.mutations.lock().unwrap();
-        let mut next = self.schedules.read().unwrap().clone();
-        if !next.contains_key(id) {
+        let mut schedules = self.schedules.write().unwrap();
+        if !schedules.contains_key(id) {
             return Ok(false);
         }
+        let mut next = schedules.clone();
         next.insert(id.to_owned(), spec);
         self.save_schedules(&next)?;
-        *self.schedules.write().unwrap() = next;
+        *schedules = next;
         Ok(true)
     }
 
     /// `false` when there was none.
     pub fn remove_schedule(&self, id: &str) -> Result<bool, String> {
-        let _mutation = self.mutations.lock().unwrap();
-        let mut next = self.schedules.read().unwrap().clone();
+        let mut schedules = self.schedules.write().unwrap();
+        let mut next = schedules.clone();
         if next.remove(id).is_none() {
             return Ok(false);
         }
         self.save_schedules(&next)?;
-        *self.schedules.write().unwrap() = next;
+        *schedules = next;
         Ok(true)
     }
 
@@ -304,25 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn a_directory_has_one_writer_until_the_store_closes() {
-        let dir = tempfile::tempdir().unwrap();
-        let data = Data::open(dir.path(), None).unwrap();
-        assert!(Data::open(dir.path(), Some("replacement".to_owned())).is_err());
-        let token = data.token().to_owned();
-        drop(data);
-        assert_eq!(Data::open(dir.path(), None).unwrap().token(), token);
-    }
-
-    #[test]
-    fn readers_do_not_wait_for_the_mutation_lock() {
-        let data = Data::ephemeral(vec![profile("a")], "t".to_owned());
-        let _mutation = data.mutations.lock().unwrap();
-        assert_eq!(data.profiles().len(), 1);
-        assert!(data.profile("a").is_some());
-        assert!(data.schedules().is_empty());
-    }
-
-    #[test]
     fn the_token_is_kept_and_replaced_on_request() {
         let dir = tempfile::tempdir().unwrap();
         let first = Data::open(dir.path(), None).unwrap().token().to_owned();
@@ -332,6 +307,15 @@ mod tests {
         assert_eq!(given.token(), "s3cret", "trimmed, as a bearer is");
         drop(given);
         assert_eq!(Data::open(dir.path(), None).unwrap().token(), "s3cret");
+    }
+
+    #[test]
+    fn a_directory_is_one_servers_until_it_closes() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = Data::open(dir.path(), None).unwrap();
+        assert!(Data::open(dir.path(), None).is_err());
+        drop(data);
+        assert!(Data::open(dir.path(), None).is_ok());
     }
 
     #[test]

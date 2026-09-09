@@ -184,8 +184,8 @@ but the ones marked required has a default.
 | `data` | string | Required. What the code carries |
 | `caption` | string | Printed above the symbol |
 | `errorCorrection` | `l`, `m`, `q` or `h` | `m` |
-| `size` | integer, 0 to 255 | `30`. Width in millimetres, clamped to 10 to 80 |
-| `radius` | integer, 0 to 255 | `0`. Corner rounding, capped at 100; 0 is square |
+| `size` | integer, 10 to 80 | `30`. Width in millimetres. Out of range is clamped, not refused |
+| `radius` | integer, 0 to 100 | `0`. Corner rounding; 0 is square. Above 100 counts as 100 |
 | `align` | `left`, `center` or `right` | `center` |
 
 **`test-page`**
@@ -291,17 +291,13 @@ saying what went wrong.
 | `printers.json` | The profiles, as an object keyed by name, each in the shape [`PUT`](#put-v1printersname) takes |
 | `schedules.json` | The schedules, as an object keyed by id, each in the shape [`POST`](#post-v1schedules) takes |
 | `token` | The token |
-| `lock` | An exclusive lock held while the data store is open. A second server using the same directory fails at startup |
+| `lock` | Held while a server has the directory open. A second server on the same directory fails to start |
 
 Each file is read once at startup and rewritten whole whenever the API
 changes it, so a hand edit means a restart and does not survive the
 next change made over the API. A file the server cannot read stops it.
-Writes replace complete files atomically. A successful response does
-not guarantee that the latest change survives a power loss.
-
-The directory is trusted configuration. It and its parent directories
-must not be writable by untrusted users. Anyone who can replace these
-files can change the token and printer destinations.
+The server trusts what it finds there, the token included, so the
+directory should be the server user's own.
 
 A profile file for one printer of each kind:
 

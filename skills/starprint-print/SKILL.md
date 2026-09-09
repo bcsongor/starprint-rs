@@ -126,10 +126,8 @@ symbol's width in millimetres (10 to 80, 30 by default),
 `center` or `right`. `radius` rounds the corners of the symbol. 0, the
 default, keeps them square. 100 rounds each corner as far as its shape allows,
 so a lone module becomes a circle early on and the finder patterns keep
-going. Both printers can print one.
-
-`size` and `radius` accept integers from 0 to 255. The workflow clamps
-`size` to 10 to 80 mm and caps `radius` at 100 instead of rejecting them.
+going. Both printers can print one. A `size` or `radius` out of range
+is clamped, not refused.
 
 Test page:
 
@@ -235,22 +233,14 @@ unless the user asks, and do not guess a host.
 
 ## The data directory
 
-Use a directory whose files and parent directories untrusted users
-cannot change. The server trusts the saved token and printer addresses.
-Only one server can open a data directory at a time; a `lock` file holds
-the exclusive lock until the store closes. Use separate directories for
-separate servers. Unknown fields inside a `job` are ignored, so check
-field names against this skill before sending a job.
-Writes replace whole files, but the latest change may be lost after a
-power loss even if the request succeeded.
-
 The server keeps its profiles, schedules and token in one directory:
 `starprint` under the platform's configuration directory, or wherever
 `--data` points. `printers.json` holds the profiles by name and
 `schedules.json` the schedules by id, each entry in the shape the API
 takes it; `token` holds the token. Each file is read once at startup
 and rewritten whole after a change over the API, so a hand edit means
-a restart and is best done while the server is stopped.
+a restart and is best done while the server is stopped. One server per
+directory: a second one on the same directory fails to start.
 
 ## When it goes wrong
 
@@ -259,7 +249,7 @@ a sentence worth reading back to the user.
 
 | Status | Meaning |
 | --- | --- |
-| `400` | Bad JSON, an invalid option, a profile or schedule that will not do, or a job that could not be built |
+| `400` | Bad JSON, an invalid option, a profile or schedule that will not do, or a job that could not be built. A misspelt field inside `job` is ignored rather than refused, so check names against this skill |
 | `401` | No token, or not this server's; ask the user for it |
 | `404` | No printer by that name or no schedule by that id; list them again |
 | `413` | Too big: 1 MiB of JSON, 16 MiB for a form |

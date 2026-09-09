@@ -142,7 +142,10 @@ async fn put_printer(
     let spec: ProfileSpec = body::json(request).await?;
     let profile = Profile::new(name, spec).map_err(|e| Problem::bad_request(format!("{e}.")))?;
     let view = PrinterView::from(&profile);
-    let created = save(printers, move |data| data.put_profile(profile)).await?;
+    let created = printers
+        .data
+        .put_profile(profile)
+        .map_err(Problem::not_saved)?;
     let status = if created {
         StatusCode::CREATED
     } else {
@@ -157,8 +160,11 @@ async fn delete_printer(
     State(printers): State<Arc<Printers>>,
     Path(name): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    let key = name.clone();
-    if !save(printers, move |data| data.remove_profile(&key)).await? {
+    if !printers
+        .data
+        .remove_profile(&name)
+        .map_err(Problem::not_saved)?
+    {
         return Err(Problem::not_found(format!("No printer named `{name}`.")));
     }
     Ok(StatusCode::NO_CONTENT)
@@ -237,8 +243,10 @@ async fn create_schedule(
 ) -> Result<(StatusCode, Json<ScheduleView>), Problem> {
     let spec: ScheduleSpec = body::json(request).await?;
     schedule::admit(&spec, &printers.data).await?;
-    let saved = spec.clone();
-    let id = save(printers, move |data| data.add_schedule(saved)).await?;
+    let id = printers
+        .data
+        .add_schedule(spec.clone())
+        .map_err(Problem::not_saved)?;
     Ok((StatusCode::CREATED, Json(ScheduleView { id, spec })))
 }
 
@@ -249,9 +257,11 @@ async fn replace_schedule(
 ) -> Result<Json<ScheduleView>, Problem> {
     let spec: ScheduleSpec = body::json(request).await?;
     schedule::admit(&spec, &printers.data).await?;
-    let key = id.clone();
-    let saved = spec.clone();
-    if !save(printers, move |data| data.put_schedule(&key, saved)).await? {
+    if !printers
+        .data
+        .put_schedule(&id, spec.clone())
+        .map_err(Problem::not_saved)?
+    {
         return Err(Problem::not_found(format!("No schedule with id `{id}`.")));
     }
     Ok(Json(ScheduleView { id, spec }))
@@ -261,23 +271,14 @@ async fn delete_schedule(
     State(printers): State<Arc<Printers>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    let key = id.clone();
-    if !save(printers, move |data| data.remove_schedule(&key)).await? {
+    if !printers
+        .data
+        .remove_schedule(&id)
+        .map_err(Problem::not_saved)?
+    {
         return Err(Problem::not_found(format!("No schedule with id `{id}`.")));
     }
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// Disk writes and mutation locks run off the request workers. The
-/// store stays alive until the write finishes even if the request ends.
-async fn save<T: Send + 'static>(
-    printers: Arc<Printers>,
-    change: impl FnOnce(&crate::data::Data) -> Result<T, String> + Send + 'static,
-) -> Result<T, Problem> {
-    tokio::task::spawn_blocking(move || change(&printers.data))
-        .await
-        .map_err(|e| Problem::not_saved(e.to_string()))?
-        .map_err(Problem::not_saved)
 }
 
 #[cfg(test)]
