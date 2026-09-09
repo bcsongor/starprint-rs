@@ -594,7 +594,6 @@ mod tests {
         assert_eq!(reply.json["enabled"], true);
         assert_eq!(reply.json["due"], "run-day");
         assert_eq!(reply.json["job"]["kind"], "task-card");
-        assert!(reply.json.get("density").is_none());
 
         let reply = call(Arc::clone(&printers), get("/v1/schedules")).await;
         assert_eq!(reply.json.as_array().unwrap().len(), 1);
@@ -602,7 +601,6 @@ mod tests {
 
         let mut changed = schedule("tsp800ii");
         changed["enabled"] = json!(false);
-        changed["density"] = json!(4);
         let reply = call(
             Arc::clone(&printers),
             put_json(&format!("/v1/schedules/{id}"), changed.clone()),
@@ -611,7 +609,6 @@ mod tests {
         assert_eq!(reply.status, StatusCode::OK, "{:?}", reply.json);
         assert_eq!(reply.json["printer"], "tsp800ii");
         assert_eq!(reply.json["enabled"], false);
-        assert_eq!(reply.json["density"], 4);
 
         let reply = call(
             Arc::clone(&printers),
@@ -640,8 +637,6 @@ mod tests {
         picture["job"] = json!({ "kind": "picture" });
         let mut with_id = schedule("sp743");
         with_id["id"] = json!("mine");
-        let mut density = schedule("sp743");
-        density["density"] = json!(3);
         let mut blank = schedule("sp743");
         blank["job"] = json!({ "kind": "task-card", "text": "  " });
         for (what, body) in [
@@ -649,7 +644,6 @@ mod tests {
             ("a picture", picture),
             ("an unknown printer", schedule("nope")),
             ("an id of its own", with_id),
-            ("density on an impact printer", density),
             ("a card with no text", blank),
         ] {
             let reply = call(Arc::clone(&printers), post_json("/v1/schedules", body)).await;

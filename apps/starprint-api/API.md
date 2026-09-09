@@ -258,8 +258,7 @@ printer. The server checks a schedule's job before accepting it.
 | `cron` | string | Required. Five fields, in the server's local time |
 | `enabled` | boolean | `true` |
 | `due` | `run-day` or `next-day` | Task cards only: the date the card gets when it prints. Left out, the card prints undated |
-| `job` | [job](#job-kinds) | Required. Not a picture |
-| `cut`, `density`, `speed` | | As on a [job request](#post-v1printersnamejobs) |
+| `job` | [job](#job-kinds) | Required. Not a picture. Prints with the profile's settings: a schedule carries no `cut`, `density` or `speed` |
 
 ### `GET /v1/schedules`
 

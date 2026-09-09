@@ -202,9 +202,10 @@ curl -s -X POST http://127.0.0.1:9110/v1/schedules \
 `enabled` defaults to true; set it to false to keep a schedule without
 running it. `due` applies to task cards only and dates the card when it
 prints: `run-day` for that day, `next-day` for the day after. Left out,
-the card prints with no date, whatever `job` says. `cut`, `density` and
-`speed` go beside `job` as they do on a job request. A picture cannot
-be scheduled, since the server would have no image to print it from.
+the card prints with no date, whatever `job` says. A schedule prints
+with the profile's settings and takes no `cut`, `density` or `speed`
+of its own. A picture cannot be scheduled, since the server would have
+no image to print it from.
 
 `GET /v1/schedules` lists them. `PUT /v1/schedules/<id>` replaces one
 with the same body as `POST`, without `id`, and `DELETE

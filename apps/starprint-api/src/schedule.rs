@@ -12,7 +12,7 @@ use croner::Cron;
 use croner::errors::CronError;
 use croner::parser::{CronParser, Seconds};
 use serde::{Deserialize, Serialize};
-use starprint_workflows::{Job, Speed};
+use starprint_workflows::Job;
 
 use crate::data::Data;
 use crate::job::JobRequest;
@@ -52,13 +52,9 @@ pub struct ScheduleSpec {
     /// Task cards only: the form's date does not carry over.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due: Option<Due>,
+    /// Prints with the profile's settings; a schedule carries no
+    /// overrides, so a profile change cannot leave it unable to print.
     pub job: Job,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cut: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub density: Option<i8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub speed: Option<Speed>,
 }
 
 fn enabled() -> bool {
@@ -110,9 +106,9 @@ impl ScheduleSpec {
         }
         JobRequest {
             job,
-            cut: self.cut,
-            density: self.density,
-            speed: self.speed,
+            cut: None,
+            density: None,
+            speed: None,
         }
     }
 }
@@ -210,9 +206,6 @@ mod tests {
                 json!({ "kind": "task-card", "text": "Standup", "due": "2026-01-01" }),
             )
             .unwrap(),
-            cut: None,
-            density: None,
-            speed: None,
         }
     }
 
@@ -236,15 +229,20 @@ mod tests {
             "printer": "sp743",
             "cron": "0 9 * * 1-5",
             "job": { "kind": "text", "text": "Hi" },
-            "density": 4,
         }))
         .unwrap();
         assert!(spec.enabled, "on unless said otherwise");
         assert_eq!(spec.due, None);
-        assert_eq!(spec.density, Some(4));
         let back = serde_json::to_value(&spec).unwrap();
         assert_eq!(back["job"]["kind"], "text");
-        assert!(back.get("cut").is_none(), "an unset override is left out");
+        assert!(back.get("due").is_none(), "an unset rule is left out");
+
+        let with_density =
+            json!({ "printer": "p", "cron": "* * * * *", "job": { "kind": "note" }, "density": 4 });
+        assert!(
+            serde_json::from_value::<ScheduleSpec>(with_density).is_err(),
+            "no overrides: the profile decides"
+        );
 
         let with_id =
             json!({ "id": "x", "printer": "p", "cron": "* * * * *", "job": { "kind": "note" } });
