@@ -15,6 +15,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 croner = "4"
 # The platform's configuration directory, for the default data directory.
 dirs = "6"
+fs2 = "0.4"
 serde = { version = "1", features = ["derive"] }
 # `preserve_order` keeps GET /v1/printers in the order the file lists.
 serde_json = { version = "1", features = ["preserve_order"] }

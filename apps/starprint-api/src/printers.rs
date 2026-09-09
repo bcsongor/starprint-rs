@@ -54,7 +54,11 @@ pub async fn reachable(host: &str, port: u16, queue: &PrintQueue) -> bool {
     if host.is_empty() {
         return false;
     }
-    let name = host.trim_matches(['[', ']']).to_owned();
+    let name = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(&host)
+        .to_owned();
     let addrs: Vec<SocketAddr> = match tokio::task::spawn_blocking(move || {
         (name.as_str(), port)
             .to_socket_addrs()
@@ -294,6 +298,7 @@ mod tests {
         let queue = PrintQueue::default();
         assert!(reachable("127.0.0.1", port, &queue).await);
         assert!(!reachable("", port, &queue).await);
+        assert!(!reachable("[[127.0.0.1]]", port, &queue).await);
 
         let turn = queue.lock("127.0.0.1", port).await;
         let mut probe = pin!(reachable("127.0.0.1", port, &queue));

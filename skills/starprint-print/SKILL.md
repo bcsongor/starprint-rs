@@ -232,6 +232,13 @@ unless the user asks, and do not guess a host.
 
 ## The data directory
 
+Use a directory whose files and parent directories untrusted users
+cannot change. The server trusts the saved token and printer addresses.
+Only one server can open a data directory at a time; a `lock` file holds
+the exclusive lock until the store closes. Use separate directories for
+separate servers. Unknown fields inside a `job` are ignored, so check
+field names against this skill before sending a job.
+
 The server keeps its profiles, schedules and token in one directory:
 `starprint` under the platform's configuration directory, or wherever
 `--data` points. `printers.json` holds the profiles by name and

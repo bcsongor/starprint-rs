@@ -275,7 +275,7 @@ saying what went wrong.
 
 | Status | When |
 | --- | --- |
-| `400` | Bad JSON, an invalid or unknown field, a profile or schedule that will not do, or a job that could not be built |
+| `400` | Bad JSON, an invalid field, an unknown request, profile or schedule field, or a job that could not be built. Unknown fields inside `job` are ignored |
 | `401` | No token, or not this server's |
 | `404` | No such printer, schedule or endpoint |
 | `405` | Not a method the endpoint takes |
@@ -291,10 +291,15 @@ saying what went wrong.
 | `printers.json` | The profiles, as an object keyed by name, each in the shape [`PUT`](#put-v1printersname) takes |
 | `schedules.json` | The schedules, as an object keyed by id, each in the shape [`POST`](#post-v1schedules) takes |
 | `token` | The token |
+| `lock` | An exclusive lock held while the data store is open. A second server using the same directory fails at startup |
 
 Each file is read once at startup and rewritten whole whenever the API
 changes it, so a hand edit means a restart and does not survive the
 next change made over the API. A file the server cannot read stops it.
+
+The directory is trusted configuration. It and its parent directories
+must not be writable by untrusted users. Anyone who can replace these
+files can change the token and printer destinations.
 
 A profile file for one printer of each kind:
 
