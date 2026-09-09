@@ -11,7 +11,7 @@ use starprint::{
     RasterQuality, StarLine, Symbology, ThermalFont,
 };
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TestPage {
     /// Thermal only: repeat the grey ramp in double resolution.

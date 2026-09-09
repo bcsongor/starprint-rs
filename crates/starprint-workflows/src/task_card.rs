@@ -12,7 +12,7 @@ use crate::{Paper, finish};
 /// [`Default`] derive leaves `text` required.
 ///
 /// [`Text`]: crate::Text
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskCard {
     pub text: String,
@@ -20,10 +20,10 @@ pub struct TaskCard {
     pub priority: bool,
     /// A short identifier, such as an issue key, centred between the
     /// banner and the date, reserving the date's space when absent.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     /// An ISO date, printed as `28 AUG 2026`, or free text printed as is.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due: Option<String>,
 }
 

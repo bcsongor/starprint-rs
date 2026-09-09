@@ -1,14 +1,17 @@
 //! Runs the frontend's schedules through the shared print queue.
+//!
+//! The app's own copy of what `starprint-api` does with its schedules;
+//! it goes when the app becomes a client of its embedded server. The
+//! rules it shares, the cron dialect and the due-date rule, come from
+//! there.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{DateTime, Days, Local, Timelike};
+use chrono::{DateTime, Local, TimeDelta, Timelike};
 use croner::Cron;
-use croner::errors::CronError;
-use croner::parser::{CronParser, Seconds};
 use serde::{Deserialize, Serialize};
-use starprint_api::PrintQueue;
+use starprint_api::{Due, PrintQueue, parse_cron};
 use starprint_workflows::{Job, Printer};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -16,20 +19,6 @@ use crate::job::{self, JobRequest};
 use crate::picture::SourceCache;
 
 const RAN_EVENT: &str = "schedule-ran";
-
-fn parse_cron(expression: &str) -> Result<Cron, CronError> {
-    CronParser::builder()
-        .seconds(Seconds::Disallowed)
-        .build()
-        .parse(expression)
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Due {
-    RunDay,
-    NextDay,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,14 +35,7 @@ impl Scheduled {
     fn job_at(&self, at: DateTime<Local>) -> JobRequest {
         let mut request = self.job.clone();
         if let Job::TaskCard(card) = &mut request.job {
-            card.due = self.due.map(|due| {
-                let days = match due {
-                    Due::RunDay => 0,
-                    Due::NextDay => 1,
-                };
-                let date = at.date_naive() + Days::new(days);
-                date.format("%Y-%m-%d").to_string()
-            });
+            card.due = self.due.map(|due| due.date(at));
         }
         request
     }
@@ -83,7 +65,11 @@ impl Scheduler {
     }
 
     fn matching(&self, now: DateTime<Local>) -> Vec<Scheduled> {
-        let minute = now.with_second(0).unwrap();
+        // Subtracted rather than set with `with_second`, which has no
+        // answer during the hour the clocks go back.
+        let minute = now
+            - TimeDelta::seconds(now.second().into())
+            - TimeDelta::nanoseconds(now.nanosecond().into());
         self.0
             .lock()
             .unwrap()

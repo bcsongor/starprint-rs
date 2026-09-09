@@ -16,15 +16,18 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   and the six jobs: task cards, text, note slips, QR codes, pictures and
   test pages. It reads no files and opens no sockets, so a picture job
   is handed its image. Job behaviour belongs here, not in a front end,
-  or the two drift. QR symbols are encoded here by `qrcodegen` and
+  or the two drift. `preview` draws what a job will look like: a
+  layout for the printer's own fonts, and a PNG from the bitmap that
+  prints, with thermal dots widened to the measured size. Both front
+  ends show previews from it and nothing else. QR symbols are encoded here by `qrcodegen` and
   printed as dots on both heads. The SP700 has no QR command, and one
   bitmap gives one path, a known version, a preview that draws what
   prints and rounded modules, none of which `ESC GS y` would.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
   `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
   file selection, the previews, the API button and the Linear
-  auto-print, and the schedules. Previews are PNGs the Rust side draws
-  from the bitmaps that print. A preview that kept a rule of its own
+  auto-print, and the schedules. Its preview commands call the
+  workflows crate's `preview`. A preview that kept a rule of its own
   drifted once, and squared finder patterns went unnoticed until they
   came off the printer. A schedule is a job as its form stood, a
   profile and a five-field cron expression, kept in the settings store
@@ -33,28 +36,51 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `croner` and spawns matching jobs through the shared print queue.
   Only schedule definitions are stored. Schedules without a host do
   not run. A task card's due date follows its rule when it prints.
+  This is the app's own copy of what the API now does; the app becomes
+  a client of its embedded server next, and the copy goes then.
   The API button runs `starprint-api`'s server in-process on the
   profiles that have a host, at an address and port picked under the
   button, behind a token kept in the settings store, and starts it
-  again when a profile or the address changes. Auto-print is frontend
+  again when a profile or the address changes. That server's data is
+  in memory only, so a profile or schedule made through it lasts until
+  the server next starts, which releasing the button, editing any
+  profile or changing the address all cause. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
   newly assigned open issue. Linear answers the webview's CORS
   preflight, so no HTTP plugin is involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. A library with a thin command line on top, so the
-  desktop app can run the same server. One concern per module; anything
-  new goes in whichever of `body`, `job`, `printers`, `config`,
-  `problem`, `app` or `server` owns it. `printers::PrintQueue`, exported
-  at the crate root, serialises connections by host and port. The GUI
-  shares one queue across manual jobs, Linear jobs, probes and the
-  embedded API, including API restarts. Its guard must live inside the
-  blocking task so cancellation cannot release a write still in progress.
+  local programs, and the home of everything that has to run
+  unattended. A library with a thin command line on top, so the desktop
+  app can run the same server. One concern per module; anything new
+  goes in whichever of `body`, `job`, `printers`, `config`, `data`,
+  `schedule`, `problem`, `app` or `server` owns it. `data` is the data
+  directory: `printers.json`, `schedules.json` and `token`, each read
+  once at startup and written whole under its lock after every change,
+  or kept in memory when the desktop app supplies the profiles. The
+  directory is locked while open, so two servers cannot share one.
+  `schedule` holds the schedule shape and the loop that prints each one
+  on the local clock through the queue; it runs for as long as the
+  server does. Shutdown cancels queued scheduled jobs before draining
+  HTTP requests; blocking writes already in progress finish under
+  their queue guards. Profiles are addressed by name, `PUT` creates or
+  replaces, and jobs still cannot carry `host` or `port`. `/preview`
+  takes a job's body and answers with the workflows crate's `Preview`,
+  so a client needs no job code of its own. The connection
+  probe lives here too, behind `/status` and exported as `reachable`,
+  so it takes the printer's turn like a job. `printers::PrintQueue`,
+  exported at the crate root, serialises connections by host and port.
+  The GUI shares one queue across manual jobs, Linear jobs, probes and
+  the embedded API, including API restarts. Its guard must live inside
+  the blocking task so cancellation cannot release a write still in
+  progress.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own
-  agents to print through the API, and the only reference to its
-  endpoints and job fields. Anything the API gains goes in here.
+  agents to print through the API. `apps/starprint-api/API.md` is the
+  reference: every route, field and status, in tables. Anything the API
+  gains goes in both, the reference for what it is and the skill for
+  how an agent should use it.
 - `.macroscope/`: Macroscope's ignore list and the check-run agent that
   carries the rules below. Macroscope reads nothing else. Codex reads
   the Code Review Rules at the end of this file.
@@ -88,7 +114,7 @@ them, so do not retune these values from a screen:
   reference and must not change. `ToneCurve::THERMAL` (gamma 0.55, no
   equalise) was dialled in at slow speed, density +3, `RasterQuality::High`;
   those are the settings photos print best with.
-- The GUI preview draws thermal dots at 150 % of the pitch at normal
+- The preview draws thermal dots at 150 % of the pitch at normal
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job.
@@ -181,7 +207,8 @@ anything but the bitmap that prints, a QR symbol sent as `ESC GS y`
 instead of a bitmap, and a job that selects
 `PrintMode::DoubleResolution` without switching back at the end.
 
-### The API skill
+### The API skill and reference
 
-An endpoint or job field added to `apps/starprint-api` without the
-matching change in `skills/starprint-print/` is a finding.
+An endpoint, job field, profile field or schedule field added to
+`apps/starprint-api` without the matching change in both
+`apps/starprint-api/API.md` and `skills/starprint-print/` is a finding.

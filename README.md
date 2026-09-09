@@ -72,8 +72,9 @@ computer awake. Task-card due dates follow the chosen rule.
 The **API** button lets scripts and AI agents print through your saved profiles.
 It shows the URL and the token every request needs, and lets you choose the
 address and port to listen on. See the
-[API reference](skills/starprint-print/SKILL.md) for jobs and setup, including
-running the server on its own.
+[API reference](apps/starprint-api/API.md) for every route and field, and the
+[skill](skills/starprint-print/SKILL.md) to give your agent, including running
+the server on its own.
 
 ## Rust library
 

@@ -3,27 +3,35 @@ name = "starprint-api"
 version = "1.0.0"
 description = "Local HTTP server that prints starprint jobs to profiled Star printers"
 edition.workspace = true
-rust-version.workspace = true
+# `File::try_lock`, for the data directory. The library keeps the workspace floor.
+rust-version = "1.89"
 license.workspace = true
 repository.workspace = true
 publish = false
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "multipart", "tokio"] }
+# The scheduler's clock and a scheduled task card's due date.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+croner = "4"
+# The platform's configuration directory, for the default data directory.
+dirs = "6"
+# The decoded picture a job or preview is built from.
+image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order` keeps GET /v1/printers in the order the file lists.
+serde_json = { version = "1", features = ["preserve_order"] }
 starprint = { path = "../../crates/starprint", features = ["image"] }
 starprint-workflows = { path = "../../crates/starprint-workflows" }
-# `preserve_order` keeps GET /v1/printers in the order the file lists.
-toml = { version = "1.1", default-features = false, features = ["parse", "serde", "preserve_order"] }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal"] }
-# A token for the command line when none is given.
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal", "time", "macros"] }
+# Tokens and schedule ids.
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-# A sample PNG to post, a stand-in printer to write to, and the router
-# driven without a socket. `macros` is for `#[tokio::test]`; startup
-# builds its runtime by hand.
-image = { version = "0.25", default-features = false, features = ["png"] }
-tokio = { version = "1", features = ["io-util", "macros", "time"] }
+# A stand-in printer to write to, and the router driven without a
+# socket. `macros` is for `#[tokio::test]`; startup builds its runtime
+# by hand.
+# A data directory that is thrown away after the test.
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "macros", "time", "test-util"] }
 tower = { version = "0.5", features = ["util"] }

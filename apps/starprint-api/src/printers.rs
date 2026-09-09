@@ -1,15 +1,19 @@
-//! Printer lookup and serialised writes to each network endpoint.
+//! Printer lookup, connection checks and serialised writes to each
+//! network endpoint.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::http::StatusCode;
 use starprint::transport::{TcpTransport, Transport};
+use starprint_workflows::Printer;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::config::Profile;
+use crate::data::Data;
 use crate::problem::Problem;
 
 /// Shared by all printer connections in one process.
@@ -38,80 +42,94 @@ impl PrintQueue {
     }
 }
 
-pub struct Printers {
-    entries: Vec<Entry>,
+/// Whether something answers at `host` and `port`, checked in the
+/// printer's turn so the probe never lands in the middle of a job. The
+/// name is resolved before the turn is taken, so a slow lookup holds
+/// nobody up. An empty host is offline without a lookup.
+pub async fn reachable(host: &str, port: u16, queue: &PrintQueue) -> bool {
+    // Only bounds how long a missing printer takes to show as offline.
+    const TIMEOUT: Duration = Duration::from_millis(400);
+
+    let host = host.trim().to_owned();
+    if host.is_empty() {
+        return false;
+    }
+    let name = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(&host)
+        .to_owned();
+    let addrs: Vec<SocketAddr> = match tokio::task::spawn_blocking(move || {
+        (name.as_str(), port)
+            .to_socket_addrs()
+            .map(Iterator::collect)
+    })
+    .await
+    {
+        Ok(Ok(addrs)) => addrs,
+        _ => return false,
+    };
+    let turn = queue.lock(&host, port).await;
+    tokio::task::spawn_blocking(move || {
+        let _turn = turn;
+        addrs
+            .into_iter()
+            .any(|addr| std::net::TcpStream::connect_timeout(&addr, TIMEOUT).is_ok())
+    })
+    .await
+    .unwrap_or(false)
 }
 
-/// One printer from the profile file.
-pub struct Entry {
-    profile: Profile,
-    queue: Arc<PrintQueue>,
+/// Writes `payload` to `printer` in its turn and reports how much went
+/// out.
+///
+/// A completed write is all this can promise. Without automatic status
+/// back there is no way to ask whether the printer accepted the job,
+/// let alone printed it.
+pub async fn send(printer: &Printer, payload: Bytes, queue: &PrintQueue) -> Result<usize, Problem> {
+    let address = printer.address();
+    let sent = payload.len();
+    let turn = queue.lock(&printer.host, printer.port).await;
+    // The transport sleeps between chunks to pace the Ethernet card,
+    // so it cannot run on the async runtime.
+    tokio::task::spawn_blocking(move || {
+        let _turn = turn;
+        let mut transport = TcpTransport::connect(&address)?;
+        transport.send(&payload)
+    })
+    .await
+    .map_err(|e| {
+        Problem::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("The job could not be written: {e}."),
+        )
+    })?
+    .map_err(|e: starprint::Error| {
+        Problem::bad_gateway(format!(
+            "The printer could not be written to: {e}. It may have received none, some or all \
+             of the job."
+        ))
+    })?;
+    Ok(sent)
+}
+
+/// The profiles and the queue their jobs go through: what the routes
+/// and the scheduler share.
+pub struct Printers {
+    pub data: Arc<Data>,
+    pub queue: Arc<PrintQueue>,
 }
 
 impl Printers {
-    pub fn new(profiles: Vec<Profile>, queue: Arc<PrintQueue>) -> Self {
-        Self {
-            entries: profiles
-                .into_iter()
-                .map(|profile| Entry {
-                    profile,
-                    queue: Arc::clone(&queue),
-                })
-                .collect(),
-        }
+    pub fn new(data: Arc<Data>, queue: Arc<PrintQueue>) -> Self {
+        Self { data, queue }
     }
 
-    /// In the order the file listed them.
-    pub fn profiles(&self) -> impl Iterator<Item = &Profile> {
-        self.entries.iter().map(|entry| &entry.profile)
-    }
-
-    pub fn find(&self, name: &str) -> Result<&Entry, Problem> {
-        self.entries
-            .iter()
-            .find(|entry| entry.profile.name == name)
+    /// The profile as it stands now, or the `404`.
+    pub fn find(&self, name: &str) -> Result<Profile, Problem> {
+        self.data
+            .profile(name)
             .ok_or_else(|| Problem::not_found(format!("No printer named `{name}`.")))
-    }
-}
-
-impl Entry {
-    pub fn profile(&self) -> &Profile {
-        &self.profile
-    }
-
-    /// Writes `payload` and reports how much went out.
-    ///
-    /// A completed write is all this can promise. Without automatic
-    /// status back there is no way to ask whether the printer accepted
-    /// the job, let alone printed it.
-    pub async fn send(&self, payload: Bytes) -> Result<usize, Problem> {
-        let address = self.profile.printer.address();
-        let sent = payload.len();
-        let turn = self
-            .queue
-            .lock(&self.profile.printer.host, self.profile.printer.port)
-            .await;
-        // The transport sleeps between chunks to pace the Ethernet card,
-        // so it cannot run on the async runtime.
-        tokio::task::spawn_blocking(move || {
-            let _turn = turn;
-            let mut transport = TcpTransport::connect(&address)?;
-            transport.send(&payload)
-        })
-        .await
-        .map_err(|e| {
-            Problem::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("The job could not be written: {e}."),
-            )
-        })?
-        .map_err(|e: starprint::Error| {
-            Problem::bad_gateway(format!(
-                "The printer could not be written to: {e}. It may have received none, some or \
-                 all of the job."
-            ))
-        })?;
-        Ok(sent)
     }
 }
 
@@ -119,7 +137,7 @@ impl Entry {
 mod tests {
     use super::*;
     use starprint::transport::Pacing;
-    use starprint_workflows::{Paper, Printer, Speed};
+    use starprint_workflows::{Paper, Speed};
     use std::future::Future as _;
     use std::pin::pin;
     use std::task::{Context, Waker};
@@ -128,8 +146,20 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::time::timeout;
 
-    fn printers() -> Printers {
-        Printers::new(
+    fn printers(profiles: Vec<Profile>, queue: Arc<PrintQueue>) -> Printers {
+        Printers::new(Arc::new(Data::ephemeral(profiles, "t".to_owned())), queue)
+    }
+
+    fn impact(name: &str, port: u16) -> Profile {
+        Profile {
+            name: name.to_owned(),
+            printer: Printer::impact("127.0.0.1".to_owned(), port),
+        }
+    }
+
+    #[test]
+    fn a_printer_is_found_by_name_and_only_by_name() {
+        let printers = printers(
             vec![
                 Profile {
                     name: "tsp800ii".to_owned(),
@@ -141,19 +171,11 @@ mod tests {
                         Speed::Slow,
                     ),
                 },
-                Profile {
-                    name: "sp743".to_owned(),
-                    printer: Printer::impact("127.0.0.1".to_owned(), 9100),
-                },
+                impact("sp743", 9100),
             ],
             Arc::default(),
-        )
-    }
-
-    #[test]
-    fn a_printer_is_found_by_name_and_only_by_name() {
-        let printers = printers();
-        assert_eq!(printers.find("sp743").unwrap().profile().name, "sp743");
+        );
+        assert_eq!(printers.find("sp743").unwrap().name, "sp743");
         let Err(problem) = printers.find("SP743") else {
             panic!("names are matched exactly")
         };
@@ -168,27 +190,19 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let queue = Arc::new(PrintQueue::default());
         let turn = queue.lock("127.0.0.1", port).await;
-        let printers = Printers::new(
-            ["first", "second"]
-                .map(|name| Profile {
-                    name: name.to_owned(),
-                    printer: Printer::impact("127.0.0.1".to_owned(), port),
-                })
-                .into(),
-            queue,
-        );
-        let mut first = pin!(
-            printers
-                .find("first")
-                .unwrap()
-                .send(Bytes::from_static(b"first"))
-        );
-        let mut second = pin!(
-            printers
-                .find("second")
-                .unwrap()
-                .send(Bytes::from_static(b"second"))
-        );
+        let printers = printers(vec![impact("first", port), impact("second", port)], queue);
+        let first_printer = printers.find("first").unwrap().printer;
+        let second_printer = printers.find("second").unwrap().printer;
+        let mut first = pin!(send(
+            &first_printer,
+            Bytes::from_static(b"first"),
+            &printers.queue
+        ));
+        let mut second = pin!(send(
+            &second_printer,
+            Bytes::from_static(b"second"),
+            &printers.queue
+        ));
         let mut cx = Context::from_waker(Waker::noop());
         assert!(first.as_mut().poll(&mut cx).is_pending());
         assert!(second.as_mut().poll(&mut cx).is_pending());
@@ -252,18 +266,15 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let queue = Arc::new(PrintQueue::default());
-        let entry = Entry {
-            profile: Profile {
-                name: "printer".to_owned(),
-                printer: Printer::impact("127.0.0.1".to_owned(), port),
-            },
-            queue: Arc::clone(&queue),
-        };
+        let printer = Printer::impact("127.0.0.1".to_owned(), port);
         let pacing = Pacing::STAR_ETHERNET;
         let payload = Bytes::from(vec![b'x'; pacing.chunk_size * 10]);
         let expected = payload.clone();
         let started = Instant::now();
-        let sender = tokio::spawn(async move { entry.send(payload).await });
+        let sender = {
+            let queue = Arc::clone(&queue);
+            tokio::spawn(async move { send(&printer, payload, &queue).await })
+        };
         let (mut stream, _) = listener.accept().await.unwrap();
         let mut first = [0];
         stream.read_exact(&mut first).await.unwrap();
@@ -276,5 +287,38 @@ mod tests {
         let mut received = first.to_vec();
         stream.read_to_end(&mut received).await.unwrap();
         assert_eq!(received, expected);
+    }
+
+    /// The probe answers for a listening port and a closed one, and
+    /// waits its turn behind a job on the same endpoint.
+    #[tokio::test]
+    async fn a_probe_reports_what_answers_and_waits_for_the_queue() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let queue = PrintQueue::default();
+        assert!(reachable("127.0.0.1", port, &queue).await);
+        assert!(!reachable("", port, &queue).await);
+        assert!(!reachable("[[127.0.0.1]]", port, &queue).await);
+
+        let turn = queue.lock("127.0.0.1", port).await;
+        let mut probe = pin!(reachable("127.0.0.1", port, &queue));
+        let mut cx = Context::from_waker(Waker::noop());
+        // The lookup runs first; the connection waits for the turn.
+        let _ = timeout(Duration::from_millis(200), probe.as_mut()).await;
+        assert!(probe.as_mut().poll(&mut cx).is_pending());
+        drop(turn);
+        assert!(probe.await);
+
+        drop(listener);
+        assert!(!reachable("127.0.0.1", port, &queue).await);
+    }
+
+    #[tokio::test]
+    async fn a_probe_accepts_both_ipv6_host_spellings() {
+        let listener = TcpListener::bind("[::1]:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let queue = PrintQueue::default();
+        assert!(reachable("::1", port, &queue).await);
+        assert!(reachable("[::1]", port, &queue).await);
     }
 }

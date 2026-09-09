@@ -6,14 +6,14 @@
 
 use image::DynamicImage;
 use image::imageops::FilterType;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Density, DeviceProfile, Dithering, Grayscale, ImagePipeline};
 use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, StarLine};
 
 use crate::{Paper, PrinterKind, finish_graphic};
 
 /// [`Dithering`] without its threshold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Dither {
     FloydSteinberg,
@@ -35,7 +35,7 @@ impl Dither {
 
 /// Everything but the image itself. A caller that supplies none of it
 /// gets the reference settings: Floyd-Steinberg at 128, untouched tone.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Picture {
     /// Impact: double density. Thermal: double-resolution mode.

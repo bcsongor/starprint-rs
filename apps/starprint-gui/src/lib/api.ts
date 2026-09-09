@@ -329,8 +329,8 @@ export function stopApi() {
   return invoke<void>("stop_api");
 }
 
-/** Mirrors `Due` in src-tauri/src/scheduler.rs: the due date a scheduled
- * task card gets when it prints. */
+/** Mirrors `Due` in starprint-api/src/schedule.rs: the due date a
+ * scheduled task card gets when it prints. */
 export type Due = "run-day" | "next-day";
 
 /** Mirrors `Scheduled` in src-tauri/src/scheduler.rs. */

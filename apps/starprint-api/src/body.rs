@@ -4,6 +4,7 @@
 use axum::body::Bytes;
 use axum::extract::{FromRequest, Multipart, Request};
 use axum::http::{HeaderMap, StatusCode, header};
+use serde::de::DeserializeOwned;
 
 use crate::problem::Problem;
 
@@ -35,6 +36,24 @@ pub async fn collect(request: Request, limit: usize) -> Result<Bytes, Problem> {
     axum::body::to_bytes(request.into_body(), limit)
         .await
         .map_err(|e| Problem::too_large(format!("The body is larger than {limit} bytes: {e}.")))
+}
+
+/// A JSON body, read as a `T`. Anything else is a `415`, a body past
+/// [`JSON_LIMIT`] a `413`, and JSON that is not a `T` a `400`.
+pub async fn json<T: DeserializeOwned>(request: Request) -> Result<T, Problem> {
+    match media_type(request.headers()).as_deref() {
+        Some("application/json") => {}
+        other => return Err(unsupported(other, "application/json")),
+    }
+    let bytes = collect(request, JSON_LIMIT).await?;
+    parse_json(&bytes)
+}
+
+/// `bytes` as a `T`, or the `400` for JSON that is not one. The form's
+/// `job` part goes through here too, so the wording is the same.
+pub fn parse_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Problem> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| Problem::bad_request(format!("The body could not be read as JSON: {e}.")))
 }
 
 /// The `job` part, which is required, and the `image` part, which is
@@ -111,6 +130,30 @@ mod tests {
                 .starts_with("The body is larger than 8 bytes"),
             "{json:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_json_body_is_read_as_its_type_or_refused() {
+        let request = |content_type: &str, body: &'static str| {
+            Request::builder()
+                .header(header::CONTENT_TYPE, content_type)
+                .body(Body::from(body))
+                .unwrap()
+        };
+        let read: Vec<u8> = json(request("application/json; charset=utf-8", "[1, 2]"))
+            .await
+            .unwrap();
+        assert_eq!(read, [1, 2]);
+
+        let status = |problem: Problem| serde_json::to_value(problem).unwrap()["status"].clone();
+        let wrong_type = json::<Vec<u8>>(request("application/json", "{}"))
+            .await
+            .unwrap_err();
+        assert_eq!(status(wrong_type), 400);
+        let not_json = json::<Vec<u8>>(request("text/plain", "[1]"))
+            .await
+            .unwrap_err();
+        assert_eq!(status(not_json), 415);
     }
 
     #[test]

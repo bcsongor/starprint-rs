@@ -20,25 +20,7 @@ async fn probe_printer(
     port: u16,
     queue: tauri::State<'_, Arc<PrintQueue>>,
 ) -> Result<bool, ()> {
-    // Only bounds how long a missing printer takes to show as offline.
-    const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(400);
-
-    let host = host.trim().to_owned();
-    if host.is_empty() {
-        return Ok(false);
-    }
-    let turn = queue.lock(&host, port).await;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _turn = turn;
-        let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), port)) else {
-            return false;
-        };
-        addrs
-            .into_iter()
-            .any(|addr| std::net::TcpStream::connect_timeout(&addr, TIMEOUT).is_ok())
-    })
-    .await
-    .map_err(|_| ())
+    Ok(starprint_api::reachable(&host, port, &queue).await)
 }
 
 pub fn run() {

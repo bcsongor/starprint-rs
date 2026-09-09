@@ -3,26 +3,26 @@
 
 use axum::body::Bytes;
 use axum::http::StatusCode;
+use image::DynamicImage;
 use serde::Deserialize;
-use starprint_workflows::{Head, Job, Printer, Speed, check_density};
+use starprint_workflows::{Head, Job, Preview, Printer, Speed, check_density};
 
 use crate::problem::Problem;
 
 /// Everything about a job but the image. Omitted options come from the
-/// profile.
+/// profile. A schedule builds one of these each time it runs.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobRequest {
-    job: Job,
-    cut: Option<bool>,
-    density: Option<i8>,
-    speed: Option<Speed>,
+    pub(crate) job: Job,
+    pub(crate) cut: Option<bool>,
+    pub(crate) density: Option<i8>,
+    pub(crate) speed: Option<Speed>,
 }
 
 impl JobRequest {
     pub fn parse(body: &[u8]) -> Result<Self, Problem> {
-        serde_json::from_slice(body)
-            .map_err(|e| Problem::bad_request(format!("The job could not be read as JSON: {e}.")))
+        crate::body::parse_json(body)
     }
 
     /// The bytes this job prints on `profile`, with `image` for the one
@@ -32,7 +32,33 @@ impl JobRequest {
     /// runtime. The caller does this before taking the printer's turn,
     /// so a slow photo does not hold the printer up.
     pub async fn document(self, profile: &Printer, image: Option<Bytes>) -> Result<Bytes, Problem> {
-        if matches!(self.job, Job::Picture(_)) && image.is_none() {
+        self.build(profile, image, |printer, job, image| {
+            printer
+                .document(job, image)
+                .map(|document| Bytes::from(document.into_bytes()))
+        })
+        .await
+    }
+
+    /// What this job looks like on `profile`, without printing it.
+    pub async fn preview(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+    ) -> Result<Preview, Problem> {
+        self.build(profile, image, |printer, job, image| {
+            printer.preview(job, image)
+        })
+        .await
+    }
+
+    async fn build<T: Send + 'static>(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+        build: impl FnOnce(&Printer, &Job, Option<&DynamicImage>) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, Problem> {
+        if self.job.needs_image() && image.is_none() {
             return Err(Problem::bad_request(
                 "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
             ));
@@ -43,9 +69,7 @@ impl JobRequest {
             let image = image
                 .map(|bytes| starprint_workflows::picture::decode(&bytes))
                 .transpose()?;
-            printer
-                .document(&job, image.as_ref())
-                .map(|document| Bytes::from(document.into_bytes()))
+            build(&printer, &job, image.as_ref())
         })
         .await
         .map_err(|e| {

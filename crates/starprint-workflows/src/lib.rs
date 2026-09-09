@@ -12,16 +12,18 @@ mod printer;
 
 pub mod note;
 pub mod picture;
+pub mod preview;
 pub mod qr;
 pub mod task_card;
 pub mod test_page;
 pub mod text;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use starprint::{Builder, Cut, Document, Protocol};
 
 pub use note::Note;
 pub use picture::Picture;
+pub use preview::{Png, Preview};
 pub use printer::{Head, Paper, Printer, PrinterKind, Speed, TWO_COLOR_DENSITY, check_density};
 pub use qr::Qr;
 pub use task_card::TaskCard;
@@ -49,8 +51,9 @@ pub(crate) fn finish_graphic<P: Protocol>(doc: Builder<P>, cut: bool) -> Documen
 }
 
 /// The six jobs, as one tagged enum. `kind` picks the variant and the
-/// rest of the object is that job's own settings.
-#[derive(Debug, Clone, Deserialize)]
+/// rest of the object is that job's own settings. Serialises to the
+/// same shape, so a stored job reads back as it was sent.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Job {
     TaskCard(TaskCard),
@@ -59,6 +62,14 @@ pub enum Job {
     Qr(Qr),
     TestPage(TestPage),
     Picture(Picture),
+}
+
+impl Job {
+    /// Whether printing this job takes an image from the caller. The
+    /// front ends ask this before they promise to print one.
+    pub fn needs_image(&self) -> bool {
+        matches!(self, Self::Picture(_))
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +129,19 @@ mod tests {
         assert_eq!(picture.dither, Dither::Bayer);
         assert_eq!(picture.brightness, 1.4);
         assert_eq!(picture.threshold, 128, "and the rest still default");
+    }
+
+    /// A schedule keeps a job on disk and hands it back to a client.
+    #[test]
+    fn a_job_round_trips_through_json() {
+        let sent = r#"{"kind":"qr","data":"https://x.test","size":40}"#;
+        let job: Job = serde_json::from_str(sent).unwrap();
+        let stored = serde_json::to_value(&job).unwrap();
+        assert_eq!(stored["kind"], "qr");
+        assert_eq!(stored["size"], 40);
+        assert_eq!(stored["radius"], 0, "defaults are written out");
+        let again: Job = serde_json::from_value(stored).unwrap();
+        assert!(matches!(again, Job::Qr(code) if code.data == "https://x.test"));
     }
 
     #[test]
