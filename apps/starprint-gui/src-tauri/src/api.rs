@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use serde::Serialize;
-use starprint_api::{PrintQueue, Profile, Server};
+use starprint_api::{Data, PrintQueue, Profile, Server};
 use tauri::async_runtime::Mutex;
 
 /// The running server, if any. Held across a whole start or stop so
@@ -41,7 +41,9 @@ pub fn list_addresses() -> Vec<Address> {
 
 /// Starts the server on `printers` behind `token`, at `ip` and `port`,
 /// replacing one already running, so a changed profile or address
-/// takes effect by starting again. Returns the URL.
+/// takes effect by starting again. Returns the URL. The server's data
+/// is kept in memory only: the app's own settings store holds the
+/// profiles and the schedules that outlive a restart.
 #[tauri::command]
 pub async fn start_api(
     printers: Vec<Profile>,
@@ -57,8 +59,7 @@ pub async fn start_api(
     }
     let server = Server::bind(
         SocketAddr::new(ip, port),
-        printers,
-        token,
+        Arc::new(Data::ephemeral(printers, token)),
         Arc::clone(&queue),
     )
     .await?;

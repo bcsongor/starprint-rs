@@ -79,7 +79,7 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
 /// `text` is the only part a caller must supply; the styles default to
 /// off. Deriving [`Default`] does not make `text` optional, since the
 /// defaults are per field.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Text {
     pub text: String,

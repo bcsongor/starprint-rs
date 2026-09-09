@@ -14,7 +14,7 @@ use crate::text::TextStyle;
 use crate::{MM_PER_INCH, Paper, finish};
 
 /// The slip's ruling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Rule {
     /// Bare paper.
@@ -29,7 +29,7 @@ pub enum Rule {
 
 /// A caller that supplies none of this gets the ruling notebooks are
 /// sold at: ten rows, 7 mm apart, which tears off at 70 mm.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Note {
     pub rule: Rule,

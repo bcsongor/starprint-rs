@@ -39,7 +39,7 @@ impl From<Align> for Alignment {
 /// How much of the symbol can be lost and still scan. Mirrors
 /// [`starprint::QrErrorCorrection`], which has no serde support of its
 /// own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Ecc {
     /// ~7%.
@@ -65,12 +65,12 @@ impl From<Ecc> for QrCodeEcc {
 }
 
 /// `data` is the only part a caller must supply.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Qr {
     pub data: String,
     /// Printed above the symbol, so a slip on a desk says what it is.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caption: Option<String>,
     #[serde(default)]
     pub error_correction: Ecc,

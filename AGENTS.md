@@ -33,28 +33,48 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `croner` and spawns matching jobs through the shared print queue.
   Only schedule definitions are stored. Schedules without a host do
   not run. A task card's due date follows its rule when it prints.
+  This is the app's own copy of what the API now does; the app becomes
+  a client of its embedded server next, and the copy goes then.
   The API button runs `starprint-api`'s server in-process on the
   profiles that have a host, at an address and port picked under the
   button, behind a token kept in the settings store, and starts it
-  again when a profile or the address changes. Auto-print is frontend
+  again when a profile or the address changes. That server's data is
+  in memory only, so a profile or schedule made through it lasts until
+  the server next starts, which releasing the button, editing any
+  profile or changing the address all cause. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
   newly assigned open issue. Linear answers the webview's CORS
   preflight, so no HTTP plugin is involved.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
-  local programs. A library with a thin command line on top, so the
-  desktop app can run the same server. One concern per module; anything
-  new goes in whichever of `body`, `job`, `printers`, `config`,
-  `problem`, `app` or `server` owns it. `printers::PrintQueue`, exported
-  at the crate root, serialises connections by host and port. The GUI
-  shares one queue across manual jobs, Linear jobs, probes and the
-  embedded API, including API restarts. Its guard must live inside the
-  blocking task so cancellation cannot release a write still in progress.
+  local programs, and the home of everything that has to run
+  unattended. A library with a thin command line on top, so the desktop
+  app can run the same server. One concern per module; anything new
+  goes in whichever of `body`, `job`, `printers`, `config`, `data`,
+  `schedule`, `problem`, `app` or `server` owns it. `data` is the data
+  directory: `printers.json`, `schedules.json` and `token`, each read
+  once at startup and written whole under its lock after every change,
+  or kept in memory when the desktop app supplies the profiles.
+  `schedule` holds the schedule shape and the loop that prints each one
+  on the local clock through the queue; it runs for as long as the
+  server does. Shutdown cancels queued scheduled jobs before draining
+  HTTP requests; blocking writes already in progress finish under
+  their queue guards. Profiles are addressed by name, `PUT` creates or
+  replaces, and jobs still cannot carry `host` or `port`. The connection
+  probe lives here too, behind `/status` and exported as `reachable`,
+  so it takes the printer's turn like a job. `printers::PrintQueue`,
+  exported at the crate root, serialises connections by host and port.
+  The GUI shares one queue across manual jobs, Linear jobs, probes and
+  the embedded API, including API restarts. Its guard must live inside
+  the blocking task so cancellation cannot release a write still in
+  progress.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own
-  agents to print through the API, and the only reference to its
-  endpoints and job fields. Anything the API gains goes in here.
+  agents to print through the API. `apps/starprint-api/API.md` is the
+  reference: every route, field and status, in tables. Anything the API
+  gains goes in both, the reference for what it is and the skill for
+  how an agent should use it.
 - `.macroscope/`: Macroscope's ignore list and the check-run agent that
   carries the rules below. Macroscope reads nothing else. Codex reads
   the Code Review Rules at the end of this file.
@@ -181,7 +201,8 @@ anything but the bitmap that prints, a QR symbol sent as `ESC GS y`
 instead of a bitmap, and a job that selects
 `PrintMode::DoubleResolution` without switching back at the end.
 
-### The API skill
+### The API skill and reference
 
-An endpoint or job field added to `apps/starprint-api` without the
-matching change in `skills/starprint-print/` is a finding.
+An endpoint, job field, profile field or schedule field added to
+`apps/starprint-api` without the matching change in both
+`apps/starprint-api/API.md` and `skills/starprint-print/` is a finding.

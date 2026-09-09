@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### HTTP API
+
+- **The server keeps a data directory** with its profiles, schedules
+  and token, at `starprint` under the platform's configuration
+  directory or wherever `--data` points. `--config` and `printers.toml`
+  are gone: profiles are `printers.json` in that directory, in the shape
+  the API takes them. The token now persists across restarts; `--token`
+  sets it.
+- **`GET /v1/printers` returns `{ "version", "printers" }`** instead of
+  a bare array, and each profile now includes its `host` and `port`.
+- Profiles are managed over the API: `PUT /v1/printers/{name}` creates
+  or replaces one, `DELETE` removes it, and `GET
+  /v1/printers/{name}/status` reports whether the printer answers.
+- Schedules run on the server: `GET`, `POST`, `PUT` and `DELETE` under
+  `/v1/schedules`, printed on the server's local clock. The reference
+  is [`apps/starprint-api/API.md`](apps/starprint-api/API.md).
+
+### Desktop app
+
+- The scheduler no longer stops at the hour the clocks go back.
+
 ## 1.0.0
 
 **Print to Star receipt printers from Windows, macOS, scripts and AI agents.**

@@ -46,6 +46,15 @@ impl Problem {
         Self::new(StatusCode::NOT_FOUND, detail)
     }
 
+    /// A change that could not be written to the data directory. The
+    /// server's own fault; nothing changed, on disk or in memory.
+    pub fn not_saved(error: impl std::fmt::Display) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("The change could not be saved: {error}."),
+        )
+    }
+
     pub fn too_large(detail: impl Into<String>) -> Self {
         Self::new(StatusCode::PAYLOAD_TOO_LARGE, detail)
     }
@@ -59,6 +68,11 @@ impl Problem {
     /// bytes, so a client must not retry on its own.
     pub fn bad_gateway(detail: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, detail)
+    }
+
+    /// The sentence for a log line, when there is no client to answer.
+    pub fn detail(&self) -> &str {
+        &self.detail
     }
 }
 

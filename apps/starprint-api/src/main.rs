@@ -1,11 +1,11 @@
-//! The command line: profiles from a file, one server until Ctrl-C.
+//! The command line: a data directory, one server until Ctrl-C.
 
 mod args;
 
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use starprint_api::{Server, config};
+use starprint_api::{Data, Server};
 
 fn main() -> ExitCode {
     match run() {
@@ -23,30 +23,34 @@ fn run() -> Result<(), String> {
         return Ok(());
     };
 
-    // Read before the runtime starts: a file the server cannot work
-    // from is a failure to start, not a request that fails later.
-    let profiles = config::read(&args.config)?;
+    // Read before the runtime starts: a directory the server cannot
+    // work from is a failure to start, not a request that fails later.
+    let dir = args.data.map_or_else(Data::default_dir, Ok)?;
+    let data = Arc::new(Data::open(&dir, args.token)?);
+    let profiles = data.profiles();
     let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
     println!(
-        "starprint-api: {} from {}",
+        "starprint-api: {} and {} in {}",
         if names.is_empty() {
             "no printers".to_owned()
         } else {
             names.join(", ")
         },
-        args.config.display()
+        match data.schedules().len() {
+            1 => "1 schedule".to_owned(),
+            n => format!("{n} schedules"),
+        },
+        dir.display()
     );
 
     tokio::runtime::Runtime::new()
         .map_err(|e| format!("the runtime could not start: {e}"))?
         .block_on(async {
-            let token = args
-                .token
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            let server = Server::bind(args.listen, profiles, token.clone(), Arc::default()).await?;
+            let server = Server::bind(args.listen, Arc::clone(&data), Arc::default()).await?;
             println!(
-                "starprint-api: listening on http://{} with token {token}",
-                server.local_addr()
+                "starprint-api: listening on http://{} with token {}",
+                server.local_addr(),
+                data.token()
             );
             let _ = tokio::signal::ctrl_c().await;
             server.shutdown().await
