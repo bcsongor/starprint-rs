@@ -80,6 +80,11 @@ impl ScheduleSpec {
                 "A picture cannot be scheduled: the server holds no image to print it from.",
             ));
         }
+        if self.due.is_some() && !matches!(self.job, Job::TaskCard(_)) {
+            return Err(Problem::bad_request(
+                "`due` dates a task card; this job has no date to set.",
+            ));
+        }
         Ok(())
     }
 
@@ -267,6 +272,9 @@ mod tests {
         let mut picture = spec("sp743", "0 9 * * *", None);
         picture.job = serde_json::from_value(json!({ "kind": "picture" })).unwrap();
         assert!(detail(picture).starts_with("A picture cannot be scheduled"));
+        let mut dated_text = spec("sp743", "0 9 * * *", Some(Due::RunDay));
+        dated_text.job = serde_json::from_value(json!({ "kind": "text", "text": "Hi" })).unwrap();
+        assert!(detail(dated_text).starts_with("`due` dates a task card"));
     }
 
     #[test]
