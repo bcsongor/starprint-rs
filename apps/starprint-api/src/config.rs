@@ -13,10 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use starprint_workflows::{Head, Paper, Printer, PrinterKind, Speed, check_density};
 
-/// A named profile and the printer it builds. The desktop app hands
-/// its own profiles over in this shape, already checked by their type,
-/// so only the file and the API go through the checks below.
-#[derive(Debug, Clone, Deserialize)]
+/// A named profile and the printer it builds.
+#[derive(Debug, Clone)]
 pub struct Profile {
     pub name: String,
     pub printer: Printer,

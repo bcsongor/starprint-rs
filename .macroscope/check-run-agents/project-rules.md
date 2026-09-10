@@ -33,10 +33,10 @@ test described in the PR is a finding.
 - The SP700 QR module: 7 dots by 3 at double density. The default symbol
   size and the 1.7 module ceiling on the corner radius.
 - Density +4 selects two-colour mode and sends neither the density nor
-  the speed command. Double-resolution sections use +3.
-- The GUI disables picture double resolution at density +4 for both
-  preview and printing. Apply this existing restriction when resolving
-  a saved job against its selected profile, including scheduled jobs.
+  the speed command. The test page's double-resolution section uses +3.
+- A picture's `double` is ignored at density +4, in print and preview,
+  by `Printer::picture` in the workflows crate. A front end that
+  reinstates the rule, or drops it, is a finding.
 
 ## Command bytes
 

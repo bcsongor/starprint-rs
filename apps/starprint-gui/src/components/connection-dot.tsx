@@ -1,4 +1,4 @@
-import type { Status } from "@/hooks/use-probes";
+import type { Status } from "@/hooks/use-statuses";
 import { cn } from "@/lib/utils";
 
 /**

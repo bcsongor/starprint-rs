@@ -4,34 +4,33 @@ import { toast } from "sonner";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Toggle } from "@/components/ui/toggle";
-import type { ApiServer } from "@/hooks/use-api-server";
-import { listAddresses, type Address, type Listen } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import type { Server } from "@/lib/api";
+import { listAddresses, type Address, type Listen } from "@/lib/embedded";
 
 interface Props {
-  enabled: boolean;
-  server: ApiServer | null;
+  server: Server;
+  /** Whether the server also listens on the LAN, at `listen`. */
+  lan: boolean;
   listen: Listen;
-  onChange: (enabled: boolean) => void;
+  onLanChange: (lan: boolean) => void;
   onListenChange: (listen: Listen) => void;
-  className?: string;
 }
 
-/** Starts the API when off and opens its settings when on. */
-export function ApiToggle({
-  enabled,
+/** Where the server is and what it wants, for programs that print through it. */
+export function ApiButton({
   server,
+  lan,
   listen,
-  onChange,
+  onLanChange,
   onListenChange,
-  className,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -61,33 +60,20 @@ export function ApiToggle({
   ).map((a) => ({ value: a.ip, label: a.ip, hint: a.name }));
 
   return (
-    <Popover
-      open={enabled && open}
-      onOpenChange={(next) => {
-        if (!enabled) onChange(true);
-        setOpen(next);
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Toggle
+          <Button
             variant="outline"
-            pressed={enabled}
-            title={enabled ? "HTTP API" : "Serve the HTTP API to other programs"}
-            aria-label="Serve the HTTP API"
-            className={cn(
-              DOTTED,
-              "bg-secondary aria-pressed:border-emerald-500/40 aria-pressed:bg-emerald-500/15",
-              "hover:border-emerald-500/40 hover:bg-emerald-500/10",
-              "aria-pressed:hover:border-emerald-500/40 aria-pressed:hover:bg-emerald-500/10",
-              className,
-            )}
+            title="HTTP API"
+            aria-label="HTTP API"
+            className={DOTTED}
           />
         }
       >
         <ConnectionDot
-          status={enabled ? "online" : "offline"}
-          label={enabled ? "Serving" : "Off"}
+          status="online"
+          label={lan ? "Serving on the LAN" : "Serving on this machine"}
         />
         API
       </PopoverTrigger>
@@ -95,12 +81,22 @@ export function ApiToggle({
         align="start"
         className="w-auto min-w-80 gap-0 overflow-hidden p-0"
       >
-        <div className="border-b bg-muted p-2.5 [&_[data-slot=select-trigger]]:bg-background [&_[data-slot=select-value]]:font-mono">
+        <div className="flex flex-col gap-2 border-b bg-muted p-2.5 [&_[data-slot=select-trigger]]:bg-background [&_[data-slot=select-value]]:font-mono">
+          <Field orientation="horizontal" className="h-8 w-auto">
+            <Switch id="api-lan" checked={lan} onCheckedChange={onLanChange} />
+            <FieldLabel
+              htmlFor="api-lan"
+              className="text-sm tracking-normal normal-case text-foreground"
+            >
+              Also listen on the LAN
+            </FieldLabel>
+          </Field>
           <Row label="Listen">
             <OptionSelect
               id="api-address"
               value={listen.ip}
               options={options}
+              disabled={!lan}
               onChange={(ip) => onListenChange({ ...listen, ip })}
               align="start"
               labelClassName="w-32 font-mono"
@@ -125,22 +121,11 @@ export function ApiToggle({
         </div>
         <div className="flex flex-col gap-2 p-2.5">
           <Row label="URL">
-            <ReadOnlyField value={server?.url ?? null} placeholder="Starting…" />
+            <ReadOnlyField value={server.url} />
           </Row>
           <Row label="Token">
-            <ReadOnlyField value={server?.token ?? null} />
+            <ReadOnlyField value={server.token} />
           </Row>
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-end"
-            onClick={() => {
-              onChange(false);
-              setOpen(false);
-            }}
-          >
-            Stop
-          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -158,15 +143,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ReadOnlyField({
-  value,
-  placeholder,
-}: {
-  value: string | null;
-  placeholder?: string;
-}) {
+function ReadOnlyField({ value }: { value: string }) {
   const copy = async () => {
-    if (value === null) return;
     try {
       await navigator.clipboard.writeText(value);
       toast.success("Copied");
@@ -176,17 +154,14 @@ function ReadOnlyField({
   };
   return (
     <>
-      <code
-        className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground select-all"
-      >
-        {value ?? placeholder}
+      <code className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground select-all">
+        {value}
       </code>
       <Button
         variant="ghost"
         size="icon"
         aria-label="Copy"
         title="Copy"
-        disabled={value === null}
         onClick={copy}
       >
         <CopyIcon />

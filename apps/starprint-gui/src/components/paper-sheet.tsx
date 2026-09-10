@@ -1,10 +1,9 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import type { Paper, PrinterKind } from "@/lib/api";
+import type { Profile } from "@/lib/api";
 import { PX_PER_MM, roll } from "@/lib/paper";
 
 interface Props {
-  kind: PrinterKind;
-  paper: Paper;
+  printer: Profile;
   /** Drawn across the print region, one pixel per dot. */
   children: ReactNode;
 }
@@ -17,11 +16,11 @@ const BOTTOM_MM = 8;
  * The roll at true width with the print region centred, scaled down to
  * fit the pane but never up.
  */
-export function PaperSheet({ kind, paper, children }: Props) {
+export function PaperSheet({ printer, children }: Props) {
   const pane = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
 
-  const { paperMm, printMm } = roll(kind, paper);
+  const { paperMm, printMm } = roll(printer);
   const width = paperMm * PX_PER_MM;
   const edge = ((paperMm - printMm) / 2) * PX_PER_MM;
 
@@ -44,7 +43,7 @@ export function PaperSheet({ kind, paper, children }: Props) {
     observer.observe(outer);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, [kind, paper, children]);
+  }, [width, children]);
 
   return (
     <div className="relative min-h-0 flex-1">

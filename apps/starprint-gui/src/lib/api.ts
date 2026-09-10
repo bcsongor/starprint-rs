@@ -1,29 +1,45 @@
-import { invoke } from "@tauri-apps/api/core";
+/**
+ * The client of `starprint-api`. Types mirror `apps/starprint-api/API.md`;
+ * the job and preview shapes are those of `starprint-workflows`.
+ */
 
-/** Mirrors `PrinterKind` in starprint-workflows/src/printer.rs. */
 export type PrinterKind = "thermal" | "impact";
 
-/** Mirrors `Speed` in starprint-workflows/src/printer.rs. */
 export type Speed = "high" | "medium" | "slow";
 
-/** Mirrors `Paper` in starprint-workflows/src/printer.rs. */
-export type Paper = "80" | "112";
+/** Roll width in millimetres, matching the print width memory switch. */
+export type Paper = 80 | 112;
 
 /** Selects two-colour mode; mirrors `TWO_COLOR_DENSITY` in starprint-workflows. */
 export const TWO_COLOR_DENSITY = 4;
 
-/** Mirrors `Printer` in starprint-workflows/src/printer.rs. */
-export interface Printer {
-  kind: PrinterKind;
+/**
+ * A profile as `PUT /v1/printers/{name}` takes it. Only a thermal
+ * printer has a roll width, a density and a speed.
+ */
+export type ProfileSpec = {
   host: string;
   port: number;
-  density: number;
-  speed: Speed;
-  paper: Paper;
   cut: boolean;
+} & (
+  | { kind: "thermal"; paper: Paper; density: number; speed: Speed }
+  | { kind: "impact" }
+);
+
+/** A profile as the server lists it. */
+export type Profile = ProfileSpec & { name: string };
+
+export function toSpec({ name: _name, ...spec }: Profile): ProfileSpec {
+  return spec;
 }
 
-/** Mirrors `TaskCard` in starprint-workflows/src/task_card.rs. */
+/** The profiles as the picker lists them, in alphabetical order. */
+export function byName(profiles: Profile[]): Profile[] {
+  return [...profiles].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
+}
+
 export interface TaskCard {
   text: string;
   priority: boolean;
@@ -33,8 +49,7 @@ export interface TaskCard {
   due: string | null;
 }
 
-/** Mirrors `Layout` in starprint-workflows/src/task_card.rs. */
-export interface Layout {
+export interface TaskCardLayout {
   columns: number;
   priority: string | null;
   /** Padded to sit centrally between the banner and the date. */
@@ -43,7 +58,6 @@ export interface Layout {
   lines: string[];
 }
 
-/** Mirrors `Text` in starprint-workflows/src/text.rs. */
 export interface Text {
   text: string;
   bold: boolean;
@@ -53,7 +67,6 @@ export interface Text {
   accent: boolean;
 }
 
-/** Mirrors `Layout` in starprint-workflows/src/text.rs. */
 export interface TextLayout {
   /** At normal size, whatever the chosen width. */
   columns: number;
@@ -68,10 +81,8 @@ export const DEFAULT_TEXT: Text = {
   accent: false,
 };
 
-/** Mirrors `Rule` in starprint-workflows/src/note.rs. */
 export type Rule = "blank" | "dots" | "lines" | "squares";
 
-/** Mirrors `Note` in starprint-workflows/src/note.rs. */
 export interface Note {
   rule: Rule;
   /** Rows to write in. */
@@ -80,7 +91,6 @@ export interface Note {
   pitch: number;
 }
 
-/** Mirrors `Layout` in starprint-workflows/src/note.rs. */
 export interface NoteLayout {
   columns: number;
   /** Right-aligned to fill the header line. */
@@ -104,10 +114,8 @@ export const NOTEBOOK_RULING: Record<Rule, { rows: number; pitch: number }> = {
 
 export const DEFAULT_NOTE: Note = { rule: "lines", ...NOTEBOOK_RULING.lines };
 
-/** Mirrors `Align` in starprint-workflows/src/qr.rs. */
 export type Align = "left" | "center" | "right";
 
-/** Mirrors `Ecc` in starprint-workflows/src/qr.rs. */
 export type Ecc = "l" | "m" | "q" | "h";
 
 /** How much of a symbol each level can lose and still scan. */
@@ -118,7 +126,6 @@ export const RECOVERY: Record<Ecc, string> = {
   h: "30%",
 };
 
-/** Mirrors `Qr` in starprint-workflows/src/qr.rs. */
 export interface Qr {
   data: string;
   /** Printed above the symbol. */
@@ -152,7 +159,6 @@ export const DEFAULT_QR: Qr = {
   align: "center",
 };
 
-/** Mirrors `Layout` in starprint-workflows/src/qr.rs. */
 export interface QrLayout {
   columns: number;
   /** Wrapped to the paper; empty when there is no caption. */
@@ -168,30 +174,21 @@ export interface QrLayout {
 /** The quiet zone each side; `QUIET_MODULES` in the same file. */
 export const QUIET_MODULES = 4;
 
-/** Mirrors `TestPage` in starprint-workflows/src/test_page.rs. */
 export interface TestPage {
   doubleResolution: boolean;
 }
 
 export const DEFAULT_TEST_PAGE: TestPage = { doubleResolution: false };
 
-/** Mirrors `Section` in starprint-workflows/src/test_page.rs. */
 export interface Section {
   title: string;
   check: string;
 }
 
-/** Mirrors `Dither` in starprint-workflows/src/picture.rs. */
 export type Dither = "floyd-steinberg" | "atkinson" | "threshold" | "bayer";
 
-/**
- * Mirrors `Picture` in starprint-workflows/src/picture.rs, with the
- * `path` that `PicturePath` in src-tauri/src/picture.rs adds. The shared
- * crate takes image data, so choosing a file is the app's own business.
- */
+/** The settings; the image itself goes beside the job as a form part. */
 export interface Picture {
-  /** Empty until one is chosen. */
-  path: string;
   /** Impact: double density. Thermal: double-resolution mode. */
   double: boolean;
   dither: Dither;
@@ -202,7 +199,6 @@ export interface Picture {
 }
 
 export const DEFAULT_PICTURE: Picture = {
-  path: "",
   double: false,
   dither: "floyd-steinberg",
   threshold: 128,
@@ -210,7 +206,6 @@ export const DEFAULT_PICTURE: Picture = {
   contrast: 1,
 };
 
-/** Mirrors `JobRequest` in src-tauri/src/job.rs. */
 export type Job =
   | ({ kind: "task-card" } & TaskCard)
   | ({ kind: "text" } & Text)
@@ -219,144 +214,103 @@ export type Job =
   | ({ kind: "test-page" } & TestPage)
   | ({ kind: "picture" } & Picture);
 
+/** The job as it will look, tagged by `kind` like the job. */
+export type Preview =
+  | ({ kind: "task-card" } & TaskCardLayout)
+  | ({ kind: "text" } & TextLayout)
+  | ({ kind: "note"; image: string } & NoteLayout)
+  | ({ kind: "qr"; image: string } & QrLayout)
+  | { kind: "test-page"; sections: Section[] }
+  | { kind: "picture"; image: string };
+
 export interface PrintReport {
-  bytes: number;
+  /** A completed socket write, and nothing more. */
+  bytesSent: number;
 }
 
-export interface HexDump {
-  bytes: number;
-  /** 16 bytes per row: offset, hex, ASCII. */
-  dump: string;
-}
-
-export function taskCardLayout(
-  card: TaskCard,
-  kind: PrinterKind,
-  paper: Paper,
-) {
-  return invoke<Layout>("task_card_layout", { card, kind, paper });
-}
-
-export function textLayout(text: Text, kind: PrinterKind, paper: Paper) {
-  return invoke<TextLayout>("text_layout", { text, kind, paper });
-}
-
-export function noteLayout(note: Note, kind: PrinterKind, paper: Paper) {
-  return invoke<NoteLayout>("note_layout", { note, kind, paper });
-}
-
-export function notePreview(note: Note, kind: PrinterKind, paper: Paper) {
-  return invoke<ArrayBuffer>("note_preview", { note, kind, paper });
-}
-
-/** Rejects data too long to encode. */
-export function qrLayout(code: Qr, kind: PrinterKind, paper: Paper) {
-  return invoke<QrLayout>("qr_layout", { code, kind, paper });
-}
-
-/** PNG bytes of the symbol as it will print, dot for dot. */
-export function qrPreview(code: Qr, kind: PrinterKind, paper: Paper) {
-  return invoke<ArrayBuffer>("qr_preview", { code, kind, paper });
-}
-
-export function testPageSections(page: TestPage, kind: PrinterKind) {
-  return invoke<Section[]>("test_page_sections", { page, kind });
-}
-
-export function printJob(job: Job, printer: Printer) {
-  return invoke<PrintReport>("print_job", { job, printer });
-}
-
-export function jobHexdump(job: Job, printer: Printer) {
-  return invoke<HexDump>("job_hexdump", { job, printer });
-}
-
-/** PNG bytes. */
-export function picturePreview(
-  picture: Picture,
-  kind: PrinterKind,
-  paper: Paper,
-) {
-  return invoke<ArrayBuffer>("picture_preview", { picture, kind, paper });
-}
-
-export function probePrinter(host: string, port: number) {
-  return invoke<boolean>("probe_printer", { host, port });
-}
-
-/**
- * Mirrors `Profile` in starprint-api/src/config.rs: what a client names
- * a printer by, and the printer it reaches.
- */
-export interface NamedPrinter {
-  name: string;
-  printer: Printer;
-}
-
-/** Mirrors `Address` in src-tauri/src/api.rs. */
-export interface Address {
-  ip: string;
-  /** The adapter, such as `Wi-Fi` or `en0`. */
-  name: string;
-}
-
-/** Loopback first, then each adapter's IPv4 address. */
-export function listAddresses() {
-  return invoke<Address[]>("list_addresses");
-}
-
-/** Where the API listens. */
-export interface Listen {
-  ip: string;
-  port: number;
-}
-
-/**
- * Starts the HTTP API inside the app on these printers, behind the
- * token every request must carry, at `listen`, replacing one already
- * running, and returns its URL.
- */
-export function startApi(
-  printers: NamedPrinter[],
-  token: string,
-  listen: Listen,
-) {
-  return invoke<string>("start_api", { printers, token, ...listen });
-}
-
-/** Lets requests in flight finish first. */
-export function stopApi() {
-  return invoke<void>("stop_api");
-}
-
-/** Mirrors `Due` in starprint-api/src/schedule.rs: the due date a
- * scheduled task card gets when it prints. */
+/** The due date a scheduled task card gets when it prints. */
 export type Due = "run-day" | "next-day";
 
-/** Mirrors `Scheduled` in src-tauri/src/scheduler.rs. */
-export interface Scheduled {
-  id: string;
-  job: Job;
-  printer: Printer;
+/** A schedule as `POST /v1/schedules` takes it. */
+export interface ScheduleSpec {
+  printer: string;
   /** Five fields: minute, hour, day, month, weekday. */
   cron: string;
-  due: Due | null;
+  enabled: boolean;
+  /** Task cards only; absent prints the card undated. */
+  due?: Due;
+  job: Job;
 }
 
-/** Replaces the schedules the Rust side runs. */
-export function setSchedules(schedules: Scheduled[]) {
-  return invoke<void>("set_schedules", { schedules });
-}
-
-/** When `cron` next fires, as an ISO string, or what is wrong with it. */
-export function nextRun(cron: string) {
-  return invoke<string>("next_run", { cron });
-}
-
-/** Sent after each scheduled print; mirrors `Outcome` in scheduler.rs. */
-export const SCHEDULE_RAN = "schedule-ran";
-
-export interface ScheduleOutcome {
+export interface Schedule extends ScheduleSpec {
   id: string;
-  error: string | null;
 }
+
+export interface Server {
+  url: string;
+  token: string;
+}
+
+/** A job, as JSON or, with an image beside it, as a form. */
+function jobBody(job: Job, image: File | null): RequestInit {
+  const request = JSON.stringify({ job });
+  if (!image) {
+    return {
+      body: request,
+      headers: { "Content-Type": "application/json" },
+    };
+  }
+  const form = new FormData();
+  form.append("job", request);
+  form.append("image", image);
+  return { body: form };
+}
+
+function jsonBody(value: unknown): RequestInit {
+  return {
+    body: JSON.stringify(value),
+    headers: { "Content-Type": "application/json" },
+  };
+}
+
+export function createClient({ url, token }: Server) {
+  /** The response, or the problem's `detail` thrown. */
+  const send = async (method: string, path: string, init: RequestInit = {}) => {
+    const response = await fetch(url + path, {
+      ...init,
+      method,
+      headers: { ...init.headers, Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error((await response.json()).detail);
+    return response;
+  };
+  const json = <T>(method: string, path: string, init?: RequestInit) =>
+    send(method, path, init).then((response) => response.json() as Promise<T>);
+  const printer = (name: string) => `/v1/printers/${encodeURIComponent(name)}`;
+
+  return {
+    printers: () =>
+      json<{ printers: Profile[] }>("GET", "/v1/printers").then(
+        (list) => list.printers,
+      ),
+    putPrinter: (name: string, spec: ProfileSpec) =>
+      json<Profile>("PUT", printer(name), jsonBody(spec)),
+    deletePrinter: (name: string) => send("DELETE", printer(name)),
+    status: (name: string) =>
+      json<{ online: boolean }>("GET", `${printer(name)}/status`).then(
+        (status) => status.online,
+      ),
+    print: (name: string, job: Job, image: File | null) =>
+      json<PrintReport>("POST", `${printer(name)}/jobs`, jobBody(job, image)),
+    preview: (name: string, job: Job, image: File | null) =>
+      json<Preview>("POST", `${printer(name)}/preview`, jobBody(job, image)),
+    schedules: () => json<Schedule[]>("GET", "/v1/schedules"),
+    createSchedule: (spec: ScheduleSpec) =>
+      json<Schedule>("POST", "/v1/schedules", jsonBody(spec)),
+    replaceSchedule: (id: string, spec: ScheduleSpec) =>
+      json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
+    deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
+  };
+}
+
+export type Client = ReturnType<typeof createClient>;

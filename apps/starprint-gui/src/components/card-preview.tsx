@@ -1,18 +1,12 @@
 import { PrintedText } from "@/components/printed-text";
 import { PreviewPane } from "@/components/preview-pane";
-import { useAsync } from "@/hooks/use-async";
-import {
-  taskCardLayout,
-  type Paper,
-  type PrinterKind,
-  type TaskCard,
-} from "@/lib/api";
+import type { Profile, TaskCardLayout } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  card: TaskCard;
-  kind: PrinterKind;
-  paper: Paper;
+  /** Null until the first layout lands. */
+  layout: TaskCardLayout | null;
+  printer: Profile;
 }
 
 /**
@@ -20,16 +14,7 @@ interface Props {
  * the reference and the due date on one line, then the task at double
  * width and height.
  */
-export function CardPreview({ card, kind, paper }: Props) {
-  const preview = useAsync(
-    async () => ({
-      layout: await taskCardLayout(card, kind, paper),
-      printer: { kind, paper },
-    }),
-    [card, kind, paper],
-  );
-  const layout = preview?.layout;
-  const printer = preview?.printer ?? { kind, paper };
+export function CardPreview({ layout, printer }: Props) {
   const hasHeader = Boolean(
     layout?.priority || layout?.reference || layout?.due,
   );
@@ -37,10 +22,7 @@ export function CardPreview({ card, kind, paper }: Props) {
   const empty = lines.every((line) => line === "");
 
   return (
-    <PreviewPane
-      printer={printer}
-      hint={layout && `${layout.columns} columns`}
-    >
+    <PreviewPane printer={printer} hint={layout && `${layout.columns} columns`}>
       <PrintedText columns={layout?.columns ?? 48}>
         {hasHeader && (
           <div className="font-bold">

@@ -1,15 +1,10 @@
 import { OptionSelect, type Option } from "@/components/option-select";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  TWO_COLOR_DENSITY,
-  type Paper,
-  type Printer,
-  type Speed,
-} from "@/lib/api";
+import { TWO_COLOR_DENSITY, type Profile, type Speed } from "@/lib/api";
 import { roll } from "@/lib/paper";
 
-const PAPERS: Option<Paper>[] = [
+const PAPERS: Option<string>[] = [
   { value: "80", label: "80 mm", hint: "576 dots" },
   { value: "112", label: "112 mm", hint: "832 dots" },
 ];
@@ -32,16 +27,15 @@ const SPEEDS: Option<Speed>[] = [
 ];
 
 interface Props {
-  printer: Printer;
-  onChange: (printer: Printer) => void;
+  /** Undefined while there is no profile; the controls show disabled. */
+  profile: Profile | undefined;
+  onChange: (profile: Profile) => void;
 }
 
 /** Paper width, with density and speed controls for thermal printers. */
-export function PrintOptions({ printer, onChange }: Props) {
-  const set = <K extends keyof Printer>(key: K, value: Printer[K]) =>
-    onChange({ ...printer, [key]: value });
-  const thermal = printer.kind === "thermal";
-  const twoColor = thermal && printer.density === TWO_COLOR_DENSITY;
+export function PrintOptions({ profile, onChange }: Props) {
+  const thermal = profile?.kind === "thermal";
+  const twoColor = thermal && profile.density === TWO_COLOR_DENSITY;
 
   return (
     <>
@@ -50,15 +44,17 @@ export function PrintOptions({ printer, onChange }: Props) {
         {thermal ? (
           <OptionSelect
             id="paper"
-            value={printer.paper}
+            value={String(profile.paper)}
             options={PAPERS}
             labelClassName="w-14"
-            onChange={(paper) => set("paper", paper)}
+            onChange={(paper) =>
+              onChange({ ...profile, paper: paper === "112" ? 112 : 80 })
+            }
           />
         ) : (
           <Input
             id="paper"
-            value={`${roll(printer.kind, printer.paper).paperMm} mm`}
+            value={profile ? `${roll(profile).paperMm} mm` : ""}
             disabled
           />
         )}
@@ -70,10 +66,12 @@ export function PrintOptions({ printer, onChange }: Props) {
             <FieldLabel htmlFor="density">Density</FieldLabel>
             <OptionSelect
               id="density"
-              value={String(printer.density)}
+              value={String(profile.density)}
               options={DENSITIES}
               labelClassName="w-6 text-right tabular-nums"
-              onChange={(density) => set("density", Number(density))}
+              onChange={(density) =>
+                onChange({ ...profile, density: Number(density) })
+              }
             />
           </Field>
 
@@ -84,11 +82,11 @@ export function PrintOptions({ printer, onChange }: Props) {
             <FieldLabel htmlFor="speed">Speed</FieldLabel>
             <OptionSelect
               id="speed"
-              value={printer.speed}
+              value={profile.speed}
               options={SPEEDS}
               disabled={twoColor}
               labelClassName="w-14"
-              onChange={(speed) => set("speed", speed)}
+              onChange={(speed) => onChange({ ...profile, speed })}
             />
           </Field>
         </>

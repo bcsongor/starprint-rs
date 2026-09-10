@@ -25,8 +25,7 @@ const TOKEN: &str = "token";
 const LOCK: &str = "lock";
 
 pub struct Data {
-    /// `None` keeps everything in memory: the desktop app's embedded
-    /// server, and the tests.
+    /// `None` keeps everything in memory, for the tests.
     dir: Option<PathBuf>,
     /// Held for as long as the directory is open.
     _lock: Option<File>,
@@ -79,6 +78,7 @@ impl Data {
     }
 
     /// Nothing is written anywhere; changes last as long as the process.
+    #[cfg(test)]
     pub fn ephemeral(profiles: Vec<Profile>, token: String) -> Self {
         Self {
             dir: None,

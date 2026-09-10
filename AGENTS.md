@@ -24,31 +24,32 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   bitmap gives one path, a known version, a preview that draws what
   prints and rounded modules, none of which `ESC GS y` would.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
-  `src-tauri/`. Run with `bun tauri dev` from that directory. It adds
-  file selection, the previews, the API button and the Linear
-  auto-print, and the schedules. Its preview commands call the
-  workflows crate's `preview`. A preview that kept a rule of its own
-  drifted once, and squared finder patterns went unnoticed until they
-  came off the printer. A schedule is a job as its form stood, a
-  profile and a five-field cron expression, kept in the settings store
-  by the frontend and shown in a drawer off the header. The Rust side
-  (`src-tauri/src/scheduler.rs`) checks the current local minute with
-  `croner` and spawns matching jobs through the shared print queue.
-  Only schedule definitions are stored. Schedules without a host do
-  not run. A task card's due date follows its rule when it prints.
-  This is the app's own copy of what the API now does; the app becomes
-  a client of its embedded server next, and the copy goes then.
-  The API button runs `starprint-api`'s server in-process on the
-  profiles that have a host, at an address and port picked under the
-  button, behind a token kept in the settings store, and starts it
-  again when a profile or the address changes. That server's data is
-  in memory only, so a profile or schedule made through it lasts until
-  the server next starts, which releasing the button, editing any
-  profile or changing the address all cause. Auto-print is frontend
+  `src-tauri/`. Run with `bun tauri dev` from that directory. The app
+  is a web client of `starprint-api`, which it runs in-process on the
+  same data directory the command line uses, so the two cannot run at
+  once; the app says so and offers a retry. The Rust side is a
+  launcher: `start_server` opens the directory on its first call and
+  binds the server at the address it is given, replacing one already
+  running, and `list_addresses` names the adapters. Everything else
+  is `fetch` from `src/lib/api.ts`: profiles, jobs, previews,
+  schedules and the connection dot's status. The server answers the
+  webview's CORS preflight for that. A picture is a `File` from a file
+  input, sent as the multipart form. The settings store keeps only the
+  Linear key, the LAN switch and address, and the active profile's
+  name; profiles and schedules are the server's. The server listens
+  at loopback on port 9110; the API button's switch also puts it on a
+  LAN address, which is a restart there, and the button shows the URL
+  and token. A LAN address that will not bind falls back to loopback.
+  Every preview is the server's `Preview` drawn as it comes: a layout
+  in the printer's font, an `<img>` of the `data:` PNG. A preview that
+  kept a rule of its own drifted once, and squared finder patterns went
+  unnoticed until they came off the printer. Schedules are the API's,
+  shown in a drawer off the header and written through it; the dialog
+  checks a cron expression with npm `croner`, the same dialect as the
+  server's crate. Pictures cannot be scheduled. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
-  newly assigned open issue. Linear answers the webview's CORS
-  preflight, so no HTTP plugin is involved.
+  newly assigned open issue, posted to the server like any other job.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs, and the home of everything that has to run
   unattended. A library with a thin command line on top, so the desktop
@@ -56,9 +57,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   goes in whichever of `body`, `job`, `printers`, `config`, `data`,
   `schedule`, `problem`, `app` or `server` owns it. `data` is the data
   directory: `printers.json`, `schedules.json` and `token`, each read
-  once at startup and written whole under its lock after every change,
-  or kept in memory when the desktop app supplies the profiles. The
-  directory is locked while open, so two servers cannot share one.
+  once at startup and written whole under its lock after every change.
+  The directory is locked while open, so two servers cannot share one,
+  the desktop app's included. `app` answers `OPTIONS` with the CORS
+  headers for any origin, since the app's webview is a browser; the
+  token is what admits a request.
   `schedule` holds the schedule shape and the loop that prints each one
   on the local clock through the queue; it runs for as long as the
   server does. Shutdown cancels queued scheduled jobs before draining
@@ -70,10 +73,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   probe lives here too, behind `/status` and exported as `reachable`,
   so it takes the printer's turn like a job. `printers::PrintQueue`,
   exported at the crate root, serialises connections by host and port.
-  The GUI shares one queue across manual jobs, Linear jobs, probes and
-  the embedded API, including API restarts. Its guard must live inside
-  the blocking task so cancellation cannot release a write still in
-  progress.
+  The GUI keeps one queue across restarts of its server. Its guard must
+  live inside the blocking task so cancellation cannot release a write
+  still in progress.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own
@@ -122,10 +124,12 @@ them, so do not retune these values from a screen:
   plain paper, measured on the TSP700II, which is what density +4 in a
   profile selects. In that mode the density command does nothing to
   black (a sweep from -3 to +3 printed three identical bars) and the
-  speed command is ignored, so +4 sections send neither command.
-  Double-resolution sections use +3 instead. The GUI disables picture
-  double resolution at +4 for both preview and printing. The text colour
-  and the raster colour both survive `ESC @`, so every job sets them.
+  speed command is ignored, so +4 sections send neither command. The
+  test page's double-resolution section uses +3 instead. A picture's
+  `double` is ignored at +4, in print and preview alike, by
+  `Printer::picture` in the workflows crate: the darker black is what
+  +4 is for. The text colour and the raster colour both survive
+  `ESC @`, so every job sets them.
 - A QR module is drawn 7 dots by 3 on the SP700, at double density: 169
   dots to the inch across against 72 down, which comes within 1 % of
   square. A 30 mm symbol printed that way scans off the ribbon, so the
@@ -202,9 +206,10 @@ the reference was rerun.
 ### Job behaviour
 
 Jobs live in `crates/starprint-workflows`; front ends call them. A
-printing rule in a front end is a finding. So is a preview drawn from
-anything but the bitmap that prints, a QR symbol sent as `ESC GS y`
-instead of a bitmap, and a job that selects
+printing rule in a front end is a finding, the desktop app's frontend
+included: it builds no bytes and draws no preview of its own. So is a
+preview drawn from anything but the bitmap that prints, a QR symbol
+sent as `ESC GS y` instead of a bitmap, and a job that selects
 `PrintMode::DoubleResolution` without switching back at the end.
 
 ### The API skill and reference

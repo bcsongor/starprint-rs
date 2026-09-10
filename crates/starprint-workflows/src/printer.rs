@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use starprint::graphics::DeviceProfile;
 use starprint::{Builder, Color, Document, PrintMode, PrintSpeed, StarLine};
 
-use crate::{Job, picture, test_page};
+use crate::{Job, Picture, picture, test_page};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -104,14 +104,10 @@ pub fn check_density(density: i8) -> Result<(), String> {
 }
 
 /// A printer profile. `density`, `speed` and `paper` are thermal only.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct Printer {
     pub host: String,
     pub port: u16,
-    /// Flattened, so the wire format stays one flat object with `kind`
-    /// beside `host` and `port`.
-    #[serde(flatten)]
     pub head: Head,
     pub cut: bool,
 }
@@ -119,8 +115,7 @@ pub struct Printer {
 /// The head, and the settings only that head has. An SP700 has no
 /// density, speed or roll width, so on impact there is nowhere to put
 /// one.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Head {
     Thermal {
         paper: Paper,
@@ -181,6 +176,22 @@ impl Printer {
         }
     }
 
+    /// A picture as this printer prints it. Two-colour mode has one
+    /// resolution, and double resolution would print at +3 instead of
+    /// the darker black +4 was chosen for, so `double` is dropped there.
+    pub(crate) fn picture(&self, picture: &Picture) -> Picture {
+        match self.head {
+            Head::Thermal {
+                density: TWO_COLOR_DENSITY,
+                ..
+            } => Picture {
+                double: false,
+                ..*picture
+            },
+            _ => *picture,
+        }
+    }
+
     /// The bytes `job` prints on this printer. A [`Job::Picture`] needs
     /// `image`; the other kinds ignore it.
     pub fn document(&self, job: &Job, image: Option<&DynamicImage>) -> Result<Document, String> {
@@ -226,7 +237,7 @@ impl Printer {
                     Job::TestPage(page) => test_page::thermal(head, page, paper, cut, mode),
                     Job::Picture(pic) => {
                         let image = image.ok_or("No picture supplied.")?;
-                        picture::thermal(head, pic, paper, cut, image, mode)?
+                        picture::thermal(head, &self.picture(pic), paper, cut, image)?
                     }
                 };
                 if two_color {
@@ -387,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn double_resolution_at_plus_four_sets_density_before_the_raster() {
+    fn the_test_page_at_plus_four_sets_density_before_its_double_section() {
         let printer = Printer::thermal(
             "printer.invalid".to_owned(),
             9100,
@@ -395,34 +406,66 @@ mod tests {
             TWO_COLOR_DENSITY,
             Speed::Slow,
         );
-        let image = DynamicImage::new_rgb8(1, 1);
-        for job in [
-            Job::Picture(Picture {
-                double: true,
-                ..Picture::default()
-            }),
-            Job::TestPage(TestPage {
-                double_resolution: true,
-            }),
-        ] {
-            let document = printer.document(&job, Some(&image)).unwrap();
-            let bytes = document.as_bytes();
-            let double = bytes
-                .windows(4)
-                .position(|w| w == [0x1b, 0x1e, b'C', 32])
-                .expect("selects double resolution");
-            assert_eq!(
-                &bytes[double + 4..double + 12],
-                &[0x1b, 0x1e, b'd', 0, 0x1b, b'*', b'r', b'A'],
-                "sets +3 before entering raster mode: {job:?}"
-            );
-            let end = bytes[double + 12..]
-                .windows(4)
-                .position(|w| w[..3] == [0x1b, 0x1e, b'C'])
-                .expect("restores the job's mode");
-            assert_eq!(bytes[double + 12 + end + 3], 1);
-            assert!(bytes.ends_with(&[0x1b, 0x1e, b'C', 0]));
-        }
+        let job = Job::TestPage(TestPage {
+            double_resolution: true,
+        });
+        let document = printer.document(&job, None).unwrap();
+        let bytes = document.as_bytes();
+        let double = bytes
+            .windows(4)
+            .position(|w| w == [0x1b, 0x1e, b'C', 32])
+            .expect("selects double resolution");
+        assert_eq!(
+            &bytes[double + 4..double + 12],
+            &[0x1b, 0x1e, b'd', 0, 0x1b, b'*', b'r', b'A'],
+            "sets +3 before entering raster mode"
+        );
+        let end = bytes[double + 12..]
+            .windows(4)
+            .position(|w| w[..3] == [0x1b, 0x1e, b'C'])
+            .expect("restores the job's mode");
+        assert_eq!(bytes[double + 12 + end + 3], 1);
+        assert!(bytes.ends_with(&[0x1b, 0x1e, b'C', 0]));
+    }
+
+    /// The darker black is what +4 is for, and double resolution would
+    /// print at +3 instead, so a picture stays at normal resolution in
+    /// two-colour mode, in print and in preview alike.
+    #[test]
+    fn a_picture_at_plus_four_ignores_double_resolution() {
+        let printer = Printer::thermal(
+            "printer.invalid".to_owned(),
+            9100,
+            Paper::Mm80,
+            TWO_COLOR_DENSITY,
+            Speed::Slow,
+        );
+        let picture = Picture {
+            double: true,
+            ..Picture::default()
+        };
+        assert!(!printer.picture(&picture).double);
+        assert!(thermal().picture(&picture).double, "+3 keeps it");
+        assert!(
+            Printer::impact("printer.invalid".to_owned(), 9100)
+                .picture(&picture)
+                .double,
+            "impact has no two-colour mode"
+        );
+
+        let image = DynamicImage::new_rgb8(64, 32);
+        let document = printer
+            .document(&Job::Picture(picture), Some(&image))
+            .unwrap();
+        let bytes = document.as_bytes();
+        assert!(
+            !bytes.windows(4).any(|w| w == [0x1b, 0x1e, b'C', 32]),
+            "no double resolution: {bytes:02x?}"
+        );
+        assert!(
+            !bytes.windows(4).any(|w| w[..3] == [0x1b, 0x1e, b'd']),
+            "and no density command, which the mode ignores"
+        );
     }
 
     #[test]
@@ -460,33 +503,6 @@ mod tests {
                 9200
             );
         }
-    }
-
-    /// The desktop app stores a profile as one flat object, so the head's
-    /// settings sit beside `host` on the wire whatever shape they take in
-    /// Rust.
-    #[test]
-    fn a_profile_deserialises_from_one_flat_object() {
-        let json = r#"{"kind":"thermal","host":"h","port":9100,
-                       "density":-2,"speed":"medium","paper":"112","cut":false}"#;
-        let printer: Printer = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            printer.head,
-            Head::Thermal {
-                paper: Paper::Mm112,
-                density: -2,
-                speed: Speed::Medium
-            }
-        );
-        assert!(!printer.cut);
-
-        // The app keeps the thermal fields on an impact profile too.
-        let json = r#"{"kind":"impact","host":"h","port":9100,
-                       "density":3,"speed":"slow","paper":"80","cut":true}"#;
-        let printer: Printer = serde_json::from_str(json).unwrap();
-        assert_eq!(printer.head, Head::Impact);
-        assert_eq!(printer.head.kind(), PrinterKind::Impact);
-        assert_eq!(printer.head.paper(), Paper::Mm80);
     }
 
     #[test]
