@@ -178,7 +178,7 @@ export function Workspace({ server, settings, onSettings }: Props) {
 
   const print = async () => {
     if (!canPrint) return;
-    await send(job, pictureFile, NAMES[workflow]);
+    await send(job, job.kind === "picture" ? pictureFile : null, NAMES[workflow]);
   };
 
   useAutoPrint(settings.linear, (card) =>
