@@ -32,7 +32,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   binds the server at the address it is given, replacing one already
   running, and `list_addresses` names the adapters. Everything else
   is `fetch` from `src/lib/api.ts`: profiles, jobs, previews,
-  schedules and the connection dot's status. The server answers the
+  schedules and the connection dot's status. Profiles, schedules and
+  statuses are read again every ten seconds, so a change another
+  program makes over the API shows up. The server answers the
   webview's CORS preflight for that. A picture is a `File` from a file
   input, sent as the multipart form. The settings store keeps only the
   Linear key, the LAN switch and address, and the active profile's

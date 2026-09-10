@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { CalendarClockIcon, PrinterIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAutoPrint } from "@/hooks/use-auto-print";
 import { usePreview } from "@/hooks/use-preview";
-import { useStatuses } from "@/hooks/use-statuses";
+import { useServer } from "@/hooks/use-server";
 import {
   DEFAULT_NOTE,
   DEFAULT_PICTURE,
@@ -81,8 +81,7 @@ interface Props {
 /** The app once its server is up: every job, profile and schedule goes through it. */
 export function Workspace({ server, settings, onSettings }: Props) {
   const api = useMemo(() => createClient(server), [server]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[] | null>(null);
+  const { profiles, schedules, status, refresh } = useServer(api);
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
@@ -103,16 +102,8 @@ export function Workspace({ server, settings, onSettings }: Props) {
       toast.error(what, { description: String(error) });
     }
   };
-  const refreshProfiles = () => api.printers().then(setProfiles);
-  const refreshSchedules = () => api.schedules().then(setSchedules);
-  useEffect(() => {
-    api.printers().then(setProfiles).catch(console.error);
-    api.schedules().then(setSchedules).catch(console.error);
-  }, [api]);
-
   const profile =
     profiles.find((p) => p.name === settings.printer) ?? byName(profiles)[0];
-  const status = useStatuses(api, profiles);
 
   /** A rename carries the old name's schedules over before the old
    * profile goes, since the server keeps but never runs an orphan. */
@@ -126,16 +117,15 @@ export function Workspace({ server, settings, onSettings }: Props) {
           }
         }
         await api.deletePrinter(replacing);
-        await refreshSchedules();
       }
-      await refreshProfiles();
+      await refresh();
       onSettings({ printer: next.name });
     });
 
   const deleteProfile = (name: string) =>
     attempt("Could not delete the profile", async () => {
       await api.deletePrinter(name);
-      await refreshProfiles();
+      await refresh();
     });
 
   const twoColor =
@@ -224,14 +214,14 @@ export function Workspace({ server, settings, onSettings }: Props) {
     attempt("Could not save the schedule", async () => {
       if (id) await api.replaceSchedule(id, spec);
       else await api.createSchedule(spec);
-      await refreshSchedules();
+      await refresh();
       setDraft(null);
     });
 
   const deleteSchedule = ({ id }: Schedule) =>
     attempt("Could not delete the schedule", async () => {
       await api.deleteSchedule(id);
-      await refreshSchedules();
+      await refresh();
     });
 
   return (
@@ -435,7 +425,7 @@ export function Workspace({ server, settings, onSettings }: Props) {
           onEnable={({ id, ...spec }, enabled) =>
             attempt("Could not change the schedule", async () => {
               await api.replaceSchedule(id, { ...spec, enabled });
-              await refreshSchedules();
+              await refresh();
             })
           }
           onEdit={setDraft}

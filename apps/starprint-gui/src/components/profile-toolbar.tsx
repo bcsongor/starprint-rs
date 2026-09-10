@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { statusLabel, type Status } from "@/hooks/use-statuses";
+import { statusLabel, type Status } from "@/hooks/use-server";
 import { byName, type Profile, type ProfileSpec } from "@/lib/api";
 
 /** A name that does not collide with the existing profiles. */
