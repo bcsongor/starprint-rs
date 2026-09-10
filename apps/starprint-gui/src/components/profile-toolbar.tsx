@@ -183,6 +183,9 @@ export function ProfileToolbar({
 
         <ProfileDialog
           profile={editing?.profile ?? null}
+          taken={profiles
+            .map((p) => p.name)
+            .filter((name) => name !== editing?.replacing)}
           onClose={() => setEditing(null)}
           onSave={(next) => {
             const replacing = editing?.replacing ?? null;

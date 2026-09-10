@@ -30,12 +30,14 @@ const KINDS: { value: PrinterKind; label: string; models: string }[] = [
 interface Props {
   /** The profile to edit, or null when closed. */
   profile: Profile | null;
+  /** The other profiles' names, which this one cannot take. */
+  taken: string[];
   onClose: () => void;
   onSave: (profile: Profile) => void;
 }
 
 /** Edits a copy of the profile; nothing is applied until Save. */
-export function ProfileDialog({ profile, onClose, onSave }: Props) {
+export function ProfileDialog({ profile, taken, onClose, onSave }: Props) {
   return (
     <Dialog
       open={profile !== null}
@@ -45,7 +47,12 @@ export function ProfileDialog({ profile, onClose, onSave }: Props) {
     >
       {/* Mounted per opening so the draft starts from the profile. */}
       {profile && (
-        <ProfileForm profile={profile} onCancel={onClose} onSave={onSave} />
+        <ProfileForm
+          profile={profile}
+          taken={taken}
+          onCancel={onClose}
+          onSave={onSave}
+        />
       )}
     </Dialog>
   );
@@ -53,10 +60,12 @@ export function ProfileDialog({ profile, onClose, onSave }: Props) {
 
 function ProfileForm({
   profile,
+  taken,
   onCancel,
   onSave,
 }: {
   profile: Profile;
+  taken: string[];
   onCancel: () => void;
   onSave: (profile: Profile) => void;
 }) {
@@ -73,7 +82,10 @@ function ProfileForm({
     );
   };
   const kind = KINDS.find((k) => k.value === draft.kind) ?? KINDS[0];
-  const valid = draft.name.trim() !== "" && draft.host.trim() !== "";
+  const name = draft.name.trim();
+  // `PUT` replaces by name, so another profile's name would overwrite it.
+  const collides = taken.includes(name);
+  const valid = name !== "" && !collides && draft.host.trim() !== "";
 
   return (
     <DialogContent className="gap-3 sm:max-w-md">
@@ -82,14 +94,20 @@ function ProfileForm({
       </DialogHeader>
 
       <FieldGroup className="gap-3">
-        <Field>
+        <Field data-invalid={collides}>
           <FieldLabel htmlFor="profile-name">Name</FieldLabel>
           <Input
             id="profile-name"
             value={draft.name}
             autoFocus
+            aria-invalid={collides}
             onChange={(e) => set({ name: e.target.value })}
           />
+          {collides && (
+            <p className="text-sm text-destructive">
+              There is already a profile called {name}.
+            </p>
+          )}
         </Field>
 
         <Field>
@@ -149,7 +167,7 @@ function ProfileForm({
         <Button
           disabled={!valid}
           onClick={() =>
-            onSave({ ...draft, name: draft.name.trim(), host: draft.host.trim() })
+            onSave({ ...draft, name, host: draft.host.trim() })
           }
         >
           Save

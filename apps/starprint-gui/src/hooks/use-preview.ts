@@ -4,6 +4,9 @@ import type { Client, Job, Preview } from "@/lib/api";
 /** Coalesces slider drags; the preview is never more than one render behind. */
 const DEBOUNCE_MS = 30;
 
+/** One request at a time; a job outdated while waiting is never sent. */
+let chain: Promise<void> = Promise.resolve();
+
 export interface Previewed {
   preview: Preview | null;
   error: string | null;
@@ -32,14 +35,15 @@ export function usePreview(
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      api
-        .preview(printer, job, image)
-        .then((preview) => {
+      chain = chain.then(async () => {
+        if (cancelled) return;
+        try {
+          const preview = await api.preview(printer, job, image);
           if (!cancelled) setState({ preview, error: null });
-        })
-        .catch((error) => {
+        } catch (error) {
           if (!cancelled) setState({ preview: null, error: String(error) });
-        });
+        }
+      });
     }, DEBOUNCE_MS);
     return () => {
       cancelled = true;

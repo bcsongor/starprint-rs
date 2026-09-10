@@ -114,10 +114,20 @@ export function Workspace({ server, settings, onSettings }: Props) {
     profiles.find((p) => p.name === settings.printer) ?? byName(profiles)[0];
   const status = useStatuses(api, profiles);
 
+  /** A rename carries the old name's schedules over before the old
+   * profile goes, since the server keeps but never runs an orphan. */
   const saveProfile = (next: Profile, replacing: string | null) =>
     attempt("Could not save the profile", async () => {
       await api.putPrinter(next.name, toSpec(next));
-      if (replacing) await api.deletePrinter(replacing);
+      if (replacing) {
+        for (const { id, ...spec } of await api.schedules()) {
+          if (spec.printer === replacing) {
+            await api.replaceSchedule(id, { ...spec, printer: next.name });
+          }
+        }
+        await api.deletePrinter(replacing);
+        await refreshSchedules();
+      }
       await refreshProfiles();
       onSettings({ printer: next.name });
     });
