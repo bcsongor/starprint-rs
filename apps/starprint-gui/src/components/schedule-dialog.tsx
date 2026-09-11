@@ -18,37 +18,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAsync } from "@/hooks/use-async";
-import { nextRun, type Due } from "@/lib/api";
+import type { Due, Profile, ScheduleSpec } from "@/lib/api";
 import {
   NAMES,
   PRESETS,
   describe,
   formatNext,
   fromCron,
+  nextRun,
   summary,
   toCron,
   type Preset,
 } from "@/lib/schedule";
-import type { Profile, Schedule } from "@/lib/settings";
+
+/** A schedule being written; `id` once it is on the server. */
+export interface Draft extends ScheduleSpec {
+  id?: string;
+}
 
 interface Props {
   /** The schedule to edit, or null when closed. */
-  draft: Schedule | null;
-  /** Whether `draft` is already in the list. */
-  editing: boolean;
+  draft: Draft | null;
   profiles: Profile[];
   onClose: () => void;
-  onSave: (schedule: Schedule) => void;
+  onSave: (draft: Draft) => void;
 }
 
-export function ScheduleDialog({
-  draft,
-  editing,
-  profiles,
-  onClose,
-  onSave,
-}: Props) {
+export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
   return (
     <Dialog
       open={draft !== null}
@@ -60,7 +56,6 @@ export function ScheduleDialog({
       {draft && (
         <ScheduleForm
           initial={draft}
-          editing={editing}
           profiles={profiles}
           onCancel={onClose}
           onSave={onSave}
@@ -84,41 +79,38 @@ const DUES: Option<Due | "none">[] = [
   { value: "none", label: "No due date" },
 ];
 
-type Next = { cron: string; at: string } | { cron: string; error: string };
+/** When the expression next fires, or what is wrong with it. */
+function check(cron: string): { at: Date } | { error: string } {
+  try {
+    return { at: nextRun(cron) };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+}
 
 function ScheduleForm({
   initial,
-  editing,
   profiles,
   onCancel,
   onSave,
 }: {
-  initial: Schedule;
-  editing: boolean;
+  initial: Draft;
   profiles: Profile[];
   onCancel: () => void;
-  onSave: (schedule: Schedule) => void;
+  onSave: (draft: Draft) => void;
 }) {
   const [schedule, setSchedule] = useState(initial);
-  const set = <K extends keyof Schedule>(key: K, value: Schedule[K]) =>
+  const editing = initial.id !== undefined;
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setSchedule({ ...schedule, [key]: value });
 
   // A preset and the time write the cron field; Custom opens it for typing.
   const { cron } = schedule;
   const spelled = fromCron(cron);
   const [custom, setCustom] = useState(spelled === null);
-  const checked = useAsync<Next>(
-    () =>
-      nextRun(cron)
-        .then((at) => ({ cron, at }))
-        .catch((error) => ({ cron, error: String(error) })),
-    [cron],
-  );
-  // The last answer stays until the next lands, and is for an older expression.
-  const next = checked?.cron === cron ? checked : null;
-  const valid = next !== null && "at" in next;
-  const printer = profiles.find((p) => p.id === schedule.profileId);
-  const hasHost = Boolean(printer?.host.trim());
+  const next = check(cron);
+  const valid = "at" in next;
+  const printer = profiles.find((p) => p.name === schedule.printer);
 
   return (
     <DialogContent className="gap-4 sm:max-w-md">
@@ -145,13 +137,13 @@ function ScheduleForm({
           <FieldLabel htmlFor="schedule-printer">Printer</FieldLabel>
           <Select
             modal={false}
-            value={schedule.profileId}
-            onValueChange={(id) => {
-              if (id) set("profileId", id);
+            value={schedule.printer}
+            onValueChange={(name) => {
+              if (name) set("printer", name);
             }}
           >
             <SelectTrigger id="schedule-printer" className="w-full">
-              <SelectValue>{printer?.name}</SelectValue>
+              <SelectValue placeholder="No printer">{printer?.name}</SelectValue>
             </SelectTrigger>
             <SelectContent
               alignItemWithTrigger={false}
@@ -159,12 +151,9 @@ function ScheduleForm({
               className="w-max max-w-(--available-width) min-w-(--anchor-width)"
             >
               {profiles.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
+                <SelectItem key={p.name} value={p.name}>
                   {p.name}
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {p.host || "no host"}
-                  </span>
+                  <span className="text-muted-foreground"> · {p.host}</span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -204,7 +193,7 @@ function ScheduleForm({
           </div>
         </Field>
 
-        <Field data-invalid={next !== null && !valid}>
+        <Field data-invalid={!valid}>
           <div className="flex h-5 items-center justify-between">
             <FieldLabel htmlFor="schedule-cron">Cron</FieldLabel>
             <span className="text-xs text-muted-foreground">
@@ -216,16 +205,14 @@ function ScheduleForm({
             className="font-mono"
             spellCheck={false}
             disabled={!custom}
-            aria-invalid={next !== null && !valid}
+            aria-invalid={!valid}
             value={cron}
             onChange={(e) => set("cron", e.target.value)}
           />
           <p className="min-h-5 text-sm">
-            {next === null
-              ? null
-              : "at" in next
-                ? `${describe(cron)}. Next ${formatNext(next.at)}.`
-                : next.error}
+            {valid
+              ? `${describe(cron)}. Next ${formatNext(next.at)}.`
+              : next.error}
           </p>
         </Field>
 
@@ -238,7 +225,9 @@ function ScheduleForm({
               options={DUES}
               align="start"
               labelClassName="w-40"
-              onChange={(due) => set("due", due === "none" ? null : due)}
+              onChange={(due) =>
+                set("due", due === "none" ? undefined : due)
+              }
             />
           </Field>
         )}
@@ -248,10 +237,7 @@ function ScheduleForm({
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          disabled={!valid || !hasHost}
-          onClick={() => onSave(schedule)}
-        >
+        <Button disabled={!valid || !printer} onClick={() => onSave(schedule)}>
           {editing ? "Save" : "Schedule"}
         </Button>
       </DialogFooter>

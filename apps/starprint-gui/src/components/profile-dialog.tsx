@@ -16,8 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PrinterKind } from "@/lib/api";
-import type { Profile } from "@/lib/settings";
+import type { PrinterKind, Profile } from "@/lib/api";
 
 const KINDS: { value: PrinterKind; label: string; models: string }[] = [
   {
@@ -29,25 +28,30 @@ const KINDS: { value: PrinterKind; label: string; models: string }[] = [
 ];
 
 interface Props {
-  profile: Profile;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /** The profile to edit, or null when closed. */
+  profile: Profile | null;
+  /** The other profiles' names, which this one cannot take. */
+  taken: string[];
+  onClose: () => void;
   onSave: (profile: Profile) => void;
 }
 
 /** Edits a copy of the profile; nothing is applied until Save. */
-export function ProfileDialog({ profile, open, onOpenChange, onSave }: Props) {
+export function ProfileDialog({ profile, taken, onClose, onSave }: Props) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={profile !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       {/* Mounted per opening so the draft starts from the profile. */}
-      {open && (
+      {profile && (
         <ProfileForm
           profile={profile}
-          onCancel={() => onOpenChange(false)}
-          onSave={(next) => {
-            onSave(next);
-            onOpenChange(false);
-          }}
+          taken={taken}
+          onCancel={onClose}
+          onSave={onSave}
         />
       )}
     </Dialog>
@@ -56,18 +60,32 @@ export function ProfileDialog({ profile, open, onOpenChange, onSave }: Props) {
 
 function ProfileForm({
   profile,
+  taken,
   onCancel,
   onSave,
 }: {
   profile: Profile;
+  taken: string[];
   onCancel: () => void;
   onSave: (profile: Profile) => void;
 }) {
   const [draft, setDraft] = useState(profile);
-  const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
-    setDraft({ ...draft, [key]: value });
+  const set = (changes: Partial<Pick<Profile, "name" | "host" | "port">>) =>
+    setDraft({ ...draft, ...changes });
+  /** A kind brings the fields it has and sheds the rest. */
+  const setKind = (kind: PrinterKind) => {
+    const { name, host, port, cut } = draft;
+    setDraft(
+      kind === "thermal"
+        ? { name, host, port, cut, kind, paper: 80, density: 3, speed: "slow" }
+        : { name, host, port, cut, kind },
+    );
+  };
   const kind = KINDS.find((k) => k.value === draft.kind) ?? KINDS[0];
-  const valid = draft.name.trim() !== "" && draft.host.trim() !== "";
+  const name = draft.name.trim();
+  // `PUT` replaces by name, so another profile's name would overwrite it.
+  const collides = taken.includes(name);
+  const valid = name !== "" && !collides && draft.host.trim() !== "";
 
   return (
     <DialogContent className="gap-3 sm:max-w-md">
@@ -76,14 +94,20 @@ function ProfileForm({
       </DialogHeader>
 
       <FieldGroup className="gap-3">
-        <Field>
+        <Field data-invalid={collides}>
           <FieldLabel htmlFor="profile-name">Name</FieldLabel>
           <Input
             id="profile-name"
             value={draft.name}
             autoFocus
-            onChange={(e) => set("name", e.target.value)}
+            aria-invalid={collides}
+            onChange={(e) => set({ name: e.target.value })}
           />
+          {collides && (
+            <p className="text-sm text-destructive">
+              There is already a profile called {name}.
+            </p>
+          )}
         </Field>
 
         <Field>
@@ -91,7 +115,7 @@ function ProfileForm({
           <Select
             modal={false}
             value={draft.kind}
-            onValueChange={(value) => set("kind", value as PrinterKind)}
+            onValueChange={(value) => setKind(value as PrinterKind)}
           >
             <SelectTrigger id="kind" className="w-full">
               <SelectValue>
@@ -119,7 +143,7 @@ function ProfileForm({
               placeholder="192.168.1.60"
               spellCheck={false}
               autoComplete="off"
-              onChange={(e) => set("host", e.target.value)}
+              onChange={(e) => set({ host: e.target.value })}
             />
           </Field>
           <Field>
@@ -130,7 +154,7 @@ function ProfileForm({
               min={1}
               max={65535}
               value={draft.port}
-              onChange={(e) => set("port", Number(e.target.value) || 9100)}
+              onChange={(e) => set({ port: Number(e.target.value) || 9100 })}
             />
           </Field>
         </div>
@@ -143,11 +167,7 @@ function ProfileForm({
         <Button
           disabled={!valid}
           onClick={() =>
-            onSave({
-              ...draft,
-              name: draft.name.trim(),
-              host: draft.host.trim(),
-            })
+            onSave({ ...draft, name, host: draft.host.trim() })
           }
         >
           Save

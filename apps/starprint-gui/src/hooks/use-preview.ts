@@ -1,56 +1,47 @@
-import { useEffect, useState, type DependencyList } from "react";
+import { useEffect, useState } from "react";
+import type { Client, Job, Preview } from "@/lib/api";
 
 /** Coalesces slider drags; the preview is never more than one render behind. */
 const DEBOUNCE_MS = 30;
 
-/** One render at a time across every preview; a stale request is skipped. */
+/** One request at a time; a job outdated while waiting is never sent. */
 let chain: Promise<void> = Promise.resolve();
 
-export interface Preview<T> {
-  value: T | null;
-  /** An object URL of the PNG, revoked when the next one replaces it. */
-  url: string | null;
+export interface Previewed {
+  preview: Preview | null;
   error: string | null;
 }
 
-const EMPTY: Preview<never> = { value: null, url: null, error: null };
+const EMPTY: Previewed = { preview: null, error: null };
 
 /**
- * A PNG the Rust side draws, as an object URL, with whatever else
- * `render` returns beside it. Empty when `render` resolves to null, and
- * a render that `deps` have outdated is dropped. The previous image
- * stays visible while its replacement renders.
+ * What the server says `job` will look like on `printer`. Empty when
+ * there is no job to show; an answer that a change has outdated is
+ * dropped. The previous preview stays up while its replacement loads.
  */
-export function usePreview<T>(
-  render: () => Promise<{ value: T; png: ArrayBuffer } | null>,
-  deps: DependencyList,
-): Preview<T> {
-  const [preview, setPreview] = useState<Preview<T>>(EMPTY);
+export function usePreview(
+  api: Client,
+  printer: string | null,
+  job: Job | null,
+  image: File | null,
+): Previewed {
+  const [state, setState] = useState<Previewed>(EMPTY);
+  // Jobs are rebuilt each render; compare by value.
+  const key = JSON.stringify(job);
   useEffect(() => {
-    const url = preview.url;
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [preview.url]);
-  useEffect(() => {
+    if (!printer || !job) {
+      setState(EMPTY);
+      return;
+    }
     let cancelled = false;
     const timer = setTimeout(() => {
       chain = chain.then(async () => {
         if (cancelled) return;
         try {
-          const rendered = await render();
-          if (cancelled) return;
-          if (!rendered) {
-            setPreview(EMPTY);
-            return;
-          }
-          const url = URL.createObjectURL(
-            new Blob([rendered.png], { type: "image/png" }),
-          );
-          setPreview({ value: rendered.value, url, error: null });
+          const preview = await api.preview(printer, job, image);
+          if (!cancelled) setState({ preview, error: null });
         } catch (error) {
-          if (cancelled) return;
-          setPreview({ ...EMPTY, error: String(error) });
+          if (!cancelled) setState({ preview: null, error: String(error) });
         }
       });
     }, DEBOUNCE_MS);
@@ -58,8 +49,8 @@ export function usePreview<T>(
       cancelled = true;
       clearTimeout(timer);
     };
-    // The caller's inputs; `render` reads nothing else.
+    // `job` by value; nothing else is read.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return preview;
+  }, [api, printer, key, image]);
+  return state;
 }

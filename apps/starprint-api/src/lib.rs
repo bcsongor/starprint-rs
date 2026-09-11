@@ -1,9 +1,9 @@
 //! An HTTP server for print jobs, profiles and schedules.
 //!
-//! The command line opens a data directory; the desktop app supplies
-//! its profiles. Both run a [`Server`] with bearer authentication,
-//! bound to loopback by default, that prints its schedules on the local
-//! clock for as long as it serves.
+//! The command line and the desktop app each open a data directory and
+//! run a [`Server`] on it, with bearer authentication, bound to loopback
+//! by default, that prints its schedules on the local clock for as long
+//! as it serves.
 
 mod app;
 mod body;

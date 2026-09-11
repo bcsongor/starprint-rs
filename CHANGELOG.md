@@ -21,9 +21,27 @@
 - `POST /v1/printers/{name}/preview` takes a job's body and answers
   with how it will look: the lines for a text job, a PNG for anything
   drawn as dots. Nothing reaches the printer.
+- The server answers browsers' `OPTIONS` requests and lets any origin
+  read its responses, so a web page that has the token can use it.
+- A picture's `double` is ignored at density 4 rather than printed at
+  +3. Two-colour mode has one resolution, and its darker black is what
+  4 is chosen for. The test page's double-resolution section still
+  prints at +3.
 
 ### Desktop app
 
+- **The app is now a client of the API server it runs.** The server
+  starts with the app, on the same data directory as the command
+  line's, and every print, preview, profile and schedule goes through
+  it. Profiles and schedules therefore live in that directory and are
+  shared with `starprint-api`; those in the app's own settings are not
+  carried over, so enter them again once. The command line's server
+  and the app cannot run at the same time; the app says so.
+- The **API** button no longer starts and stops the server. It shows
+  the URL and token, and its switch also puts the server on a LAN
+  address. A LAN address that cannot be bound falls back to loopback.
+- Pictures can no longer be scheduled, and the **Bytes** hex dump is
+  gone.
 - The scheduler no longer stops at the hour the clocks go back.
 
 ## 1.0.0

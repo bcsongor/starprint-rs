@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { EllipsisIcon } from "lucide-react";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
-import { statusLabel, useProbes } from "@/hooks/use-probes";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -19,19 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  activeProfile,
-  type Profile,
-  type Profiles,
-} from "@/lib/settings";
-
-/** The profiles as the picker lists them, in alphabetical order. The stored
- * order is left alone so nothing else moves when a profile is renamed. */
-function byName(profiles: Profile[]): Profile[] {
-  return [...profiles].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
-}
+import { statusLabel, type Status } from "@/hooks/use-server";
+import { byName, type Profile, type ProfileSpec } from "@/lib/api";
 
 /** A name that does not collide with the existing profiles. */
 function uniqueName(base: string, profiles: Profile[]): string {
@@ -43,22 +31,43 @@ function uniqueName(base: string, profiles: Profile[]): string {
   }
 }
 
+/** What a new profile starts from when there is none to copy. */
+const FRESH: ProfileSpec = {
+  host: "",
+  port: 9100,
+  kind: "thermal",
+  cut: true,
+  paper: 80,
+  density: 3,
+  speed: "slow",
+};
+
 interface Props {
-  state: Profiles;
-  onChange: (state: Profiles) => void;
-  /** Suspends the connection probe while a job is printing. */
-  printing: boolean;
+  profiles: Profile[];
+  /** The one the picker shows; undefined when there are none. */
+  profile: Profile | undefined;
+  status: (name: string) => Status;
+  onSelect: (name: string) => void;
+  /** Creates or replaces `profile`, then removes `replacing` if it was renamed. */
+  onSave: (profile: Profile, replacing: string | null) => void;
+  onDelete: (name: string) => void;
 }
 
 /** Profile picker plus its ⋯ menu; the settings live in a dialog. */
-export function ProfileToolbar({ state, onChange, printing }: Props) {
-  const [editing, setEditing] = useState(false);
-  const profile = activeProfile(state);
-  const status = useProbes(state.profiles, state.activeId, printing);
-  const listed = byName(state.profiles);
-
-  const add = (next: Profile) =>
-    onChange({ profiles: [...state.profiles, next], activeId: next.id });
+export function ProfileToolbar({
+  profiles,
+  profile,
+  status,
+  onSelect,
+  onSave,
+  onDelete,
+}: Props) {
+  /** The profile in the dialog, and the name it replaces on save. */
+  const [editing, setEditing] = useState<{
+    profile: Profile;
+    replacing: string | null;
+  } | null>(null);
+  const listed = byName(profiles);
 
   return (
     <Field className="min-w-0 flex-1">
@@ -66,24 +75,29 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
       <div className="flex items-center gap-2">
         <Select
           modal={false}
-          value={profile.id}
-          onValueChange={(activeId) => {
-            if (activeId) onChange({ ...state, activeId });
+          disabled={!profile}
+          value={profile?.name ?? null}
+          onValueChange={(name) => {
+            if (name) onSelect(name);
           }}
         >
           <SelectTrigger id="profile" className="min-w-0 flex-1">
-            <SelectValue>
-              <span className={DOTTED}>
-                <ConnectionDot
-                  status={status(profile)}
-                  label={statusLabel(profile, status(profile))}
-                />
-                {profile.name}
-              </span>
-              <span className="truncate text-muted-foreground">
-                {" "}
-                · {profile.host || "no host"}
-              </span>
+            <SelectValue placeholder="No printers">
+              {profile && (
+                <>
+                  <span className={DOTTED}>
+                    <ConnectionDot
+                      status={status(profile.name)}
+                      label={statusLabel(profile, status(profile.name))}
+                    />
+                    {profile.name}
+                  </span>
+                  <span className="truncate text-muted-foreground">
+                    {" "}
+                    · {profile.host}
+                  </span>
+                </>
+              )}
             </SelectValue>
           </SelectTrigger>
           <SelectContent
@@ -92,18 +106,15 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
             className="w-max max-w-(--available-width) min-w-(--anchor-width)"
           >
             {listed.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
+              <SelectItem key={p.name} value={p.name}>
                 <span className={DOTTED}>
                   <ConnectionDot
-                    status={status(p)}
-                    label={statusLabel(p, status(p))}
+                    status={status(p.name)}
+                    label={statusLabel(p, status(p.name))}
                   />
                   {p.name}
                 </span>
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {p.host || "no host"}
-                </span>
+                <span className="text-muted-foreground"> · {p.host}</span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -122,43 +133,48 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
             <EllipsisIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => setEditing(true)}>
+            <DropdownMenuItem
+              disabled={!profile}
+              onClick={() =>
+                profile && setEditing({ profile, replacing: profile.name })
+              }
+            >
               Edit…
             </DropdownMenuItem>
             <DropdownMenuItem
+              disabled={!profile}
               onClick={() =>
-                add({
-                  ...profile,
-                  id: crypto.randomUUID(),
-                  name: uniqueName(`${profile.name} copy`, state.profiles),
-                })
+                profile &&
+                onSave(
+                  {
+                    ...profile,
+                    name: uniqueName(`${profile.name} copy`, profiles),
+                  },
+                  null,
+                )
               }
             >
               Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => {
-                add({
-                  ...profile,
-                  id: crypto.randomUUID(),
-                  name: uniqueName("New profile", state.profiles),
-                  host: "",
-                });
-                setEditing(true);
-              }}
+              onClick={() =>
+                setEditing({
+                  profile: {
+                    ...(profile ?? FRESH),
+                    name: uniqueName("New profile", profiles),
+                    host: "",
+                  },
+                  replacing: null,
+                })
+              }
             >
               New profile…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              disabled={state.profiles.length <= 1}
-              onClick={() => {
-                const profiles = state.profiles.filter(
-                  (p) => p.id !== profile.id,
-                );
-                onChange({ profiles, activeId: byName(profiles)[0].id });
-              }}
+              disabled={!profile}
+              onClick={() => profile && onDelete(profile.name)}
             >
               Delete
             </DropdownMenuItem>
@@ -166,17 +182,16 @@ export function ProfileToolbar({ state, onChange, printing }: Props) {
         </DropdownMenu>
 
         <ProfileDialog
-          profile={profile}
-          open={editing}
-          onOpenChange={setEditing}
-          onSave={(next) =>
-            onChange({
-              ...state,
-              profiles: state.profiles.map((p) =>
-                p.id === next.id ? next : p,
-              ),
-            })
-          }
+          profile={editing?.profile ?? null}
+          taken={profiles
+            .map((p) => p.name)
+            .filter((name) => name !== editing?.replacing)}
+          onClose={() => setEditing(null)}
+          onSave={(next) => {
+            const replacing = editing?.replacing ?? null;
+            setEditing(null);
+            onSave(next, replacing === next.name ? null : replacing);
+          }}
         />
       </div>
     </Field>

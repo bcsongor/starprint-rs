@@ -16,7 +16,7 @@ use crate::note::NoteStyle;
 use crate::qr::QrStyle;
 use crate::task_card::CardStyle;
 use crate::test_page::{self, Section};
-use crate::{Job, Paper, Printer, PrinterKind, note, qr, task_card, text};
+use crate::{Job, Printer, PrinterKind, note, qr, task_card, text};
 
 /// Dot diameters as percentages of pitch, measured on a TSP700II at
 /// slow speed and density +3. Double resolution halves the row pitch.
@@ -91,24 +91,23 @@ impl Printer {
     /// empty layout rather than an error, since a preview is looked at
     /// while the job is still being written.
     pub fn preview(&self, job: &Job, image: Option<&DynamicImage>) -> Result<Preview, String> {
-        let kind = self.head.kind();
-        let paper = self.head.paper();
-        match kind {
-            PrinterKind::Thermal => render::<StarLine>(job, kind, paper, image),
-            PrinterKind::Impact => render::<Impact>(job, kind, paper, image),
+        match self.head.kind() {
+            PrinterKind::Thermal => render::<StarLine>(self, job, image),
+            PrinterKind::Impact => render::<Impact>(self, job, image),
         }
     }
 }
 
 fn render<P: Protocol>(
+    printer: &Printer,
     job: &Job,
-    kind: PrinterKind,
-    paper: Paper,
     image: Option<&DynamicImage>,
 ) -> Result<Preview, String>
 where
     Builder<P>: CardStyle + NoteStyle + QrStyle,
 {
+    let kind = printer.head.kind();
+    let paper = printer.head.paper();
     Ok(match job {
         Job::TaskCard(card) => Preview::TaskCard(card.layout::<P>(paper)),
         Job::Text(text) => Preview::Text(text.layout::<P>(paper)),
@@ -128,6 +127,7 @@ where
         },
         Job::Picture(picture) => {
             let image = image.ok_or("No picture supplied.")?;
+            let picture = printer.picture(picture);
             Preview::Picture {
                 image: Png::from_grayscale(
                     &picture.preview(kind, paper, image)?,
@@ -222,7 +222,7 @@ fn png(image: &Grayscale) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Speed;
+    use crate::{Paper, Speed};
     use serde_json::{Value, json};
 
     fn single_dot() -> Grayscale {

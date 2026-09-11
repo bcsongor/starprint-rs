@@ -7,22 +7,18 @@ description: Print task cards, text, note slips, QR codes, pictures and test pag
 
 `starprint-api` prints to Star receipt printers on the local network.
 It listens on `http://127.0.0.1:9110` unless it was started with
-`--listen`. The Starprint desktop app serves the same API while its
-API button is pressed, at loopback on port 9110 unless another of the
-machine's addresses or another port was chosen under that button, with
-printers named as its profiles are. Against the app's server, profiles
-and schedules made over the API are kept in memory only and are gone
-when that server next starts, which happens when the button is
-released, a profile is edited or the address changes. Say so before
-creating a schedule there; the command line's server keeps them.
+`--listen`. The Starprint desktop app runs the same server on the same
+data directory while it is open, at loopback on port 9110 unless
+another of the machine's addresses or another port was chosen under
+its API button. Profiles and schedules made over the API are the app's
+too, and stay.
 
 Every request carries a bearer token, or gets a `401`. The server
 prints its token on the line that says where it is listening. The token
 lives in the server's data directory and stays the same across
 restarts, unless the server is started with `--token`. In the desktop
-app, the API button shows the token with a copy button while it serves.
-Ask the user for the token if you do not have it; there is no way to
-fetch it.
+app, the API button shows the token with a copy button. Ask the user
+for the token if you do not have it; there is no way to fetch it.
 
 Printing is physical and cannot be undone. It spends paper, and ribbon
 on the impact printer. Ask before printing anything the user did not
@@ -52,10 +48,10 @@ curl -s -H 'Authorization: Bearer <token>' http://127.0.0.1:9110/v1/printers
 ```
 
 `version` is the server's, so a client can tell an older server from
-one it expects. If this fails to connect, nothing is serving the API.
-Neither the server nor the desktop app's button is on. Say so rather
-than guessing a printer name. If more than one printer is listed and
-the user did not say which, ask.
+one it expects. If this fails to connect, nothing is serving the API:
+neither the server nor the desktop app is running. Say so rather than
+guessing a printer name. If more than one printer is listed and the
+user did not say which, ask.
 
 To find out whether a printer is switched on and reachable without
 printing anything:
@@ -77,9 +73,9 @@ Post to `/v1/printers/<name>/jobs`. Only the content is required;
 everything else has a default.
 
 Jobs to the same host and port wait for each other, even through different
-profiles. The desktop app shares this queue with manual and Linear jobs.
-Separate processes and different hostnames for the same printer have
-separate queues.
+profiles; the desktop app's own jobs are in the same queue. Separate
+processes and different hostnames for the same printer have separate
+queues.
 
 Task card, the common case:
 
@@ -169,10 +165,11 @@ they come from the profile. Sending `density` or `speed` to an impact
 printer is an error rather than being ignored.
 
 `density` 4 selects the printer's two-colour mode, which prints a
-darker black than +3 on plain paper. The mode has one speed, so
-`speed` does nothing at 4. A picture with `double` prints in double
-resolution at +3 instead. A test page's double-resolution section
-also uses +3; its other sections use two-colour mode.
+darker black than +3 on plain paper. The mode has one speed and one
+resolution, so `speed` does nothing at 4 and a picture's `double` is
+ignored: the darker black is what 4 is for. A test page's
+double-resolution section prints at +3; its other sections use
+two-colour mode.
 
 Leave these alone unless the user asks. The profile holds settings that
 were tuned against the actual hardware.

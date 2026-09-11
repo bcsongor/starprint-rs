@@ -1,21 +1,17 @@
 import { PrintedText } from "@/components/printed-text";
-import { PreviewPane } from "@/components/preview-pane";
-import { usePreview } from "@/hooks/use-preview";
+import { PreviewNote, PreviewPane } from "@/components/preview-pane";
 import {
   QUIET_MODULES,
-  qrLayout,
-  qrPreview,
   type Align,
-  type Paper,
-  type PrinterKind,
-  type Qr,
+  type Profile,
+  type QrLayout,
 } from "@/lib/api";
 import { PX_PER_MM } from "@/lib/paper";
 
 interface Props {
-  code: Qr;
-  kind: PrinterKind;
-  paper: Paper;
+  preview: (QrLayout & { image: string }) | null;
+  error: string | null;
+  printer: Profile;
 }
 
 const ROW: Record<Align, string> = {
@@ -29,54 +25,37 @@ const ROW: Record<Align, string> = {
  * printer is given, at the millimetres it comes out. The quiet zone is
  * part of the block, so the symbol keeps its margin against a caption.
  */
-export function QrPreview({ code, kind, paper }: Props) {
-  const {
-    value: layout,
-    url,
-    error,
-  } = usePreview(
-    async () => {
-      // Empty data encodes a valid symbol, but there is nothing to print yet.
-      if (!code.data.trim()) return null;
-      const [value, png] = await Promise.all([
-        qrLayout(code, kind, paper),
-        qrPreview(code, kind, paper),
-      ]);
-      return { value, png };
-    },
-    [code, kind, paper],
-  );
-
+export function QrPreview({ preview, error, printer }: Props) {
   // Size includes the quiet zone; the module count describes the symbol.
   const hint =
-    layout &&
-    `${layout.modules - 2 * QUIET_MODULES} modules, ${Math.round(layout.widthMm)} mm`;
+    preview &&
+    `${preview.modules - 2 * QUIET_MODULES} modules, ${Math.round(preview.widthMm)} mm`;
 
   return (
-    <PreviewPane printer={{ kind, paper }} hint={hint}>
+    <PreviewPane printer={printer} hint={hint}>
       {error ? (
-        <p className="py-4 text-center text-sm text-destructive">{error}</p>
-      ) : layout && url ? (
+        <PreviewNote error>{error}</PreviewNote>
+      ) : preview ? (
         <>
-          {layout.caption.length > 0 && (
-            <PrintedText columns={layout.columns}>
-              {layout.caption.map((line, index) => (
-                <div key={index} style={{ textAlign: layout.align }}>
+          {preview.caption.length > 0 && (
+            <PrintedText columns={preview.columns}>
+              {preview.caption.map((line, index) => (
+                <div key={index} style={{ textAlign: preview.align }}>
                   {line}
                 </div>
               ))}
             </PrintedText>
           )}
-          <div className={`flex ${ROW[layout.align]}`}>
+          <div className={`flex ${ROW[preview.align]}`}>
             {/* Sized in millimetres rather than at the PNG's own pixels:
             on the SP700 a module is a whole number of dots on a head
             whose dots are far from square. */}
             <img
-              src={url}
+              src={preview.image}
               alt="QR code preview"
               className="block"
-              width={layout.widthMm * PX_PER_MM}
-              height={layout.heightMm * PX_PER_MM}
+              width={preview.widthMm * PX_PER_MM}
+              height={preview.heightMm * PX_PER_MM}
             />
           </div>
         </>

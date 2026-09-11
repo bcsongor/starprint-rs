@@ -1,17 +1,11 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { useRef } from "react";
 import { FolderOpenIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { OptionSelect, type Option } from "@/components/option-select";
 import { SliderField } from "@/components/slider-field";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
-import {
-  DEFAULT_PICTURE,
-  TWO_COLOR_DENSITY,
-  type Dither,
-  type Picture,
-  type Printer,
-} from "@/lib/api";
+import { DEFAULT_PICTURE, type Dither, type Picture } from "@/lib/api";
 
 const DITHERS: Option<Dither>[] = [
   { value: "floyd-steinberg", label: "Floyd–Steinberg", hint: "photos" },
@@ -20,42 +14,34 @@ const DITHERS: Option<Dither>[] = [
   { value: "bayer", label: "Bayer 8×8", hint: "ordered pattern" },
 ];
 
-const FILE_FILTERS = [
-  {
-    name: "Images",
-    extensions: ["png", "jpg", "jpeg", "webp", "bmp"],
-  },
-];
+/** What the server decodes. */
+const ACCEPT = "image/png,image/jpeg,image/webp,image/bmp";
 
 interface Props {
   picture: Picture;
-  printer: Printer;
+  file: File | null;
+  thermal: boolean;
+  /** Two-colour mode has one resolution, so the switch is off there. */
+  twoColor: boolean;
   onChange: (picture: Picture) => void;
+  onFile: (file: File | null) => void;
 }
 
-function fileName(path: string) {
-  return path.split(/[\\/]/).pop() ?? path;
-}
-
-export function PictureForm({ picture, printer, onChange }: Props) {
+export function PictureForm({
+  picture,
+  file,
+  thermal,
+  twoColor,
+  onChange,
+  onFile,
+}: Props) {
+  const input = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Picture>(key: K, value: Picture[K]) =>
     onChange({ ...picture, [key]: value });
-  const thermal = printer.kind === "thermal";
-  const twoColor = thermal && printer.density === TWO_COLOR_DENSITY;
   const hasThreshold = picture.dither !== "bayer";
   const adjusted = (Object.keys(DEFAULT_PICTURE) as (keyof Picture)[]).some(
-    (key) => key !== "path" && picture[key] !== DEFAULT_PICTURE[key],
+    (key) => picture[key] !== DEFAULT_PICTURE[key],
   );
-
-  const browse = async () => {
-    const path = await open({
-      title: "Select a picture",
-      multiple: false,
-      directory: false,
-      filters: FILE_FILTERS,
-    });
-    if (typeof path === "string") set("path", path);
-  };
 
   return (
     <FieldGroup className="gap-4">
@@ -65,23 +51,38 @@ export function PictureForm({ picture, printer, onChange }: Props) {
           <FieldLabel htmlFor="browse">Picture</FieldLabel>
         </div>
         <div className="flex items-center gap-2">
-          <Button id="browse" variant="outline" onClick={browse}>
+          <input
+            ref={input}
+            type="file"
+            accept={ACCEPT}
+            className="hidden"
+            onChange={(e) => {
+              onFile(e.target.files?.[0] ?? null);
+              // So the same file can be chosen again after Clear.
+              e.target.value = "";
+            }}
+          />
+          <Button
+            id="browse"
+            variant="outline"
+            onClick={() => input.current?.click()}
+          >
             <FolderOpenIcon />
             Browse…
           </Button>
           <span
             className="min-w-0 truncate text-sm text-muted-foreground"
-            title={picture.path}
+            title={file?.name}
           >
-            {picture.path ? fileName(picture.path) : "No picture chosen."}
+            {file?.name ?? "No picture chosen."}
           </span>
-          {picture.path && (
+          {file && (
             <Button
               variant="ghost"
               size="icon"
               aria-label="Clear the picture"
               title="Clear the picture"
-              onClick={() => set("path", "")}
+              onClick={() => onFile(null)}
             >
               <XIcon />
             </Button>
@@ -135,7 +136,7 @@ export function PictureForm({ picture, printer, onChange }: Props) {
           disabled={!adjusted}
           aria-label="Reset the settings"
           title="Reset the settings"
-          onClick={() => onChange({ ...DEFAULT_PICTURE, path: picture.path })}
+          onClick={() => onChange(DEFAULT_PICTURE)}
         >
           <RotateCcwIcon />
         </Button>

@@ -1,8 +1,7 @@
 //! A photo, printed as a bit image (impact) or a raster (thermal).
 //!
-//! The image comes from the caller: the desktop app reads a file it was
-//! pointed at, the API takes the bytes of a multipart part. Nothing here
-//! opens one.
+//! The image comes from the caller as the bytes of an upload. Nothing
+//! here opens a file.
 
 use image::DynamicImage;
 use image::imageops::FilterType;
@@ -153,20 +152,17 @@ pub(crate) fn thermal(
     paper: Paper,
     cut: bool,
     source: &DynamicImage,
-    mode: PrintMode,
 ) -> Result<Document, String> {
     let image = picture.prepare(PrinterKind::Thermal, paper, source)?;
     let mut doc = builder.align(Alignment::Center);
     if picture.double {
         doc = doc.print_mode(PrintMode::DoubleResolution);
-        if mode == PrintMode::TwoColor {
-            doc = doc.print_density(3);
-        }
     }
     doc = doc.raster(&image, RasterQuality::High);
     if picture.double {
-        // The mode outlives ESC @, so go back to the job's own.
-        doc = doc.print_mode(mode);
+        // The mode outlives ESC @, so go back to single colour. Two-colour
+        // mode never gets here: `Printer` drops `double` at +4.
+        doc = doc.print_mode(PrintMode::SingleColor);
     }
     Ok(finish_graphic(doc, cut))
 }
@@ -265,7 +261,6 @@ mod tests {
             Paper::Mm80,
             false,
             &sample(),
-            PrintMode::SingleColor,
         )
         .unwrap();
         let bytes = doc.as_bytes();

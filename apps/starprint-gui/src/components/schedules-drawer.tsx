@@ -24,9 +24,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import type { Job } from "@/lib/api";
+import type { Job, Profile, Schedule } from "@/lib/api";
 import { describe, summary } from "@/lib/schedule";
-import type { Profile, Schedule } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<Job["kind"], LucideIcon> = {
@@ -42,21 +41,23 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   schedules: Schedule[];
-  onChange: (schedules: Schedule[]) => void;
   profiles: Profile[];
+  onEnable: (schedule: Schedule, enabled: boolean) => void;
   onEdit: (schedule: Schedule) => void;
   /** Puts the job back in its form, to change and schedule again. */
   onLoad: (schedule: Schedule) => void;
+  onDelete: (schedule: Schedule) => void;
 }
 
 export function SchedulesDrawer({
   open,
   onOpenChange,
   schedules,
-  onChange,
   profiles,
+  onEnable,
   onEdit,
   onLoad,
+  onDelete,
 }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -70,8 +71,7 @@ export function SchedulesDrawer({
         <ul className="flex flex-col overflow-y-auto p-2">
           {schedules.map((s) => {
             const Icon = ICONS[s.job.kind];
-            const profile = profiles.find((p) => p.id === s.profileId);
-            const hasHost = Boolean(profile?.host.trim());
+            const printer = profiles.find((p) => p.name === s.printer);
             return (
               <li
                 key={s.id}
@@ -80,13 +80,7 @@ export function SchedulesDrawer({
                 <Switch
                   checked={s.enabled}
                   aria-label="Enabled"
-                  onCheckedChange={(enabled) =>
-                    onChange(
-                      schedules.map((item) =>
-                        item.id === s.id ? { ...item, enabled } : item,
-                      ),
-                    )
-                  }
+                  onCheckedChange={(enabled) => onEnable(s, enabled)}
                 />
                 <div
                   className={cn(
@@ -101,11 +95,11 @@ export function SchedulesDrawer({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm">{summary(s.job)}</div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {describe(s.cron)} · {profile?.name ?? "no printer"}
+                      {describe(s.cron)} · {s.printer}
                     </div>
                   </div>
                   <div className="shrink-0 text-xs text-muted-foreground">
-                    {!s.enabled ? "Off" : hasHost ? null : "No host"}
+                    {!s.enabled ? "Off" : printer ? null : "No printer"}
                   </div>
                 </div>
                 <DropdownMenu modal={false}>
@@ -130,9 +124,7 @@ export function SchedulesDrawer({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       variant="destructive"
-                      onClick={() =>
-                        onChange(schedules.filter((item) => item.id !== s.id))
-                      }
+                      onClick={() => onDelete(s)}
                     >
                       Delete
                     </DropdownMenuItem>

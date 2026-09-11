@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::Response;
+use axum::response::{IntoResponse as _, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -56,13 +56,44 @@ pub fn router(printers: Arc<Printers>) -> Router {
         })
         .with_state(printers)
         .layer(middleware::from_fn_with_state(token, require_token))
+        .layer(middleware::from_fn(answer_preflight))
+}
+
+/// The desktop app is a web page on an origin of its own, and a browser
+/// sends nothing with `Authorization` to another origin until an
+/// `OPTIONS` request has said it may. Any origin may: the token is what
+/// admits a request.
+async fn answer_preflight(request: Request, next: Next) -> Response {
+    const ANY: HeaderValue = HeaderValue::from_static("*");
+    if request.method() == Method::OPTIONS {
+        return (
+            StatusCode::NO_CONTENT,
+            [
+                (header::ACCESS_CONTROL_ALLOW_ORIGIN, ANY),
+                (
+                    header::ACCESS_CONTROL_ALLOW_METHODS,
+                    HeaderValue::from_static("GET, POST, PUT, DELETE"),
+                ),
+                (
+                    header::ACCESS_CONTROL_ALLOW_HEADERS,
+                    HeaderValue::from_static("authorization, content-type"),
+                ),
+                (
+                    header::ACCESS_CONTROL_MAX_AGE,
+                    HeaderValue::from_static("86400"),
+                ),
+            ],
+        )
+            .into_response();
+    }
+    let mut response = next.run(request).await;
+    response
+        .headers_mut()
+        .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, ANY);
+    response
 }
 
 /// Every request carries the token as a bearer, or is a `401`.
-///
-/// This is also what keeps web pages out: a page cannot know the
-/// token, and a browser will not send `Authorization` cross-origin
-/// without a preflight, which this server never answers.
 async fn require_token(
     State(token): State<Arc<String>>,
     request: Request,
@@ -913,6 +944,45 @@ mod tests {
                 reply.json
             );
         }
+    }
+
+    /// A browser asks with `OPTIONS` before sending the token, so that
+    /// is answered without one, and every reply says any origin may
+    /// read it.
+    #[tokio::test]
+    async fn a_browser_may_ask_first_and_read_the_answer() {
+        let preflight = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/v1/printers/tsp800ii/preview")
+            .header(header::ORIGIN, "tauri://localhost")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .body(Body::empty())
+            .unwrap();
+        let response = router(printers(9100)).oneshot(preflight).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let headers = response.headers();
+        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+        assert_eq!(
+            headers[header::ACCESS_CONTROL_ALLOW_HEADERS],
+            "authorization, content-type"
+        );
+        assert!(
+            headers[header::ACCESS_CONTROL_ALLOW_METHODS]
+                .to_str()
+                .unwrap()
+                .contains("DELETE")
+        );
+
+        let response = router(printers(9100))
+            .oneshot(get("/v1/printers"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "*",
+            "so the page can read the 401 too"
+        );
     }
 
     /// Wrong, malformed or missing, the answer is the same `401`, and

@@ -1,40 +1,28 @@
 import { Fragment } from "react";
 import { PrintedText } from "@/components/printed-text";
 import { PreviewPane } from "@/components/preview-pane";
-import { useAsync } from "@/hooks/use-async";
-import { textLayout, type Paper, type PrinterKind, type Text } from "@/lib/api";
+import type { Profile, Text, TextLayout } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Props {
   text: Text;
-  kind: PrinterKind;
-  paper: Paper;
+  /** Null until the first layout lands. */
+  layout: TextLayout | null;
+  printer: Profile;
 }
 
 /**
  * Width and height are independent on these printers, so the font size
  * carries the height and a horizontal scale makes up the width.
  */
-export function TextPreview({ text, kind, paper }: Props) {
-  const preview = useAsync(
-    async () => ({
-      layout: await textLayout(text, kind, paper),
-      printer: { kind, paper },
-    }),
-    [text, kind, paper],
-  );
-  const layout = preview?.layout;
-  const printer = preview?.printer ?? { kind, paper };
+export function TextPreview({ text, layout, printer }: Props) {
   const lines = layout?.lines ?? [];
   const empty = lines.every((line) => line === "");
   const height = text.tall ? 2 : 1;
   const width = text.wide ? 2 : 1;
 
   return (
-    <PreviewPane
-      printer={printer}
-      hint={layout && `${layout.columns} columns`}
-    >
+    <PreviewPane printer={printer} hint={layout && `${layout.columns} columns`}>
       <PrintedText columns={layout?.columns ?? 48}>
         <div
           // A full-width box under `scaleX` would paint past the paper.

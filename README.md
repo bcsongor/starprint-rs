@@ -23,8 +23,8 @@ for Windows or macOS on Apple silicon. Windows has an installer and a portable
 executable. The builds are unsigned; the release page has installation instructions.
 
 Connect your printer over Ethernet, then open **Profile actions** beside the
-profile picker and choose **Edit…** to enter its IP address. Choose a job, check
-the preview and press **Print**.
+profile picker and choose **New profile…** to enter its IP address. Choose a
+job, check the preview and press **Print**.
 
 Tested on the TSP700II, TSP800II and SP700. Other thermal printers using Star
 Line Mode may work. StarPRNT, USB and serial connections are not supported.
@@ -67,14 +67,15 @@ then enable auto-print for issues newly assigned to you while the app runs.
 
 Press **Schedule** on a job tab to choose a preset or cron expression. Manage
 schedules with the clock button in the header. The app must be open and the
-computer awake. Task-card due dates follow the chosen rule.
+computer awake. Task-card due dates follow the chosen rule. Pictures cannot be
+scheduled.
 
-The **API** button lets scripts and AI agents print through your saved profiles.
-It shows the URL and the token every request needs, and lets you choose the
-address and port to listen on. See the
-[API reference](apps/starprint-api/API.md) for every route and field, and the
-[skill](skills/starprint-print/SKILL.md) to give your agent, including running
-the server on its own.
+The app runs the HTTP API while it is open, so scripts and AI agents can print
+through your saved profiles. The **API** button shows the URL and the token
+every request needs, and can put the server on your LAN at an address and port
+you choose. See the [API reference](apps/starprint-api/API.md) for every route
+and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
+including running the server on its own.
 
 ## Rust library
 

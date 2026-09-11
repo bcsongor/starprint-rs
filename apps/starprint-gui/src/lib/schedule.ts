@@ -1,11 +1,6 @@
-import { format, parseISO } from "date-fns";
-import {
-  TWO_COLOR_DENSITY,
-  type Job,
-  type Rule,
-  type Scheduled,
-} from "@/lib/api";
-import { toPrinter, type Profile, type Schedule } from "@/lib/settings";
+import { Cron } from "croner";
+import { format } from "date-fns";
+import type { Job, Rule, ScheduleSpec } from "@/lib/api";
 
 export const PRESETS = {
   weekday: {
@@ -53,9 +48,20 @@ export function describe(cron: string): string {
   return `At ${match.time}, ${PRESETS[match.preset].readout}`;
 }
 
+/**
+ * When `cron` next fires, or throws with what is wrong with it. Five
+ * fields, as the server takes them; the dialect is the same, so what
+ * passes here is what the server accepts.
+ */
+export function nextRun(cron: string): Date {
+  const next = new Cron(cron, { mode: "5-part" }).nextRun();
+  if (!next) throw new Error("This never fires.");
+  return next;
+}
+
 /** "Mon 8 Sep, 09:00". */
-export function formatNext(iso: string): string {
-  return format(parseISO(iso), "EEE d MMM, HH:mm");
+export function formatNext(at: Date): string {
+  return format(at, "EEE d MMM, HH:mm");
 }
 
 export const NAMES: Record<Job["kind"], string> = {
@@ -85,45 +91,20 @@ export function summary(job: Job): string {
     case "qr":
       return job.data;
     case "picture":
-      return job.path.split(/[\\/]/).pop() ?? job.path;
+      return "Picture";
     case "test-page":
       return "Test page";
   }
 }
 
-/**
- * A schedule as the Rust side runs it, or null once its profile is gone.
- * A picture loses double resolution on a two-colour profile, which has
- * none, as it does in the form.
- */
-export function toScheduled(
-  schedule: Schedule,
-  profiles: Profile[],
-): Scheduled | null {
-  const profile = profiles.find((p) => p.id === schedule.profileId);
-  if (!profile) return null;
-  const printer = toPrinter(profile);
-  const { id, job, cron, due } = schedule;
-  const twoColor =
-    printer.kind === "thermal" && printer.density === TWO_COLOR_DENSITY;
-  return {
-    id,
-    job: job.kind === "picture" && twoColor ? { ...job, double: false } : job,
-    printer,
-    cron,
-    due,
-  };
-}
-
-/** A schedule for `job` on `profileId`, every weekday at nine. A task
+/** A schedule for `job` on `printer`, every weekday at nine. A task
  * card is dated the day it prints. */
-export function newSchedule(job: Job, profileId: string): Schedule {
+export function newSchedule(job: Job, printer: string): ScheduleSpec {
   return {
-    id: crypto.randomUUID(),
-    job,
-    profileId,
+    printer,
     cron: toCron("weekday", "09:00"),
-    due: job.kind === "task-card" ? "run-day" : null,
     enabled: true,
+    due: job.kind === "task-card" ? "run-day" : undefined,
+    job,
   };
 }

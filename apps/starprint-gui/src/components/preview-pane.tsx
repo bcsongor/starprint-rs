@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { PaperSheet } from "@/components/paper-sheet";
 import { Label } from "@/components/ui/label";
-import type { Printer } from "@/lib/api";
+import type { Profile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Props {
   hint?: string | null;
-  printer?: Pick<Printer, "kind" | "paper">;
+  printer?: Profile;
   children: ReactNode;
 }
 
@@ -28,7 +28,27 @@ export function PreviewPane({ hint, printer, children }: Props) {
           </span>
         )}
       </Label>
-      {printer ? <PaperSheet {...printer}>{children}</PaperSheet> : children}
+      {printer ? <PaperSheet printer={printer}>{children}</PaperSheet> : children}
     </section>
+  );
+}
+
+/** What the pane says when there is nothing to draw. */
+export function PreviewNote({
+  children,
+  error,
+}: {
+  children: ReactNode;
+  error?: boolean;
+}) {
+  return (
+    <p
+      className={cn(
+        "py-[1em] text-center text-xl",
+        error ? "text-red-700" : "text-black/30",
+      )}
+    >
+      {children}
+    </p>
   );
 }

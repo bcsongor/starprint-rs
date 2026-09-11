@@ -5,11 +5,10 @@ profiles and schedules. Version 1, under `/v1`. JSON in, JSON out;
 errors are RFC 9457 problem details.
 
 The server listens on `http://127.0.0.1:9110` by default. The desktop
-app serves the same API while its API button is pressed, from its own
-profiles. Profiles and schedules made over the API against the app's
-server live in memory and are lost when that server next starts, which
-releasing the button, editing any profile or changing the address all
-cause. For how to use the API from an agent, see the
+app runs the same server on the same data directory while it is open,
+and its API button can put it on a LAN address instead. One server per
+directory: the app and the command line cannot run at once. For how to
+use the API from an agent, see the
 [skill](../../skills/starprint-print/SKILL.md).
 
 | Method | Path | What it does |
@@ -37,6 +36,10 @@ Authorization: Bearer <token>
 Anything else is a `401`. The token is printed when the server starts
 and kept in the [data directory](#data-directory). There is no endpoint
 that returns it.
+
+A browser may call the API from any origin: `OPTIONS` is answered with
+the CORS headers, and every response allows any origin to read it. The
+token is what admits a request.
 
 ## Running the server
 
@@ -224,7 +227,7 @@ Must be sent as a form with an `image` part: PNG, JPEG, WebP or BMP.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `double` | boolean | `false`. Double density on impact, double resolution on thermal |
+| `double` | boolean | `false`. Double density on impact, double resolution on thermal. Ignored at density 4, which has one resolution |
 | `dither` | `floyd-steinberg`, `atkinson`, `threshold` or `bayer` | `floyd-steinberg` |
 | `threshold` | integer, 0 to 255 | `128`. Ignored by `bayer` |
 | `brightness` | number | `1.0` |
