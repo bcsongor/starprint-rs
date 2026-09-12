@@ -66,14 +66,18 @@ Turn Linear issues into printed task cards. Connect with a personal API key,
 then enable auto-print for issues newly assigned to you while the app runs.
 
 Press **Schedule** on a job tab to choose a preset or cron expression. Manage
-schedules with the clock button in the header. The app must be open and the
-computer awake. Task-card due dates follow the chosen rule. Pictures cannot be
-scheduled.
+schedules with the clock button in the header. They run on the server's clock
+while it runs: this computer's while the app is open, or another machine's if
+the app prints through it. Task-card due dates follow the chosen rule. Pictures
+cannot be scheduled.
 
 The app runs the HTTP API while it is open, so scripts and AI agents can print
 through your saved profiles. The **API** button shows the URL and the token
 every request needs, and can put the server on your LAN at an address and port
-you choose. See the [API reference](apps/starprint-api/API.md) for every route
+you choose. It can also point the app at another machine's Starprint server by
+URL and token, so a laptop prints through a box that is always on: profiles,
+schedules and previews are then that server's. See the
+[API reference](apps/starprint-api/API.md) for every route
 and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
 including running the server on its own.
 

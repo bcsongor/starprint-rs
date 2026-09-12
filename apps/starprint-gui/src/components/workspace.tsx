@@ -73,15 +73,19 @@ function emptyCard(): TaskCard {
 }
 
 interface Props {
+  /** The server every job, profile and schedule goes through. */
   server: Server;
+  /** The one this computer runs, which may or may not be `server`. */
+  embedded: Server;
   settings: Settings;
   onSettings: (changes: Partial<Settings>) => void;
 }
 
-/** The app once its server is up: every job, profile and schedule goes through it. */
-export function Workspace({ server, settings, onSettings }: Props) {
+/** The app once its server is up. */
+export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const api = useMemo(() => createClient(server), [server]);
-  const { profiles, schedules, status, refresh } = useServer(api);
+  const { reachable, version, profiles, schedules, status, refresh } =
+    useServer(api);
   const [workflow, setWorkflow] = useState<Workflow>("task-card");
   const [card, setCard] = useState<TaskCard>(emptyCard);
   const [text, setText] = useState<Text>(DEFAULT_TEXT);
@@ -244,10 +248,11 @@ export function Workspace({ server, settings, onSettings }: Props) {
           />
           <ApiButton
             server={server}
-            lan={settings.lan}
-            listen={settings.listen}
-            onLanChange={(lan) => onSettings({ lan })}
-            onListenChange={(listen) => onSettings({ listen })}
+            reachable={reachable}
+            version={version}
+            embedded={embedded}
+            settings={settings}
+            onSettings={onSettings}
           />
           <Button
             variant="outline"
@@ -376,7 +381,9 @@ export function Workspace({ server, settings, onSettings }: Props) {
         {!profile ? (
           <PreviewPane>
             <p className="text-sm text-muted-foreground">
-              Add a printer under Profile actions to begin.
+              {reachable === "offline"
+                ? `${server.url} is not answering.`
+                : "Add a printer under Profile actions to begin."}
             </p>
           </PreviewPane>
         ) : workflow === "task-card" ? (
@@ -434,6 +441,11 @@ export function Workspace({ server, settings, onSettings }: Props) {
             setDrawer(false);
           }}
           onDelete={deleteSchedule}
+          clock={
+            settings.useRemote
+              ? `the clock at ${server.url}`
+              : "this computer's clock"
+          }
         />
       )}
 

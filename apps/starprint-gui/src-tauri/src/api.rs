@@ -80,22 +80,22 @@ pub struct Address {
     pub name: String,
 }
 
-/// Loopback first, then each adapter's IPv4 address. Link-local
-/// addresses are left out.
+/// Each adapter's IPv4 address. Loopback is not a LAN address, and
+/// link-local ones are left out too.
 #[tauri::command]
 pub fn list_addresses() -> Vec<Address> {
     let mut addresses: Vec<Address> = if_addrs::get_if_addrs()
         .unwrap_or_default()
         .into_iter()
         .filter_map(|interface| match interface.ip() {
-            IpAddr::V4(ip) if !ip.is_link_local() => Some(Address {
+            IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_link_local() => Some(Address {
                 ip,
                 name: interface.name,
             }),
             _ => None,
         })
         .collect();
-    addresses.sort_by_key(|a| (!a.ip.is_loopback(), a.ip));
+    addresses.sort_by_key(|a| a.ip);
     addresses.dedup_by_key(|a| a.ip);
     addresses
 }

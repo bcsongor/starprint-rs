@@ -8,7 +8,7 @@ export interface Address {
   name: string;
 }
 
-/** Loopback first, then each adapter's IPv4 address. */
+/** Each adapter's IPv4 address; loopback is not a LAN address and is left out. */
 export function listAddresses() {
   return invoke<Address[]>("list_addresses");
 }

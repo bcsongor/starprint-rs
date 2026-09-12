@@ -39,7 +39,14 @@
   and the app cannot run at the same time; the app says so.
 - The **API** button no longer starts and stops the server. It shows
   the URL and token, and its switch also puts the server on a LAN
-  address. A LAN address that cannot be bound falls back to loopback.
+  address. A LAN address that cannot be bound falls back to loopback,
+  and turning the switch on before an address was chosen takes the
+  first adapter's rather than restarting on loopback.
+- **The app can print through another machine's server**, by URL and
+  token under the **API** button. Profiles, schedules, previews and
+  prints are then that server's; the schedules drawer says whose clock
+  they run on, and the button says when the server is older than the
+  app. The app's own server keeps running.
 - Pictures can no longer be scheduled, and the **Bytes** hex dump is
   gone.
 - The scheduler no longer stops at the hour the clocks go back.

@@ -8,13 +8,14 @@ import { loadSettings, saveSettings, type Settings } from "@/lib/settings";
 
 /**
  * Starts the server inside the app and hands the workspace a client of
- * it. A change of address restarts the server; a LAN address that will
- * not bind falls back to loopback, and a start that fails on loopback
- * is shown in place of the app until a retry succeeds.
+ * it, or of the other machine's server the settings name; the embedded
+ * one runs either way. A change of address restarts the server; a LAN
+ * address that will not bind falls back to loopback, and a start that
+ * fails on loopback is shown in place of the app until a retry succeeds.
  */
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [server, setServer] = useState<Server | null>(null);
+  const [embedded, setEmbedded] = useState<Server | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -34,7 +35,7 @@ export default function App() {
       });
       update({ lan: false });
     } else {
-      setServer(null);
+      setEmbedded(null);
       setFailure(String(error));
     }
   });
@@ -47,7 +48,7 @@ export default function App() {
     startServer({ ip: lan ? listen.ip : LOOPBACK, port: listen.port })
       .then((started) => {
         if (cancelled) return;
-        setServer(started);
+        setEmbedded(started);
         setFailure(null);
       })
       .catch((error) => {
@@ -69,7 +70,14 @@ export default function App() {
       </main>
     );
   }
-  if (!settings || !server) return null;
+  if (!settings || !embedded) return null;
 
-  return <Workspace server={server} settings={settings} onSettings={update} />;
+  return (
+    <Workspace
+      server={settings.useRemote ? settings.remote : embedded}
+      embedded={embedded}
+      settings={settings}
+      onSettings={update}
+    />
+  );
 }
