@@ -71,9 +71,10 @@ function ProfileForm({
   onSave: (profile: Profile) => void;
 }) {
   const [draft, setDraft] = useState(profile);
-  const set = (
-    changes: Partial<Pick<Profile, "name" | "host" | "port" | "notes">>,
-  ) => setDraft({ ...draft, ...changes });
+  // Kept as typed so the field can be cleared while editing.
+  const [port, setPort] = useState(String(profile.port));
+  const set = (changes: Partial<Pick<Profile, "name" | "host" | "notes">>) =>
+    setDraft({ ...draft, ...changes });
   /** A kind brings the fields it has and sheds the rest. */
   const setKind = (kind: PrinterKind) => {
     const { name, host, port, cut, notes } = draft;
@@ -88,7 +89,11 @@ function ProfileForm({
   const name = draft.name.trim();
   // `PUT` replaces by name, so another profile's name would overwrite it.
   const collides = taken.includes(name);
-  const valid = name !== "" && !collides && draft.host.trim() !== "";
+  const portNumber = Number(port);
+  const portValid =
+    /^\d+$/.test(port) && portNumber >= 1 && portNumber <= 65535;
+  const valid =
+    name !== "" && !collides && draft.host.trim() !== "" && portValid;
 
   return (
     <DialogContent className="gap-3 sm:max-w-md">
@@ -143,6 +148,7 @@ function ProfileForm({
             <FieldLabel htmlFor="host">Host</FieldLabel>
             <Input
               id="host"
+              className="font-mono"
               value={draft.host}
               placeholder="192.168.1.60"
               spellCheck={false}
@@ -150,15 +156,15 @@ function ProfileForm({
               onChange={(e) => set({ host: e.target.value })}
             />
           </Field>
-          <Field>
+          <Field data-invalid={!portValid}>
             <FieldLabel htmlFor="port">Port</FieldLabel>
             <Input
               id="port"
-              type="number"
-              min={1}
-              max={65535}
-              value={draft.port}
-              onChange={(e) => set({ port: Number(e.target.value) || 9100 })}
+              className="text-center font-mono"
+              inputMode="numeric"
+              value={port}
+              aria-invalid={!portValid}
+              onChange={(e) => setPort(e.target.value)}
             />
           </Field>
         </div>
@@ -187,6 +193,7 @@ function ProfileForm({
               ...draft,
               name,
               host: draft.host.trim(),
+              port: portNumber,
               notes: draft.notes.trim(),
             })
           }
