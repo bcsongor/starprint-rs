@@ -23,6 +23,8 @@
   drawn as dots. Nothing reaches the printer.
 - The server answers browsers' `OPTIONS` requests and lets any origin
   read its responses, so a web page that has the token can use it.
+- A profile carries `notes`: free text for its firmware, interface
+  card or whereabouts, which nothing reads.
 - A picture's `double` is ignored at density 4 rather than printed at
   +3. Two-colour mode has one resolution, and its darker black is what
   4 is chosen for. The test page's double-resolution section still
@@ -47,6 +49,8 @@
   prints are then that server's; the schedules drawer says whose clock
   they run on, and the button says when the server is older than the
   app. The app's own server keeps running.
+- The profile dialog has a **Notes** box for whatever is worth
+  remembering about a printer.
 - Pictures can no longer be scheduled, and the **Bytes** hex dump is
   gone.
 - The scheduler no longer stops at the hour the clocks go back.

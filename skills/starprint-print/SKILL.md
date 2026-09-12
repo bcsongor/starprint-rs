@@ -43,14 +43,16 @@ curl -s -H 'Authorization: Bearer <token>' http://127.0.0.1:9110/v1/printers
 {
   "version": "1.0.0",
   "printers": [
-    { "name": "tsp800ii", "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow" },
-    { "name": "sp743", "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true }
+    { "name": "tsp800ii", "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow", "notes": "Firmware 2.1, by the door" },
+    { "name": "sp743", "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true, "notes": "" }
   ]
 }
 ```
 
 `version` is the server's, so a client can tell an older server from
-one it expects. If this fails to connect, nothing is serving the API:
+one it expects. `notes` is whatever the user wrote about the printer,
+so read it when choosing between printers or answering a question
+about one. If this fails to connect, nothing is serving the API:
 neither the server nor the desktop app is running. Say so rather than
 guessing a printer name. If more than one printer is listed and the
 user did not say which, ask.
@@ -232,8 +234,11 @@ curl -s -X PUT http://127.0.0.1:9110/v1/printers/tsp800ii \
 A new name answers `201`, an existing one `200`, and the profile keeps
 its place in the list. `host`, `port`, `kind` and `cut` are required.
 `paper` (80 or 112), `density` and `speed` are required on a thermal
-printer and refused on an impact one. `DELETE /v1/printers/<name>`
-removes a profile and leaves its schedules in place.
+printer and refused on an impact one. `notes` is optional free text
+for the user's own record of the printer; when replacing a profile,
+send the notes it already has unless the user wants them changed.
+`DELETE /v1/printers/<name>` removes a profile and leaves its
+schedules in place.
 
 Profiles hold settings tuned against the printers. Do not change one
 unless the user asks, and do not guess a host.

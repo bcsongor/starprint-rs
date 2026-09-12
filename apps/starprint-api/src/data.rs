@@ -271,6 +271,7 @@ mod tests {
         Profile {
             name: name.to_owned(),
             printer: Printer::impact("printer.invalid".to_owned(), 9100),
+            notes: String::new(),
         }
     }
 

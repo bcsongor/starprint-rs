@@ -21,6 +21,8 @@ export type ProfileSpec = {
   host: string;
   port: number;
   cut: boolean;
+  /** Free text nothing reads: firmware, where the printer sits. */
+  notes: string;
 } & (
   | { kind: "thermal"; paper: Paper; density: number; speed: Speed }
   | { kind: "impact" }

@@ -219,6 +219,7 @@ mod tests {
             vec![Profile {
                 name: "sp743".to_owned(),
                 printer: Printer::impact("127.0.0.1".to_owned(), port),
+                notes: String::new(),
             }],
             "t".to_owned(),
         )
