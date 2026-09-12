@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -70,15 +71,17 @@ function ProfileForm({
   onSave: (profile: Profile) => void;
 }) {
   const [draft, setDraft] = useState(profile);
-  const set = (changes: Partial<Pick<Profile, "name" | "host" | "port">>) =>
-    setDraft({ ...draft, ...changes });
+  const set = (
+    changes: Partial<Pick<Profile, "name" | "host" | "port" | "notes">>,
+  ) => setDraft({ ...draft, ...changes });
   /** A kind brings the fields it has and sheds the rest. */
   const setKind = (kind: PrinterKind) => {
-    const { name, host, port, cut } = draft;
+    const { name, host, port, cut, notes } = draft;
+    const shared = { name, host, port, cut, notes };
     setDraft(
       kind === "thermal"
-        ? { name, host, port, cut, kind, paper: 80, density: 3, speed: "slow" }
-        : { name, host, port, cut, kind },
+        ? { ...shared, kind, paper: 80, density: 3, speed: "slow" }
+        : { ...shared, kind },
     );
   };
   const kind = KINDS.find((k) => k.value === draft.kind) ?? KINDS[0];
@@ -100,6 +103,7 @@ function ProfileForm({
             id="profile-name"
             value={draft.name}
             autoFocus
+            autoComplete="off"
             aria-invalid={collides}
             onChange={(e) => set({ name: e.target.value })}
           />
@@ -158,6 +162,18 @@ function ProfileForm({
             />
           </Field>
         </div>
+
+        <Field>
+          <FieldLabel htmlFor="notes">Notes</FieldLabel>
+          <Textarea
+            id="notes"
+            className="max-h-40 text-sm"
+            value={draft.notes}
+            placeholder="Firmware, interface card, where it sits"
+            autoComplete="off"
+            onChange={(e) => set({ notes: e.target.value })}
+          />
+        </Field>
       </FieldGroup>
 
       <DialogFooter>
@@ -167,7 +183,12 @@ function ProfileForm({
         <Button
           disabled={!valid}
           onClick={() =>
-            onSave({ ...draft, name, host: draft.host.trim() })
+            onSave({
+              ...draft,
+              name,
+              host: draft.host.trim(),
+              notes: draft.notes.trim(),
+            })
           }
         >
           Save

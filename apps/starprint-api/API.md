@@ -71,6 +71,7 @@ a profile by name.
 | `paper` | `80` or `112` | Thermal only, required there. Roll width in millimetres, matching the print width memory switch |
 | `density` | integer, -3 to 4 | Thermal only, required there. The printer's own -3 to +3 scale; 4 is two-colour mode. Cheap paper pinholes in solid black below +2 at the default speed |
 | `speed` | `high`, `medium` or `slow` | Thermal only, required there |
+| `notes` | string | Free text nothing reads: firmware, interface card, where the printer sits. Empty when omitted |
 
 Thermal fields on an impact profile are refused, as is any field not
 listed.
@@ -81,8 +82,8 @@ listed.
 {
   "version": "1.0.0",
   "printers": [
-    { "name": "tsp800ii", "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow" },
-    { "name": "sp743", "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true }
+    { "name": "tsp800ii", "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow", "notes": "Firmware 2.1, by the door" },
+    { "name": "sp743", "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true, "notes": "" }
   ]
 }
 ```

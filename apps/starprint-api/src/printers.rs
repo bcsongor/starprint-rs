@@ -154,6 +154,7 @@ mod tests {
         Profile {
             name: name.to_owned(),
             printer: Printer::impact("127.0.0.1".to_owned(), port),
+            notes: String::new(),
         }
     }
 
@@ -170,6 +171,7 @@ mod tests {
                         3,
                         Speed::Slow,
                     ),
+                    notes: String::new(),
                 },
                 impact("sp743", 9100),
             ],

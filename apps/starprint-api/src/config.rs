@@ -18,6 +18,9 @@ use starprint_workflows::{Head, Paper, Printer, PrinterKind, Speed, check_densit
 pub struct Profile {
     pub name: String,
     pub printer: Printer,
+    /// Free text about the printer that nothing reads: its firmware,
+    /// where it sits. Empty when there is none.
+    pub notes: String,
 }
 
 /// A profile as the file and the API spell it. `host`, `port`, `kind`
@@ -39,10 +42,15 @@ pub struct ProfileSpec {
     /// Thermal only, and required there.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<Speed>,
+    /// Free text nothing reads; a profile written before it had one
+    /// reads as empty.
+    #[serde(default)]
+    pub notes: String,
 }
 
-impl From<&Printer> for ProfileSpec {
-    fn from(printer: &Printer) -> Self {
+impl From<&Profile> for ProfileSpec {
+    fn from(profile: &Profile) -> Self {
+        let printer = &profile.printer;
         let (paper, density, speed) = match printer.head {
             Head::Thermal {
                 paper,
@@ -59,6 +67,7 @@ impl From<&Printer> for ProfileSpec {
             paper,
             density,
             speed,
+            notes: profile.notes.clone(),
         }
     }
 }
@@ -102,11 +111,15 @@ impl Profile {
             }
         };
         printer.cut = spec.cut;
-        Ok(Profile { name, printer })
+        Ok(Profile {
+            name,
+            printer,
+            notes: spec.notes,
+        })
     }
 
     pub fn spec(&self) -> ProfileSpec {
-        ProfileSpec::from(&self.printer)
+        ProfileSpec::from(self)
     }
 }
 
@@ -156,7 +169,7 @@ mod tests {
     use starprint_workflows::Head;
 
     const SAMPLE: &str = r#"{
-  "tsp800ii": { "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow" },
+  "tsp800ii": { "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow", "notes": "Firmware 2.1, by the door" },
   "sp743": { "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true }
 }"#;
 
@@ -191,10 +204,12 @@ mod tests {
             }
         );
         assert!(thermal.cut);
+        assert_eq!(profiles[0].notes, "Firmware 2.1, by the door");
 
         let impact = &profiles[1].printer;
         assert_eq!(impact.head, Head::Impact);
         assert_eq!(impact.address(), "192.168.1.141:9100");
+        assert_eq!(profiles[1].notes, "", "a profile without notes reads");
     }
 
     #[test]
@@ -299,6 +314,7 @@ mod tests {
             paper: None,
             density: None,
             speed: None,
+            notes: String::new(),
         };
         assert_eq!(
             Profile::new("  ".to_owned(), spec.clone()).unwrap_err(),

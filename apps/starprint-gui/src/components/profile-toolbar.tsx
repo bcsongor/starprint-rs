@@ -37,6 +37,7 @@ const FRESH: ProfileSpec = {
   port: 9100,
   kind: "thermal",
   cut: true,
+  notes: "",
   paper: 80,
   density: 3,
   speed: "slow",

@@ -381,10 +381,12 @@ mod tests {
                         3,
                         Speed::Slow,
                     ),
+                    notes: String::new(),
                 },
                 Profile {
                     name: "sp743".to_owned(),
                     printer: Printer::impact("127.0.0.1".to_owned(), port),
+                    notes: String::new(),
                 },
             ],
             TOKEN.to_owned(),
@@ -515,8 +517,8 @@ mod tests {
             json!({
                 "version": env!("CARGO_PKG_VERSION"),
                 "printers": [
-                    { "name": "tsp800ii", "host": "127.0.0.1", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow" },
-                    { "name": "sp743", "host": "127.0.0.1", "port": 9100, "kind": "impact", "cut": true },
+                    { "name": "tsp800ii", "host": "127.0.0.1", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow", "notes": "" },
+                    { "name": "sp743", "host": "127.0.0.1", "port": 9100, "kind": "impact", "cut": true, "notes": "" },
                 ],
             })
         );
@@ -535,13 +537,14 @@ mod tests {
         assert_eq!(reply.json["name"], "desk");
         assert_eq!(reply.json["host"], "10.0.0.7");
 
-        let replaced = json!({ "host": "10.0.0.8", "port": 9100, "kind": "impact", "cut": true });
+        let replaced = json!({ "host": "10.0.0.8", "port": 9100, "kind": "impact", "cut": true, "notes": "Firmware 2.1" });
         let reply = call(
             Arc::clone(&printers),
             put_json("/v1/printers/desk", replaced),
         )
         .await;
         assert_eq!(reply.status, StatusCode::OK, "{:?}", reply.json);
+        assert_eq!(reply.json["notes"], "Firmware 2.1");
 
         let reply = call(Arc::clone(&printers), get("/v1/printers")).await;
         let names: Vec<&str> = reply.json["printers"]
