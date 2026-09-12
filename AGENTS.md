@@ -37,11 +37,23 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   program makes over the API shows up. The server answers the
   webview's CORS preflight for that. A picture is a `File` from a file
   input, sent as the multipart form. The settings store keeps only the
-  Linear key, the LAN switch and address, and the active profile's
-  name; profiles and schedules are the server's. The server listens
-  at loopback on port 9110; the API button's switch also puts it on a
-  LAN address, which is a restart there, and the button shows the URL
-  and token. A LAN address that will not bind falls back to loopback.
+  Linear key, the LAN switch and address, another server's URL and
+  token and whether it is in use, and the active profile's name;
+  profiles and schedules are the server's. The server listens at
+  loopback on port 9110; the API button's switch also puts it on a LAN
+  address, which is a restart there, and the button shows the URL and
+  token. A LAN address that will not bind falls back to loopback, and
+  turning the switch on before an address was chosen takes the first
+  adapter's. The same button switches the app to another machine's
+  server: `App` hands `Workspace` whichever `Server` the settings name
+  and nothing else changes, since every request goes through the one
+  client in `src/lib/api.ts`. `use-server` starts over when the client
+  changes and reports whether the server answered, shown by the
+  button's dot, and its `version` from the printer list, which the
+  button compares with the app's own since the two are released
+  together. The embedded server keeps running either way, and the app
+  still needs it to start. The schedules drawer says whose clock the
+  cron expressions run on.
   Every preview is the server's `Preview` drawn as it comes: a layout
   in the printer's font, an `<img>` of the `data:` PNG. A preview that
   kept a rule of its own drifted once, and squared finder patterns went

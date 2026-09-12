@@ -5,6 +5,25 @@ const POLL_MS = 10_000;
 
 export type Status = "checking" | "online" | "offline";
 
+/** What a server has answered so far. */
+interface Read {
+  /** Whether the server answered the last read. */
+  reachable: Status;
+  /** The server's version, once it has answered. */
+  version: string | null;
+  profiles: Profile[];
+  schedules: Schedule[] | null;
+  statuses: Record<string, Status>;
+}
+
+const UNREAD: Read = {
+  reachable: "checking",
+  version: null,
+  profiles: [],
+  schedules: null,
+  statuses: {},
+};
+
 /**
  * The server's profiles and schedules, and whether each printer
  * answers, read every ten seconds so a change made over the API by
@@ -13,27 +32,41 @@ export type Status = "checking" | "online" | "offline";
  * probe never lands in the middle of a job.
  */
 export function useServer(api: Client) {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[] | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, Status>>({});
+  const [read, setRead] = useState({ api, ...UNREAD });
+  // Another server's answers are not this one's: start over on a switch.
+  if (read.api !== api) setRead({ api, ...UNREAD });
 
   const refresh = useCallback(async () => {
-    const [profiles, schedules] = await Promise.all([
-      api.printers(),
-      api.schedules(),
-    ]);
-    setProfiles(profiles);
-    setSchedules(schedules);
-    for (const { name } of profiles) {
-      api
-        .status(name)
-        .then((online) =>
-          setStatuses((prev) => ({
-            ...prev,
-            [name]: online ? "online" : "offline",
-          })),
-        )
-        .catch(console.error);
+    /** Applies an answer unless the client has since been replaced. */
+    const answer = (changes: (read: Read) => Partial<Read>) =>
+      setRead((prev) =>
+        prev.api === api ? { ...prev, ...changes(prev) } : prev,
+      );
+    try {
+      const [{ version, printers }, schedules] = await Promise.all([
+        api.printers(),
+        api.schedules(),
+      ]);
+      answer(() => ({
+        reachable: "online",
+        version,
+        profiles: printers,
+        schedules,
+      }));
+      for (const { name } of printers) {
+        api
+          .status(name)
+          .then((online) =>
+            answer(({ statuses }) => ({
+              statuses: { ...statuses, [name]: online ? "online" : "offline" },
+            })),
+          )
+          .catch(console.error);
+      }
+    } catch (error) {
+      // A server that is not answering has nothing to show.
+      answer(() => ({ ...UNREAD, reachable: "offline" }));
+      throw error;
     }
   }, [api]);
 
@@ -45,20 +78,23 @@ export function useServer(api: Client) {
   }, [refresh]);
 
   return {
-    profiles,
-    schedules,
-    status: (name: string): Status => statuses[name] ?? "checking",
+    reachable: read.reachable,
+    version: read.version,
+    profiles: read.profiles,
+    schedules: read.schedules,
+    status: (name: string): Status => read.statuses[name] ?? "checking",
     refresh,
   };
 }
 
-export function statusLabel(profile: Profile, status: Status): string {
+/** What the dot beside `host`, a printer's or a server's, says. */
+export function statusLabel(host: string, status: Status): string {
   switch (status) {
     case "online":
-      return `${profile.host} is reachable`;
+      return `${host} is reachable`;
     case "offline":
-      return `${profile.host} is not answering`;
+      return `${host} is not answering`;
     default:
-      return `Checking ${profile.host}…`;
+      return `Checking ${host}…`;
   }
 }

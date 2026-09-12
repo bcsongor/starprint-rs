@@ -11,7 +11,9 @@ It listens on `http://127.0.0.1:9110` unless it was started with
 data directory while it is open, at loopback on port 9110 unless
 another of the machine's addresses or another port was chosen under
 its API button. Profiles and schedules made over the API are the app's
-too, and stay.
+too, and stay. The app may instead be printing through another
+machine's server, chosen under the same button; then the profiles and
+schedules it shows are that server's.
 
 Every request carries a bearer token, or gets a `401`. The server
 prints its token on the line that says where it is listening. The token

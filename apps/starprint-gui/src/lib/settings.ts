@@ -1,4 +1,5 @@
 import { load } from "@tauri-apps/plugin-store";
+import type { Server } from "./api";
 import { DEFAULT_LISTEN, type Listen } from "./embedded";
 
 const FILE = "settings.json";
@@ -19,6 +20,10 @@ export interface Settings {
   /** Whether the server also listens on the LAN, at `listen`. */
   lan: boolean;
   listen: Listen;
+  /** Another machine's server, kept as typed whether or not it is in use. */
+  remote: Server;
+  /** Whether the app prints through `remote` rather than its own server. */
+  useRemote: boolean;
   /** The profile the picker shows. */
   printer: string | null;
   linear: Linear | null;
@@ -27,6 +32,8 @@ export interface Settings {
 const DEFAULTS: Settings = {
   lan: false,
   listen: DEFAULT_LISTEN,
+  remote: { url: "", token: "" },
+  useRemote: false,
   printer: null,
   linear: null,
 };

@@ -47,6 +47,8 @@ interface Props {
   /** Puts the job back in its form, to change and schedule again. */
   onLoad: (schedule: Schedule) => void;
   onDelete: (schedule: Schedule) => void;
+  /** Whose clock the cron expressions run on. */
+  clock: string;
 }
 
 export function SchedulesDrawer({
@@ -58,15 +60,14 @@ export function SchedulesDrawer({
   onEdit,
   onLoad,
   onDelete,
+  clock,
 }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="gap-0 sm:max-w-md">
         <SheetHeader className="border-b">
           <SheetTitle>Schedules</SheetTitle>
-          <SheetDescription>
-            Jobs printed on a timetable while the app is open.
-          </SheetDescription>
+          <SheetDescription>Jobs printed on a timetable, on {clock}.</SheetDescription>
         </SheetHeader>
         <ul className="flex flex-col overflow-y-auto p-2">
           {schedules.map((s) => {

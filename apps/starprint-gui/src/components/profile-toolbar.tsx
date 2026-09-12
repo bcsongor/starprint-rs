@@ -88,7 +88,7 @@ export function ProfileToolbar({
                   <span className={DOTTED}>
                     <ConnectionDot
                       status={status(profile.name)}
-                      label={statusLabel(profile, status(profile.name))}
+                      label={statusLabel(profile.host, status(profile.name))}
                     />
                     {profile.name}
                   </span>
@@ -110,7 +110,7 @@ export function ProfileToolbar({
                 <span className={DOTTED}>
                   <ConnectionDot
                     status={status(p.name)}
-                    label={statusLabel(p, status(p.name))}
+                    label={statusLabel(p.host, status(p.name))}
                   />
                   {p.name}
                 </span>

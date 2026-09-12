@@ -290,9 +290,7 @@ export function createClient({ url, token }: Server) {
 
   return {
     printers: () =>
-      json<{ printers: Profile[] }>("GET", "/v1/printers").then(
-        (list) => list.printers,
-      ),
+      json<{ version: string; printers: Profile[] }>("GET", "/v1/printers"),
     putPrinter: (name: string, spec: ProfileSpec) =>
       json<Profile>("PUT", printer(name), jsonBody(spec)),
     deletePrinter: (name: string) => send("DELETE", printer(name)),

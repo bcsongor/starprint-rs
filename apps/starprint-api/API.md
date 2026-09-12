@@ -6,7 +6,8 @@ errors are RFC 9457 problem details.
 
 The server listens on `http://127.0.0.1:9110` by default. The desktop
 app runs the same server on the same data directory while it is open,
-and its API button can put it on a LAN address instead. One server per
+and its API button can put it on a LAN address instead, or point the app
+at another machine's server by URL and token. One server per
 directory: the app and the command line cannot run at once. For how to
 use the API from an agent, see the
 [skill](../../skills/starprint-print/SKILL.md).
