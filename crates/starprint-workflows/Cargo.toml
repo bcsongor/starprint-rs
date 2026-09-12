@@ -1,6 +1,6 @@
 [package]
 name = "starprint-workflows"
-version = "1.0.0"
+version = "1.1.0"
 description = "Ready-made Star printer jobs: task cards, text, note slips, QR codes, pictures and head-check pages"
 edition.workspace = true
 rust-version.workspace = true
