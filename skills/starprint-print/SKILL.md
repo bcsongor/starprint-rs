@@ -41,7 +41,7 @@ curl -s -H 'Authorization: Bearer <token>' http://127.0.0.1:9110/v1/printers
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "printers": [
     { "name": "tsp800ii", "host": "192.168.1.180", "port": 9100, "kind": "thermal", "paper": 80, "cut": true, "density": 3, "speed": "slow", "notes": "Firmware 2.1, by the door" },
     { "name": "sp743", "host": "192.168.1.141", "port": 9100, "kind": "impact", "cut": true, "notes": "" }

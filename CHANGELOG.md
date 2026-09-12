@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 ### HTTP API
 
@@ -54,6 +54,8 @@
 - Pictures can no longer be scheduled, and the **Bytes** hex dump is
   gone.
 - The scheduler no longer stops at the hour the clocks go back.
+- Host, port, URL and token fields share one monospace look in the
+  profile dialog and under the **API** button, which now fits a token.
 
 ## 1.0.0
 
