@@ -112,7 +112,7 @@ export function ApiButton({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-auto min-w-80 gap-0 overflow-hidden p-0 [&_input]:bg-background [&_[data-slot=select-trigger]]:bg-background [&_[data-slot=select-value]]:font-mono"
+        className="w-auto min-w-md gap-0 overflow-hidden p-0 [&_input]:bg-background [&_[data-slot=select-trigger]]:bg-background [&_[data-slot=select-value]]:font-mono"
       >
         <div className="flex flex-col gap-2 border-b bg-muted p-2.5">
           <Toggle id="api-lan" checked={lan} onCheckedChange={setLan}>
@@ -165,7 +165,7 @@ export function ApiButton({
                   remote: { ...remote, url: url.trim().replace(/\/+$/, "") },
                 })
               }
-              className="font-mono text-xs"
+              className="font-mono"
             />
           </Row>
           <Row label="Token">
@@ -173,7 +173,7 @@ export function ApiButton({
               id="api-remote-token"
               value={remote.token}
               onCommit={(token) => onSettings({ remote: { ...remote, token } })}
-              className="font-mono text-xs"
+              className="font-mono"
             />
           </Row>
           {older && (
@@ -266,7 +266,7 @@ function ReadOnlyField({ value }: { value: string }) {
   };
   return (
     <>
-      <code className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground select-all">
+      <code className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-sm text-muted-foreground select-all">
         {value}
       </code>
       <Button
