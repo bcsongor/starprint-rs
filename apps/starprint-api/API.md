@@ -50,8 +50,10 @@ token is what admits a request.
 a picture from the camera roll, to any profile. It is served without
 the token, asks for it once and keeps it in the browser. A link with the
 token in the fragment, `/#token=<token>`, fills it in; the desktop app's
-API button shows one as a QR code. Everything it does goes through the
-routes below, so it holds no job code of its own. `GET /icon.png` is
+API button shows one as a QR code. The page keeps the token in the
+fragment, pasted or scanned, so a home-screen shortcut carries it: on
+iOS the shortcut has storage of its own. Everything it does goes through
+the routes below, so it holds no job code of its own. `GET /icon.png` is
 its icon, the desktop app's, for the tab and a home-screen bookmark.
 Reach it at the address the server listens on, which for a phone means
 a LAN or tailnet address rather than the loopback default.
