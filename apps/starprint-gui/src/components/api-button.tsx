@@ -246,7 +246,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** An input whose value lands on Enter or blur, not on every keystroke. */
+/**
+ * An input whose value lands on Enter or blur, not on every keystroke.
+ * Addresses and tokens are not for the webview's autofill to remember.
+ */
 function CommitInput({
   value,
   onCommit,
@@ -265,6 +268,7 @@ function CommitInput({
   };
   return (
     <Input
+      autoComplete="off"
       {...props}
       value={draft ?? value}
       onChange={(e) => setDraft(e.target.value)}
