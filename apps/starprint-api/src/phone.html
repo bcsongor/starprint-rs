@@ -290,7 +290,8 @@
     $("priority").checked = true;
   }
 
-  const ready = () => online() && (tab === "picture" ? file !== null : $("text").value.trim() !== "");
+  let printing = false;
+  const ready = () => !printing && online() && (tab === "picture" ? file !== null : $("text").value.trim() !== "");
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -363,28 +364,35 @@
     }
   }
 
+  /** Prints what the form holds, and clears it unless it was edited meanwhile. */
   async function print() {
     const button = $("print-button");
+    printing = true;
     button.disabled = true;
     button.textContent = "Printing…";
     generation++;
     const sentTab = tab;
-    const sent = tab === "picture" ? file : $("text").value;
+    const sentBody = body();
+    const sent = tab === "picture" ? file : sentBody;
     try {
-      await api("POST", printerPath("jobs"), body());
+      await api("POST", printerPath("jobs"), sentBody);
       $("print-error").textContent = "";
-      if (sentTab === "picture" && file === sent) {
-        file = null;
-        $("file-name").textContent = "No picture chosen.";
-      } else if (sentTab === "card" && $("text").value === sent) {
-        resetCard();
+      const unchanged = tab === sentTab && (tab === "picture" ? file === sent : body() === sent);
+      if (unchanged) {
+        if (tab === "picture") {
+          file = null;
+          $("file-name").textContent = "No picture chosen.";
+        } else {
+          resetCard();
+        }
+        draw(null);
       }
-      if (sentTab === tab) draw(null);
       button.textContent = "Printed";
       await new Promise((resolve) => setTimeout(resolve, 1500));
     } catch (error) {
       $("print-error").textContent = error.message;
     } finally {
+      printing = false;
       button.textContent = "Print";
       button.disabled = !ready();
     }
