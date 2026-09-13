@@ -340,6 +340,9 @@
   }
 
   let pending;
+  // Counts requests, so a preview that lands after the form changed
+  // again, or after Print, does not overwrite what is shown.
+  let generation = 0;
   function schedulePreview() {
     $("print-button").disabled = !ready();
     clearTimeout(pending);
@@ -347,12 +350,15 @@
   }
 
   async function preview() {
+    const mine = ++generation;
     if (!printer() || (tab === "picture" && !file)) return draw(null);
     try {
-      draw(await api("POST", printerPath("preview"), body()));
+      const shown = await api("POST", printerPath("preview"), body());
+      if (mine !== generation) return;
+      draw(shown);
       $("print-error").textContent = "";
     } catch (error) {
-      $("print-error").textContent = error.message;
+      if (mine === generation) $("print-error").textContent = error.message;
     }
   }
 
@@ -360,14 +366,16 @@
     const button = $("print-button");
     button.disabled = true;
     button.textContent = "Printing…";
+    generation++;
+    const sent = tab === "picture" ? file : $("text").value;
     try {
       await api("POST", printerPath("jobs"), body());
       $("print-error").textContent = "";
-      if (tab === "card") {
-        resetCard();
-      } else {
+      if (tab === "picture" && file === sent) {
         file = null;
         $("file-name").textContent = "No picture chosen.";
+      } else if (tab === "card" && $("text").value === sent) {
+        resetCard();
       }
       draw(null);
       button.textContent = "Printed";

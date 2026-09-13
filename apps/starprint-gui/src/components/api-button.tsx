@@ -152,7 +152,7 @@ export function ApiButton({
           {lan ? (
             <div className="flex items-center gap-3 pt-1">
               <QRCodeSVG
-                value={`${embedded.url}/#token=${embedded.token}`}
+                value={`${embedded.url}/#token=${encodeURIComponent(embedded.token)}`}
                 size={96}
                 marginSize={1}
                 className="rounded-sm bg-white"
