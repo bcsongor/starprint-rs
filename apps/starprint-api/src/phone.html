@@ -370,14 +370,16 @@
     printing = true;
     button.disabled = true;
     button.textContent = "Printing…";
+    clearTimeout(pending);
     generation++;
+    const path = printerPath("jobs");
     const sentTab = tab;
     const sentBody = body();
     const sent = tab === "picture" ? file : sentBody;
     try {
-      await api("POST", printerPath("jobs"), sentBody);
+      await api("POST", path, sentBody);
       $("print-error").textContent = "";
-      const unchanged = tab === sentTab && (tab === "picture" ? file === sent : body() === sent);
+      const unchanged = printerPath("jobs") === path && tab === sentTab && (tab === "picture" ? file === sent : body() === sent);
       if (unchanged) {
         if (tab === "picture") {
           file = null;
