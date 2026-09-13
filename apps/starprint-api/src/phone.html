@@ -257,10 +257,13 @@
       const status = await api("GET", path).catch(() => ({ online: false }));
       option.disabled = !status.online;
     }));
-    if (!online()) {
-      const first = [...select.options].find((option) => !option.disabled);
-      if (first) select.value = first.value;
+    if (online()) {
+      $("print-button").disabled = !ready();
+      return;
     }
+    // Only a move to another printer changes what the preview shows.
+    const first = [...select.options].find((option) => !option.disabled);
+    if (first) select.value = first.value;
     schedulePreview();
   }
 
