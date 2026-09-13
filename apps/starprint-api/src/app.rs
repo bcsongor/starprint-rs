@@ -9,7 +9,7 @@ use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::{IntoResponse as _, Response};
+use axum::response::{Html, IntoResponse as _, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -22,9 +22,16 @@ use crate::printers::{self, Printers};
 use crate::problem::Problem;
 use crate::schedule::{self, ScheduleSpec};
 
+/// The phone page: a task card or a picture, printed through the routes
+/// below from a browser on the same network. Served without the token,
+/// which the page asks for and keeps.
+const PHONE_PAGE: &str = include_str!("phone.html");
+/// The desktop app's icon, for the page's tab and home-screen bookmark.
+const ICON: &[u8] = include_bytes!("../../starprint-gui/src-tauri/icons/128x128@2x.png");
+
 pub fn router(printers: Arc<Printers>) -> Router {
     let token = Arc::new(printers.data.token().to_owned());
-    Router::new()
+    let api = Router::new()
         .route("/v1/printers", get(list_printers))
         .route(
             "/v1/printers/{name}",
@@ -55,7 +62,14 @@ pub fn router(printers: Arc<Printers>) -> Router {
             )
         })
         .with_state(printers)
-        .layer(middleware::from_fn_with_state(token, require_token))
+        .layer(middleware::from_fn_with_state(token, require_token));
+    Router::new()
+        .route("/", get(|| async { Html(PHONE_PAGE) }))
+        .route(
+            "/icon.png",
+            get(|| async { ([(header::CONTENT_TYPE, "image/png")], ICON) }),
+        )
+        .merge(api)
         .layer(middleware::from_fn(answer_preflight))
 }
 
@@ -986,6 +1000,29 @@ mod tests {
             "*",
             "so the page can read the 401 too"
         );
+    }
+
+    /// The page has nowhere to get the token from but the person
+    /// holding the phone, so it is served without one.
+    #[tokio::test]
+    async fn the_phone_page_and_its_icon_are_served_without_the_token() {
+        let response = router(printers(9100)).oneshot(get("/")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(body.starts_with(b"<!doctype html>"));
+
+        let response = router(printers(9100))
+            .oneshot(get("/icon.png"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
     }
 
     /// Wrong, malformed or missing, the answer is the same `401`, and
