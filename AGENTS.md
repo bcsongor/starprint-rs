@@ -59,7 +59,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   in the printer's font, an `<img>` of the `data:` PNG. A preview that
   kept a rule of its own drifted once, and squared finder patterns went
   unnoticed until they came off the printer. Schedules are the API's,
-  shown in a drawer off the header and written through it; the dialog
+  shown in a drawer off the header and written through it, one `PUT`
+  each when the drawer moves them all to another printer; the dialog
   checks a cron expression with npm `croner`, the same dialect as the
   server's crate. Pictures cannot be scheduled. Auto-print is frontend
   only: a personal API key in the settings store, a `fetch` against
