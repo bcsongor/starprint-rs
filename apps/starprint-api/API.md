@@ -15,6 +15,7 @@ use the API from an agent, see the
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | [`/`](#the-phone-page) | The phone page |
+| `GET` | [`/icon.png`](#the-phone-page) | The phone page's icon |
 | `GET` | [`/v1/printers`](#get-v1printers) | List the profiles and the server's version |
 | `PUT` | [`/v1/printers/{name}`](#put-v1printersname) | Create or replace a profile |
 | `DELETE` | [`/v1/printers/{name}`](#delete-v1printersname) | Remove a profile |
