@@ -24,7 +24,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import type { Job, Profile, Schedule } from "@/lib/api";
+import { byName, type Job, type Profile, type Schedule } from "@/lib/api";
 import { describe, summary } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +47,8 @@ interface Props {
   /** Puts the job back in its form, to change and schedule again. */
   onLoad: (schedule: Schedule) => void;
   onDelete: (schedule: Schedule) => void;
+  /** Points every schedule at the printer named. */
+  onMoveAll: (printer: string) => void;
   /** Whose clock the cron expressions run on. */
   clock: string;
 }
@@ -60,6 +62,7 @@ export function SchedulesDrawer({
   onEdit,
   onLoad,
   onDelete,
+  onMoveAll,
   clock,
 }: Props) {
   return (
@@ -135,9 +138,31 @@ export function SchedulesDrawer({
             );
           })}
         </ul>
-        <p className="mt-auto border-t p-4 text-sm text-muted-foreground">
-          Set a job up under its tab and press Schedule to add it here.
-        </p>
+        <div className="mt-auto flex items-center gap-3 border-t p-4">
+          <p className="flex-1 text-sm text-muted-foreground">
+            Press Schedule on any job to add one.
+          </p>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={schedules.length === 0 || profiles.length === 0}
+                />
+              }
+            >
+              Move all to…
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-max">
+              {byName(profiles).map((p) => (
+                <DropdownMenuItem key={p.name} onClick={() => onMoveAll(p.name)}>
+                  {p.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </SheetContent>
     </Sheet>
   );

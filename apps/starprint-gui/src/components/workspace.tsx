@@ -49,7 +49,7 @@ import {
   type TestPage,
   type Text,
 } from "@/lib/api";
-import { NAMES, newSchedule } from "@/lib/schedule";
+import { NAMES, newSchedule, summary } from "@/lib/schedule";
 import type { Settings } from "@/lib/settings";
 
 type Workflow = Job["kind"];
@@ -225,6 +225,34 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const deleteSchedule = ({ id }: Schedule) =>
     attempt("Could not delete the schedule", async () => {
       await api.deleteSchedule(id);
+      await refresh();
+    });
+
+  /** Points every schedule at one printer. The server checks each job
+   * against its new printer, so one that does not suit it stays put. */
+  const moveSchedules = (printer: string) =>
+    attempt("Could not move the schedules", async () => {
+      // The list on screen can be ten seconds old.
+      const moving = (await api.schedules()).filter(
+        (s) => s.printer !== printer,
+      );
+      const results = await Promise.allSettled(
+        moving.map(({ id, ...spec }) =>
+          api.replaceSchedule(id, { ...spec, printer }),
+        ),
+      );
+      const failed = results.flatMap((result, i) =>
+        result.status === "rejected"
+          ? [`${summary(moving[i].job)}: ${String(result.reason)}`]
+          : [],
+      );
+      if (failed.length > 0) {
+        toast.error(`Could not move ${failed.length} of ${moving.length} to ${printer}`, {
+          description: failed.join("; "),
+        });
+      } else {
+        toast.success(`Moved ${moving.length} to ${printer}`);
+      }
       await refresh();
     });
 
@@ -441,6 +469,7 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
             setDrawer(false);
           }}
           onDelete={deleteSchedule}
+          onMoveAll={moveSchedules}
           clock={
             settings.useRemote
               ? `the clock at ${server.url}`
