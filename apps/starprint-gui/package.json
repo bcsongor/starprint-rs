@@ -21,6 +21,7 @@
     "croner": "^10.0.1",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.40.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.8",

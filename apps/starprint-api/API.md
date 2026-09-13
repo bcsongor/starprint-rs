@@ -14,6 +14,7 @@ use the API from an agent, see the
 
 | Method | Path | What it does |
 | --- | --- | --- |
+| `GET` | [`/`](#the-phone-page) | The phone page |
 | `GET` | [`/v1/printers`](#get-v1printers) | List the profiles and the server's version |
 | `PUT` | [`/v1/printers/{name}`](#put-v1printersname) | Create or replace a profile |
 | `DELETE` | [`/v1/printers/{name}`](#delete-v1printersname) | Remove a profile |
@@ -41,6 +42,18 @@ that returns it.
 A browser may call the API from any origin: `OPTIONS` is answered with
 the CORS headers, and every response allows any origin to read it. The
 token is what admits a request.
+
+## The phone page
+
+`GET /` is a page for printing from a phone's browser: a task card, or
+a picture from the camera roll, to any profile. It is served without
+the token, asks for it once and keeps it in the browser. A link with the
+token in the fragment, `/#token=<token>`, fills it in; the desktop app's
+API button shows one as a QR code. Everything it does goes through the
+routes below, so it holds no job code of its own. `GET /icon.png` is
+its icon, the desktop app's, for the tab and a home-screen bookmark.
+Reach it at the address the server listens on, which for a phone means
+a LAN or tailnet address rather than the loopback default.
 
 ## Running the server
 

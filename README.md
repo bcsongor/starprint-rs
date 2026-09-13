@@ -76,7 +76,9 @@ through your saved profiles. The **API** button shows the URL and the token
 every request needs, and can put the server on your LAN at an address and port
 you choose. It can also point the app at another machine's Starprint server by
 URL and token, so a laptop prints through a box that is always on: profiles,
-schedules and previews are then that server's. See the
+schedules and previews are then that server's. With the server on the LAN,
+the button also shows a QR code: scan it with a phone to print a task card or
+a picture from there. See the
 [API reference](apps/starprint-api/API.md) for every route
 and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
 including running the server on its own.

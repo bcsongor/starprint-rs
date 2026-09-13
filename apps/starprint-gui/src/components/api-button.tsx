@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { CopyIcon } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
@@ -146,6 +147,25 @@ export function ApiButton({
           <Row label="Token">
             <ReadOnlyField value={embedded.token} />
           </Row>
+          {/* The page reads the token from the fragment, which stays on
+              the phone. Loopback would send the phone to itself. */}
+          {lan ? (
+            <div className="flex items-center gap-3 pt-1">
+              <QRCodeSVG
+                value={`${embedded.url}/#token=${embedded.token}`}
+                size={96}
+                marginSize={1}
+                className="rounded-sm bg-white"
+              />
+              <p className="text-xs text-muted-foreground">
+                Scan with a phone on the same network to print from it.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Listen on the LAN to get a code a phone can scan.
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-2 border-t bg-muted p-2.5">
           <Toggle
