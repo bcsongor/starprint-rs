@@ -88,6 +88,10 @@ export function ApiButton({
     }
   };
 
+  // The switch flips before the server has restarted, so the QR waits
+  // for the address the server actually bound.
+  const onLan = new URL(embedded.url).hostname !== LOOPBACK;
+
   const older =
     app !== null &&
     version !== null &&
@@ -149,7 +153,7 @@ export function ApiButton({
           </Row>
           {/* The page reads the token from the fragment, which stays on
               the phone. Loopback would send the phone to itself. */}
-          {lan ? (
+          {onLan ? (
             <div className="flex items-center gap-3 pt-1">
               <QRCodeSVG
                 value={`${embedded.url}/#token=${encodeURIComponent(embedded.token)}`}
