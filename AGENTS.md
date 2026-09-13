@@ -90,9 +90,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   so it takes the printer's turn like a job. `src/phone.html` is the
   phone page, served at `/` without the token: one file, no framework
   and no build step, so the command line serves it too. It prints task
-  cards and pictures through the routes and draws the server's
-  `Preview` as it comes, like the desktop app. `printers::PrintQueue`,
-  exported at the crate root, serialises connections by host and port.
+  cards and pictures through the routes and keeps the token in the URL
+  fragment, since an iOS home-screen shortcut has storage of its own.
+  It draws the server's `Preview` as it comes, like the desktop app.
+  `printers::PrintQueue`, exported at the crate root, serialises
+  connections by host and port.
   The GUI keeps one queue across restarts of its server. Its guard must
   live inside the blocking task so cancellation cannot release a write
   still in progress.

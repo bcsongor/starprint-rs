@@ -289,4 +289,6 @@ trying to do instead.
 task card or a picture from it, and `GET /icon.png` is its icon. If the
 user wants to print from a phone, point them at the server's URL on the
 LAN, or the QR code under the desktop app's API button, which carries
-the token.
+the token. Add the page to the home screen after connecting, so the
+shortcut keeps the token. A shortcut that asks for it again was saved
+before; replace it.

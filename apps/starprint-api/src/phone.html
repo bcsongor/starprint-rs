@@ -221,14 +221,9 @@
 <script>
   const $ = (id) => document.getElementById(id);
 
-  // The desktop app's QR code is this page's URL with the token in the
-  // fragment, which never reaches the server.
-  const scanned = new URLSearchParams(location.hash.slice(1)).get("token");
-  if (scanned) {
-    localStorage.setItem("token", scanned);
-    history.replaceState(null, "", location.pathname);
-  }
-  let token = localStorage.getItem("token") ?? "";
+  // The token rides in the URL fragment, which never reaches the server.
+  // The desktop app's QR code puts it there and `load` keeps it there.
+  let token = new URLSearchParams(location.hash.slice(1)).get("token") || localStorage.getItem("token") || "";
   let printers = [];
   let tab = "card";
   let file = null;
@@ -415,6 +410,10 @@
   }
 
   async function load() {
+    localStorage.setItem("token", token);
+    // A home-screen shortcut saves the URL, and on iOS it starts with
+    // storage of its own.
+    history.replaceState(null, "", token ? `#${new URLSearchParams({ token })}` : location.pathname);
     if (!token) return showConnect("");
     try {
       printers = (await api("GET", "/v1/printers")).printers;
@@ -440,7 +439,6 @@
   $("connect").addEventListener("submit", (event) => {
     event.preventDefault();
     token = $("token").value.trim();
-    localStorage.setItem("token", token);
     load();
   });
   $("change-token").addEventListener("click", () => showConnect(""));
