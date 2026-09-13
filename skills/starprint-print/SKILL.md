@@ -284,3 +284,9 @@ automatically; tell the user and let them look at the paper.
 with no validation. It is for programs that build their own command
 streams. Do not use it. If a job seems to need it, say what you were
 trying to do instead.
+
+`GET /` is a page for people, not agents: a phone's browser prints a
+task card or a picture from it, and `GET /icon.png` is its icon. If the
+user wants to print from a phone, point them at the server's URL on the
+LAN, or the QR code under the desktop app's API button, which carries
+the token.

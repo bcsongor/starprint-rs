@@ -42,9 +42,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   profiles and schedules are the server's. The server listens at
   loopback on port 9110; the API button's switch also puts it on a LAN
   address, which is a restart there, and the button shows the URL and
-  token. A LAN address that will not bind falls back to loopback, and
-  turning the switch on before an address was chosen takes the first
-  adapter's. The same button switches the app to another machine's
+  token, and on the LAN a QR code of the phone page's URL with the
+  token in the fragment, drawn by `qrcode.react`. A LAN address that
+  will not bind falls back to loopback, and turning the switch on
+  before an address was chosen takes the first adapter's. The same button switches the app to another machine's
   server: `App` hands `Workspace` whichever `Server` the settings name
   and nothing else changes, since every request goes through the one
   client in `src/lib/api.ts`. `use-server` starts over when the client
@@ -85,7 +86,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   takes a job's body and answers with the workflows crate's `Preview`,
   so a client needs no job code of its own. The connection
   probe lives here too, behind `/status` and exported as `reachable`,
-  so it takes the printer's turn like a job. `printers::PrintQueue`,
+  so it takes the printer's turn like a job. `src/phone.html` is the
+  phone page, served at `/` without the token: one file, no framework
+  and no build step, so the command line serves it too. It prints task
+  cards and pictures through the routes and draws the server's
+  `Preview` as it comes, like the desktop app. `printers::PrintQueue`,
   exported at the crate root, serialises connections by host and port.
   The GUI keeps one queue across restarts of its server. Its guard must
   live inside the blocking task so cancellation cannot release a write
