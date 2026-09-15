@@ -10,23 +10,47 @@
 <link rel="icon" href="/icon.png">
 <link rel="apple-touch-icon" href="/icon.png">
 <title>Starprint</title>
+<script>
+  // Runs before the stylesheet, so the page never flashes light.
+  const stored = localStorage.getItem("theme");
+  document.documentElement.classList.toggle("dark", stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches);
+</script>
 <style>
   :root {
+    --background: #fff;
     --foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
+    --primary-foreground: #fff;
     --muted: oklch(0.97 0 0);
     --muted-foreground: oklch(0.556 0 0);
     --border: oklch(0.922 0 0);
     --destructive: oklch(0.577 0.245 27.325);
+    --tabs: oklch(0.91 0 0);
+    --tab: #fff;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23555' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
     --radius: 0.5rem;
     color-scheme: light;
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --destructive: oklch(0.704 0.191 22.216);
+    --tabs: oklch(0.205 0 0);
+    --tab: oklch(0.371 0 0);
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23aaa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     font: 16px/1.4 system-ui, sans-serif;
     color: var(--foreground);
-    background: #fff;
+    background: var(--background);
     -webkit-text-size-adjust: 100%;
   }
   .top {
@@ -85,14 +109,14 @@
     padding: 0.625rem 0.75rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: #fff;
+    background: var(--background);
     appearance: none;
   }
   select {
     width: auto;
     max-width: 60%;
     padding-right: 2rem;
-    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23555' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 0.625rem center;
+    background: var(--background) var(--chevron) no-repeat right 0.625rem center;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -104,7 +128,7 @@
     padding: 0 1rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: #fff;
+    background: var(--background);
     font-weight: 500;
     cursor: pointer;
   }
@@ -116,18 +140,20 @@
     font-size: 0.875rem;
     color: var(--muted-foreground);
   }
+  #theme { display: flex; align-items: center; }
+  .dark .sun, :root:not(.dark) .moon { display: none; }
   .primary {
     width: 100%;
     min-height: 3rem;
     border-color: var(--primary);
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-foreground);
   }
   .tabs {
     display: flex;
     padding: 0.25rem;
     border-radius: var(--radius);
-    background: oklch(0.91 0 0);
+    background: var(--tabs);
   }
   .tabs button {
     flex: 1;
@@ -137,7 +163,7 @@
     color: var(--muted-foreground);
   }
   .tabs button[aria-selected=true] {
-    background: #fff;
+    background: var(--tab);
     color: var(--foreground);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
   }
@@ -155,7 +181,7 @@
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
   }
   .sheet img { display: block; width: 100%; }
-  .sheet .note { font-family: system-ui, sans-serif; text-align: center; color: var(--muted-foreground); }
+  .sheet .note { font-family: system-ui, sans-serif; text-align: center; color: rgb(0 0 0 / 0.5); }
   .region { position: relative; width: 100%; }
   .strip { position: absolute; top: 0; left: 0; transform-origin: top left; white-space: pre; }
   .strip .head span { font-weight: 700; }
@@ -173,6 +199,10 @@
     <h1><img src="/icon.png" alt="" width="28" height="28">Starprint</h1>
     <button type="button" id="change-token" class="ghost" hidden>Token</button>
     <select id="printer" aria-label="Printer" hidden></select>
+    <button type="button" id="theme" class="ghost" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+    </button>
   </header>
   <div id="tabs" class="tabs" role="tablist" hidden>
     <button type="button" role="tab" data-tab="card" aria-selected="true">Task card</button>
@@ -387,7 +417,7 @@
         } else {
           resetCard();
         }
-        draw(null);
+        schedulePreview();
       }
       button.textContent = "Printed";
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -443,6 +473,17 @@
     token = $("token").value.trim();
     load();
   });
+  /** Applies the theme; the status bar takes the header's colour through `theme-color`. */
+  function setTheme(dark) {
+    document.documentElement.classList.toggle("dark", dark);
+    $("theme").setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    document.querySelector("meta[name=theme-color]").content = getComputedStyle(document.querySelector(".top")).backgroundColor;
+  }
+  $("theme").addEventListener("click", () => {
+    const dark = !document.documentElement.classList.contains("dark");
+    localStorage.setItem("theme", dark ? "dark" : "light");
+    setTheme(dark);
+  });
   $("change-token").addEventListener("click", () => showConnect(""));
   $("printer").addEventListener("change", () => {
     localStorage.setItem("printer", $("printer").value);
@@ -474,6 +515,7 @@
   // A printer switched on or off shows within the desktop app's interval.
   setInterval(() => { if (!$("print").hidden) probe(); }, 10000);
 
+  setTheme(document.documentElement.classList.contains("dark"));
   resetCard();
   load();
 </script>
