@@ -64,7 +64,10 @@ pub fn router(printers: Arc<Printers>) -> Router {
         .with_state(printers)
         .layer(middleware::from_fn_with_state(token, require_token));
     Router::new()
-        .route("/", get(|| async { Html(PHONE_PAGE) }))
+        .route(
+            "/",
+            get(|| async { ([(header::CACHE_CONTROL, "no-cache")], Html(PHONE_PAGE)) }),
+        )
         .route(
             "/icon.png",
             get(|| async { ([(header::CONTENT_TYPE, "image/png")], ICON) }),
