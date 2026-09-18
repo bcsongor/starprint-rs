@@ -71,7 +71,8 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
             let fits =
                 current.chars().count() + gap.chars().count() + word.chars().count() <= max_len;
             if fits {
-                current.push_str(gap);
+                // One space each, since a tab has no CP437 character.
+                current.extend(gap.chars().map(|_| ' '));
             } else if !current.is_empty() {
                 lines.push(std::mem::take(&mut current));
             }
@@ -301,6 +302,11 @@ mod tests {
     #[test]
     fn typed_spaces_are_kept_until_a_line_wraps_at_them() {
         assert_eq!(wrap_by_words("a:  b\n    c ", 40), ["a:  b", "    c"]);
+        assert_eq!(
+            wrap_by_words("\ta\t b", 40),
+            [" a  b"],
+            "tabs print as spaces"
+        );
         assert_eq!(wrap_by_words(" café  déjà vu ", 9), [" café", "déjà vu"]);
         assert_eq!(
             wrap_by_words("    ab", 5),
