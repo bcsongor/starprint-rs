@@ -54,8 +54,9 @@ impl TextStyle for Builder<Impact> {
 }
 
 /// Keeps the line breaks and the spaces the user typed, so text can be
-/// lined up by hand and blank lines feed paper. A wrapped line drops the
-/// spaces it broke at, and every line drops its trailing ones.
+/// lined up by hand and blank lines feed paper. Spaces that would run a
+/// word past the edge are dropped, whether the line wraps there or is
+/// indented too far, and every line drops its trailing ones.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     let mut lines = Vec::new();
 
@@ -67,12 +68,12 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
             let (gap, tail) = rest.split_at(start);
             let (word, tail) = tail.split_at(tail.find(char::is_whitespace).unwrap_or(tail.len()));
             rest = tail;
-            if !current.is_empty()
-                && current.chars().count() + gap.chars().count() + word.chars().count() > max_len
-            {
-                lines.push(std::mem::take(&mut current));
-            } else {
+            let fits =
+                current.chars().count() + gap.chars().count() + word.chars().count() <= max_len;
+            if fits {
                 current.push_str(gap);
+            } else if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
             }
             current.push_str(word);
         }
@@ -301,6 +302,7 @@ mod tests {
     fn typed_spaces_are_kept_until_a_line_wraps_at_them() {
         assert_eq!(wrap_by_words("a:  b\n    c ", 40), ["a:  b", "    c"]);
         assert_eq!(wrap_by_words(" café  déjà vu ", 9), [" café", "déjà vu"]);
+        assert_eq!(wrap_by_words("    ab", 5), ["ab"], "no wider than the paper");
         assert_eq!(
             plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
             ["  indented"]
