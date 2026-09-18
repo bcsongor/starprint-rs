@@ -302,7 +302,11 @@ mod tests {
     fn typed_spaces_are_kept_until_a_line_wraps_at_them() {
         assert_eq!(wrap_by_words("a:  b\n    c ", 40), ["a:  b", "    c"]);
         assert_eq!(wrap_by_words(" café  déjà vu ", 9), [" café", "déjà vu"]);
-        assert_eq!(wrap_by_words("    ab", 5), ["ab"], "no wider than the paper");
+        assert_eq!(
+            wrap_by_words("    ab", 5),
+            ["ab"],
+            "no wider than the paper"
+        );
         assert_eq!(
             plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
             ["  indented"]
