@@ -1,5 +1,7 @@
 //! Plain text in the styles the head offers, wrapped to the paper.
 
+use std::{iter, mem};
+
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
@@ -54,29 +56,28 @@ impl TextStyle for Builder<Impact> {
 }
 
 /// Keeps the line breaks and the spaces the user typed, so text can be
-/// lined up by hand and blank lines feed paper. Spaces that would run a
-/// word past the edge are dropped, whether the line wraps there or is
-/// indented too far, and every line drops its trailing ones.
+/// lined up by hand and blank lines feed paper. A gap that would run its
+/// word past the edge is dropped, and so are trailing spaces.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
     let mut lines = Vec::new();
 
     // Not `lines()`, which would swallow a final blank line.
     for raw_line in text.split('\n') {
         let mut current = String::new();
-        let mut rest = raw_line.trim_end();
-        while let Some(start) = rest.find(|c: char| !c.is_whitespace()) {
-            let (gap, tail) = rest.split_at(start);
-            let (word, tail) = tail.split_at(tail.find(char::is_whitespace).unwrap_or(tail.len()));
-            rest = tail;
-            let fits =
-                current.chars().count() + gap.chars().count() + word.chars().count() <= max_len;
-            if fits {
-                // One space each, since a tab has no CP437 character.
-                current.extend(gap.chars().map(|_| ' '));
+        // Counted, not kept: a tab has no CP437 character, so it prints as a space.
+        let mut gap = 0;
+        for word in raw_line.trim_end().split(char::is_whitespace) {
+            if word.is_empty() {
+                gap += 1;
+                continue;
+            }
+            if current.chars().count() + gap + word.chars().count() <= max_len {
+                current.extend(iter::repeat_n(' ', gap));
             } else if !current.is_empty() {
-                lines.push(std::mem::take(&mut current));
+                lines.push(mem::take(&mut current));
             }
             current.push_str(word);
+            gap = 1;
         }
         lines.push(current);
     }
