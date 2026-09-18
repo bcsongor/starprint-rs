@@ -53,21 +53,26 @@ impl TextStyle for Builder<Impact> {
     }
 }
 
-/// Keeps the line breaks the user typed.
+/// Keeps the line breaks and the spaces the user typed, so text can be
+/// lined up by hand and blank lines feed paper. A wrapped line drops the
+/// spaces it broke at, and every line drops its trailing ones.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
-    if text.is_empty() {
-        return vec![String::new()];
-    }
     let mut lines = Vec::new();
 
-    for raw_line in text.lines() {
+    // Not `lines()`, which would swallow a final blank line.
+    for raw_line in text.split('\n') {
         let mut current = String::new();
-        for word in raw_line.split_whitespace() {
-            if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > max_len {
+        let mut rest = raw_line.trim_end();
+        while let Some(start) = rest.find(|c: char| !c.is_whitespace()) {
+            let (gap, tail) = rest.split_at(start);
+            let (word, tail) = tail.split_at(tail.find(char::is_whitespace).unwrap_or(tail.len()));
+            rest = tail;
+            if !current.is_empty()
+                && current.chars().count() + gap.chars().count() + word.chars().count() > max_len
+            {
                 lines.push(std::mem::take(&mut current));
-            }
-            if !current.is_empty() {
-                current.push(' ');
+            } else {
+                current.push_str(gap);
             }
             current.push_str(word);
         }
@@ -111,10 +116,7 @@ impl Text {
         let columns = <Builder<P> as TextStyle>::columns(paper);
         Layout {
             columns,
-            lines: wrap_by_words(
-                self.text.trim(),
-                if self.wide { columns / 2 } else { columns },
-            ),
+            lines: wrap_by_words(&self.text, if self.wide { columns / 2 } else { columns }),
         }
     }
 
@@ -286,8 +288,22 @@ mod tests {
     fn typed_line_breaks_are_kept() {
         assert_eq!(wrap_by_words("one\ntwo", 40), ["one", "two"]);
         assert_eq!(wrap_by_words("", 40), [""]);
-        assert_eq!(wrap_by_words("one\n\ntwo\n", 40), ["one", "", "two"]);
-        assert_eq!(wrap_by_words(" café  déjà vu ", 9), ["café déjà", "vu"]);
+        assert_eq!(wrap_by_words("one\r\n\ntwo", 40), ["one", "", "two"]);
+        assert_eq!(
+            plain("\none\n\n").layout::<StarLine>(Paper::Mm80).lines,
+            ["", "one", "", ""],
+            "blank lines at either end feed paper"
+        );
         assert_eq!(wrap_by_words("longword x", 3), ["longword", "x"]);
+    }
+
+    #[test]
+    fn typed_spaces_are_kept_until_a_line_wraps_at_them() {
+        assert_eq!(wrap_by_words("a:  b\n    c ", 40), ["a:  b", "    c"]);
+        assert_eq!(wrap_by_words(" café  déjà vu ", 9), [" café", "déjà vu"]);
+        assert_eq!(
+            plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
+            ["  indented"]
+        );
     }
 }
