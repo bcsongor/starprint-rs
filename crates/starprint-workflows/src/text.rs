@@ -1,5 +1,7 @@
 //! Plain text in the styles the head offers, wrapped to the paper.
 
+use std::{iter, mem};
+
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
@@ -53,23 +55,29 @@ impl TextStyle for Builder<Impact> {
     }
 }
 
-/// Keeps the line breaks the user typed.
+/// Keeps the line breaks and the spaces the user typed, so text can be
+/// lined up by hand and blank lines feed paper. A gap that would run its
+/// word past the edge is dropped, and so are trailing spaces.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
-    if text.is_empty() {
-        return vec![String::new()];
-    }
     let mut lines = Vec::new();
 
-    for raw_line in text.lines() {
+    // Not `lines()`, which would swallow a final blank line.
+    for raw_line in text.split('\n') {
         let mut current = String::new();
-        for word in raw_line.split_whitespace() {
-            if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > max_len {
-                lines.push(std::mem::take(&mut current));
+        // Counted, not kept: a tab has no CP437 character, so it prints as a space.
+        let mut gap = 0;
+        for word in raw_line.trim_end().split(char::is_whitespace) {
+            if word.is_empty() {
+                gap += 1;
+                continue;
             }
-            if !current.is_empty() {
-                current.push(' ');
+            if current.chars().count() + gap + word.chars().count() <= max_len {
+                current.extend(iter::repeat_n(' ', gap));
+            } else if !current.is_empty() {
+                lines.push(mem::take(&mut current));
             }
             current.push_str(word);
+            gap = 1;
         }
         lines.push(current);
     }
@@ -111,10 +119,7 @@ impl Text {
         let columns = <Builder<P> as TextStyle>::columns(paper);
         Layout {
             columns,
-            lines: wrap_by_words(
-                self.text.trim(),
-                if self.wide { columns / 2 } else { columns },
-            ),
+            lines: wrap_by_words(&self.text, if self.wide { columns / 2 } else { columns }),
         }
     }
 
@@ -286,8 +291,32 @@ mod tests {
     fn typed_line_breaks_are_kept() {
         assert_eq!(wrap_by_words("one\ntwo", 40), ["one", "two"]);
         assert_eq!(wrap_by_words("", 40), [""]);
-        assert_eq!(wrap_by_words("one\n\ntwo\n", 40), ["one", "", "two"]);
-        assert_eq!(wrap_by_words(" café  déjà vu ", 9), ["café déjà", "vu"]);
+        assert_eq!(wrap_by_words("one\r\n\ntwo", 40), ["one", "", "two"]);
+        assert_eq!(
+            plain("\none\n\n").layout::<StarLine>(Paper::Mm80).lines,
+            ["", "one", "", ""],
+            "blank lines at either end feed paper"
+        );
         assert_eq!(wrap_by_words("longword x", 3), ["longword", "x"]);
+    }
+
+    #[test]
+    fn typed_spaces_are_kept_until_a_line_wraps_at_them() {
+        assert_eq!(wrap_by_words("a:  b\n    c ", 40), ["a:  b", "    c"]);
+        assert_eq!(
+            wrap_by_words("\ta\t b", 40),
+            [" a  b"],
+            "tabs print as spaces"
+        );
+        assert_eq!(wrap_by_words(" café  déjà vu ", 9), [" café", "déjà vu"]);
+        assert_eq!(
+            wrap_by_words("    ab", 5),
+            ["ab"],
+            "no wider than the paper"
+        );
+        assert_eq!(
+            plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
+            ["  indented"]
+        );
     }
 }

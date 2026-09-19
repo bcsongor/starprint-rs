@@ -53,7 +53,8 @@ export function TextPreview({ text, layout, printer }: Props) {
                           : "bg-black text-white"),
                     )}
                   >
-                    {line}
+                    {/* A final empty line would otherwise take no height. */}
+                    {line || "​"}
                   </span>
                 </Fragment>
               ))}
