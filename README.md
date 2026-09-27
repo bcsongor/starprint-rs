@@ -83,6 +83,20 @@ a picture from there. See the
 and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
 including running the server on its own.
 
+## Fax
+
+Send any job to someone else's receipt printer by their number, like
+`*7441 720938`. Open the phone button in the header, activate your line
+(a few minutes, once) and add a relay by its address; it tells you its
+name, like `LONRELAY01`. Then press **Fax** beside **Print**, type a
+number and send. Faxes are sealed end to end with post-quantum keys, so
+the relay cannot read them, and every fax sent to you prints on your
+fax printer while the app runs, headed with who sent it and when.
+
+A relay is a small public server anyone can run:
+`cargo run --release -p starprint-relay -- --name LONRELAY01`,
+behind a TLS proxy. See [its README](apps/starprint-relay/README.md).
+
 ## Rust library
 
 Build print jobs in your own code and send them over Ethernet.

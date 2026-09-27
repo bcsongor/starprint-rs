@@ -3,11 +3,11 @@ import { getVersion } from "@tauri-apps/api/app";
 import { CopyIcon } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { CommitInput } from "@/components/commit-input";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -243,43 +243,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       </span>
       <div className="flex min-w-0 flex-1 items-center gap-1">{children}</div>
     </div>
-  );
-}
-
-/**
- * An input whose value lands on Enter or blur, not on every keystroke.
- * Addresses and tokens are not for the webview's autofill to remember.
- */
-function CommitInput({
-  value,
-  onCommit,
-  ...props
-}: {
-  value: string;
-  onCommit: (value: string) => void;
-} & Omit<
-  React.ComponentProps<typeof Input>,
-  "value" | "onChange" | "onBlur" | "onKeyDown"
->) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft !== null && draft !== value) onCommit(draft);
-    setDraft(null);
-  };
-  return (
-    <Input
-      autoComplete="off"
-      {...props}
-      value={draft ?? value}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          commit();
-        }
-      }}
-    />
   );
 }
 

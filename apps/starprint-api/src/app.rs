@@ -1,7 +1,7 @@
 //! The routes, and the JSON the client sees. `body` reads the request,
 //! `job` turns it into printable bytes, `printers` writes them, `data`
-//! keeps the profiles and schedules. This module wires them together
-//! and does nothing else.
+//! keeps the profiles and schedules, and `faxing` sends and receives
+//! faxes. This module wires them together and does nothing else.
 
 use std::sync::Arc;
 
@@ -17,6 +17,7 @@ use starprint_workflows::Preview;
 
 use crate::body;
 use crate::config::{Profile, ProfileSpec};
+use crate::faxing::{self, AddRelay, FaxView, RelayEntry, SendRequest, Sent, SettingsRequest};
 use crate::job::JobRequest;
 use crate::printers::{self, Printers};
 use crate::problem::Problem;
@@ -50,6 +51,14 @@ pub fn router(printers: Arc<Printers>) -> Router {
         )
         .route("/v1/printers/{name}/raw", post(create_raw_job))
         .route("/v1/schedules", get(list_schedules).post(create_schedule))
+        .route("/v1/fax", get(get_fax).put(put_fax))
+        .route("/v1/fax/line", post(activate_line))
+        .route("/v1/fax/relays", post(add_relay))
+        .route("/v1/fax/relays/{name}", axum::routing::delete(remove_relay))
+        .route(
+            "/v1/fax/send",
+            post(send_fax).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
+        )
         .route(
             "/v1/schedules/{id}",
             axum::routing::put(replace_schedule).delete(delete_schedule),
@@ -348,6 +357,71 @@ async fn delete_schedule(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn get_fax(State(printers): State<Arc<Printers>>) -> Json<FaxView> {
+    Json(faxing::view(&printers))
+}
+
+async fn put_fax(
+    State(printers): State<Arc<Printers>>,
+    request: Request,
+) -> Result<Json<FaxView>, Problem> {
+    let settings: SettingsRequest = body::json(request).await?;
+    faxing::configure(&printers, settings)?;
+    Ok(Json(faxing::view(&printers)))
+}
+
+/// Starts mining the line's number, which takes minutes; `GET /v1/fax`
+/// reports the progress.
+async fn activate_line(
+    State(printers): State<Arc<Printers>>,
+) -> Result<(StatusCode, Json<FaxView>), Problem> {
+    faxing::activate(&printers)?;
+    Ok((StatusCode::ACCEPTED, Json(faxing::view(&printers))))
+}
+
+async fn add_relay(
+    State(printers): State<Arc<Printers>>,
+    request: Request,
+) -> Result<(StatusCode, Json<RelayEntry>), Problem> {
+    let request: AddRelay = body::json(request).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(faxing::add_relay(&printers, request).await?),
+    ))
+}
+
+async fn remove_relay(
+    State(printers): State<Arc<Printers>>,
+    Path(name): Path<String>,
+) -> Result<StatusCode, Problem> {
+    if !faxing::remove_relay(&printers, &name)? {
+        return Err(Problem::not_found(format!("No relay named `{name}`.")));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A number and a job as JSON, or as a form with the picture beside it,
+/// as `/jobs` takes them.
+async fn send_fax(
+    State(printers): State<Arc<Printers>>,
+    request: Request,
+) -> Result<Json<Sent>, Problem> {
+    let (request, image) = match body::media_type(request.headers()).as_deref() {
+        Some("application/json") => (body::json::<SendRequest>(request).await?, None),
+        Some("multipart/form-data") => {
+            let (job, image) = body::form(request).await?;
+            (body::parse_json(&job)?, image)
+        }
+        other => {
+            return Err(body::unsupported(
+                other,
+                "application/json or multipart/form-data",
+            ));
+        }
+    };
+    Ok(Json(faxing::send(&printers, request, image).await?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,6 +597,36 @@ mod tests {
             "due": "run-day",
             "job": { "kind": "task-card", "text": "Standup" },
         })
+    }
+
+    /// The routes reach the fax line; `faxing` tests the rest.
+    #[tokio::test]
+    async fn a_new_server_has_a_fax_line_to_set_up() {
+        let printers = printers(closed_port().await);
+        let reply = call(Arc::clone(&printers), get("/v1/fax")).await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(reply.json["number"], Value::Null);
+        assert_eq!(reply.json["relays"], json!([]));
+
+        let reply = call(
+            Arc::clone(&printers),
+            put_json("/v1/fax", json!({ "name": "Desk", "printer": "sp743" })),
+        )
+        .await;
+        assert_eq!(reply.json["name"], "Desk");
+        assert_eq!(reply.json["printer"], "sp743");
+        let reply = call(
+            Arc::clone(&printers),
+            put_json("/v1/fax", json!({ "name": "Desk", "printer": "nope" })),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+
+        let send = json!({ "to": "*7441 720938", "job": { "kind": "text", "text": "Hi" } });
+        let reply = call(Arc::clone(&printers), post_json("/v1/fax/send", send)).await;
+        assert_eq!(reply.status, StatusCode::CONFLICT);
+        let reply = call(printers, delete("/v1/fax/relays/LONRELAY01")).await;
+        assert_eq!(reply.status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

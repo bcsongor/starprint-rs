@@ -1,5 +1,5 @@
-//! The data directory: profiles, schedules and the token, on disk and
-//! in memory.
+//! The data directory: profiles, schedules, the token and the fax line,
+//! on disk and in memory.
 //!
 //! Each file is read once at startup and written whole after every
 //! change, under the lock that guards its contents, so the last write
@@ -14,14 +14,19 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::config::{self, Profile};
+use crate::faxing::FaxSettings;
 use crate::schedule::ScheduleSpec;
 
 const PROFILES: &str = "printers.json";
 const SCHEDULES: &str = "schedules.json";
 const TOKEN: &str = "token";
+/// The fax line's secret seed as well as its settings, so it is the
+/// owner's alone like the token.
+const FAX: &str = "fax.json";
 const LOCK: &str = "lock";
 
 pub struct Data {
@@ -32,6 +37,11 @@ pub struct Data {
     token: String,
     profiles: RwLock<Vec<Profile>>,
     schedules: RwLock<BTreeMap<String, ScheduleSpec>>,
+    fax: RwLock<FaxSettings>,
+    /// Tries so far while a line is being mined. Kept here rather than
+    /// with a server, since the desktop app restarts its server on the
+    /// same directory and mining takes minutes.
+    pub(crate) activating: Mutex<Option<Arc<AtomicU64>>>,
 }
 
 impl Data {
@@ -53,6 +63,7 @@ impl Data {
             .map_err(|_| format!("{}: another server has it open", dir.display()))?;
         let profiles = config::read(&dir.join(PROFILES))?;
         let schedules = read_schedules(&dir.join(SCHEDULES))?;
+        let fax = read_fax(&dir.join(FAX))?;
         let token_path = dir.join(TOKEN);
         // Trimmed either way, as a request's bearer is.
         let token = match token {
@@ -74,6 +85,8 @@ impl Data {
             token,
             profiles: RwLock::new(profiles),
             schedules: RwLock::new(schedules),
+            fax: RwLock::new(fax),
+            activating: Mutex::default(),
         })
     }
 
@@ -86,6 +99,8 @@ impl Data {
             token,
             profiles: RwLock::new(profiles),
             schedules: RwLock::default(),
+            fax: RwLock::default(),
+            activating: Mutex::default(),
         }
     }
 
@@ -186,6 +201,27 @@ impl Data {
         Ok(true)
     }
 
+    pub fn fax(&self) -> FaxSettings {
+        self.fax.read().unwrap().clone()
+    }
+
+    /// Applies `change` to the fax settings and writes them; nothing is
+    /// kept if `change` fails or the write does.
+    pub fn change_fax<T>(
+        &self,
+        change: impl FnOnce(&mut FaxSettings) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut fax = self.fax.write().unwrap();
+        let mut next = fax.clone();
+        let result = change(&mut next)?;
+        if let Some(dir) = &self.dir {
+            let text = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
+            replace(&dir.join(FAX), &text)?;
+        }
+        *fax = next;
+        Ok(result)
+    }
+
     fn save_profiles(&self, profiles: &[Profile]) -> Result<(), String> {
         let Some(dir) = &self.dir else {
             return Ok(());
@@ -217,6 +253,14 @@ fn read_schedules(path: &Path) -> Result<BTreeMap<String, ScheduleSpec>, String>
             .map_err(|problem| format!("{}: {id}: {}", path.display(), problem.detail()))?;
     }
     Ok(schedules)
+}
+
+fn read_fax(path: &Path) -> Result<FaxSettings, String> {
+    match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(FaxSettings::default()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
 }
 
 fn generate_token(path: &Path) -> Result<String, String> {

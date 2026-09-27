@@ -1,0 +1,30 @@
+[package]
+name = "starprint-relay"
+version = "1.1.0"
+description = "Public relay that holds sealed starprint faxes until their line polls for them"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+# The time on each log line.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Lines and faxes, in one file. `bundled` builds SQLite in, so a host
+# needs nothing installed; `fallible_uint` stores Unix seconds and sizes
+# as they are.
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+starprint-fax = { path = "../../crates/starprint-fax" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal"] }
+# The ids a relay gives the faxes it holds.
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# A database file that outlives one router, for the restart test.
+tempfile = "3"
+tokio = { version = "1", features = ["macros"] }
+tower = { version = "0.5", features = ["util"] }

@@ -3,7 +3,9 @@ resolver = "3"
 members = [
   "crates/starprint",
   "crates/starprint-workflows",
+  "crates/starprint-fax",
   "apps/starprint-api",
+  "apps/starprint-relay",
   "apps/starprint-gui/src-tauri",
 ]
 # Root `cargo test`, `cargo run --example …` and friends act on the library
@@ -28,4 +30,10 @@ opt-level = 3
 [profile.dev.package.png]
 opt-level = 3
 [profile.dev.package.image-webp]
+opt-level = 3
+# Mining a fax number is tens of thousands of Argon2 hashes, which would
+# take hours unoptimised.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
 opt-level = 3

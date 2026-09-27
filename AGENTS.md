@@ -6,6 +6,8 @@ For contributors; the README is for users.
 
 A Cargo workspace. `crates/starprint` is the library and default member,
 `crates/starprint-workflows` holds the jobs, and two front ends print them.
+`crates/starprint-fax` is the fax protocol, which the API and
+`apps/starprint-relay` speak.
 
 - `crates/starprint/src/document.rs`: `Builder<P>` and the command
   encoding. Every command cites the manual it comes from.
@@ -19,7 +21,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   or the two drift. `preview` draws what a job will look like: a
   layout for the printer's own fonts, and a PNG from the bitmap that
   prints, with thermal dots widened to the measured size. Both front
-  ends show previews from it and nothing else. QR symbols are encoded here by `qrcodegen` and
+  ends show previews from it and nothing else. `FaxHeader` is the bar a
+  received fax prints under, on the same builder as the job; it is not
+  a job, so nothing previews it. QR symbols are encoded here by `qrcodegen` and
   printed as dots on both heads. The SP700 has no QR command, and one
   bitmap gives one path, a known version, a preview that draws what
   prints and rounded modules, none of which `ESC GS y` would.
@@ -66,13 +70,16 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   only: a personal API key in the settings store, a `fetch` against
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
   newly assigned open issue, posted to the server like any other job.
+  Fax is the server's too: the phone button opens a drawer to activate
+  the line, name it, choose its printer and add relays, and **Fax**
+  beside **Print** sends the job in the form to a number.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs, and the home of everything that has to run
   unattended. A library with a thin command line on top, so the desktop
   app can run the same server. One concern per module; anything new
   goes in whichever of `body`, `job`, `printers`, `config`, `data`,
-  `schedule`, `problem`, `app` or `server` owns it. `data` is the data
-  directory: `printers.json`, `schedules.json` and `token`, each read
+  `schedule`, `faxing`, `problem`, `app` or `server` owns it. `data` is the data directory:
+  `printers.json`, `schedules.json`, `token` and `fax.json`, each read
   once at startup and written whole under its lock after every change.
   The directory is locked while open, so two servers cannot share one,
   the desktop app's included. `app` answers `OPTIONS` with the CORS
@@ -95,9 +102,29 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   It draws the server's `Preview` as it comes, like the desktop app.
   `printers::PrintQueue`, exported at the crate root, serialises
   connections by host and port.
+  `faxing` is the server's side of fax: `fax.json` in the data
+  directory, activating the line on a thread that outlives a server
+  restart, sending, what a fax carries, and the loop that polls relays
+  and prints through the queue like the scheduler. A received fax
+  prints under the workflows crate's `FaxHeader`, through
+  `Printer::fax`, so the API still builds no bytes of its own. Its tests send
+  through a real `starprint-relay`, a dev-dependency only, so no relay
+  code ships in the server or the app.
   The GUI keeps one queue across restarts of its server. Its guard must
   live inside the blocking task so cancellation cannot release a write
   still in progress.
+- `crates/starprint-fax/`: the fax protocol, which does no I/O. A
+  number is mined from an identity key with Argon2id (`number`), a line
+  record is signed by Ed25519 and ML-DSA-65 (`line`), a fax is sealed to
+  an X-Wing key under ChaCha20-Poly1305 (`fax`), and `relay` holds the
+  requests a line makes of a relay. A fax's contents are bytes here; the
+  API decides they are a job. Tests mine at `Difficulty::TEST`, so
+  nothing waits minutes.
+- `apps/starprint-relay/`: the public server faxes travel through, a
+  router in `lib.rs`, its SQLite file in `store.rs` and a command line
+  in `main.rs`. It deletes nothing: a confirmed fax is marked
+  delivered. It logs who faxed whom, never what, and knows nothing of
+  printers.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own
@@ -117,7 +144,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 - Before opening one, run `cargo test --all-targets`, clippy with
   `-D warnings` and `cargo fmt --all --check`, both with and without
   `--features image`, then the same for
-  `-p starprint-workflows -p starprint-api`. CI does the same. The
+  `-p starprint-workflows -p starprint-fax -p starprint-api -p starprint-relay`.
+  CI does the same. The
   desktop app is checked with `-p starprint-gui`.
 - `rust-toolchain.toml` pins the compiler, so those checks give the same
   answer here as on CI. Bumping it can turn up new lints; do it on its
@@ -234,8 +262,17 @@ preview drawn from anything but the bitmap that prints, a QR symbol
 sent as `ESC GS y` instead of a bitmap, and a job that selects
 `PrintMode::DoubleResolution` without switching back at the end.
 
+### The fax protocol
+
+`Difficulty::PROTOCOL`, the transcript labels and the record, fax and
+request fields in `crates/starprint-fax`, and the fields of the contents
+`faxing` seals, are what every server and relay must agree on. Changing one
+breaks every line mined or fax sent before it, so it is a finding
+unless the PR bumps the protocol version and says what happens to
+existing lines.
+
 ### The API skill and reference
 
-An endpoint, job field, profile field or schedule field added to
+An endpoint, job field, profile field, schedule field or fax field added to
 `apps/starprint-api` without the matching change in both
 `apps/starprint-api/API.md` and `skills/starprint-print/` is a finding.

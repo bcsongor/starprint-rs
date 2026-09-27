@@ -253,9 +253,44 @@ export interface Server {
   token: string;
 }
 
+/** A relay as the server knows it, by the name it gave. */
+export interface FaxRelay {
+  name: string;
+  url: string;
+  /** Null until the server has polled it. */
+  online: boolean | null;
+  /** Why the last poll failed. */
+  problem?: string;
+}
+
+/** The server's fax line, as `GET /v1/fax` gives it. */
+export interface FaxLine {
+  /** Like `*7441 720938`; null until the line is activated. */
+  number: string | null;
+  /** Who answers, shown to whoever faxes this line. */
+  name: string;
+  /** The profile faxes print on; null for the first one. */
+  printer: string | null;
+  /** While a number is being mined, which takes minutes. */
+  activation: { tried: number; expected: number } | null;
+  relays: FaxRelay[];
+}
+
+export interface Sent {
+  to: string;
+  /** The recipient's name, as its line gives it. */
+  name: string;
+  relay: string;
+}
+
 /** A job, as JSON or, with an image beside it, as a form. */
 function jobBody(job: Job, image: File | null): RequestInit {
-  const request = JSON.stringify({ job });
+  return requestBody({ job }, image);
+}
+
+/** A request that carries a job, with its picture as a form part. */
+function requestBody(value: object, image: File | null): RequestInit {
+  const request = JSON.stringify(value);
   if (!image) {
     return {
       body: request,
@@ -310,6 +345,20 @@ export function createClient({ url, token }: Server) {
     replaceSchedule: (id: string, spec: ScheduleSpec) =>
       json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
+    fax: () => json<FaxLine>("GET", "/v1/fax"),
+    putFax: (settings: { name: string; printer: string | null }) =>
+      json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
+    activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
+    addRelay: (url: string) =>
+      json<{ name: string; url: string }>(
+        "POST",
+        "/v1/fax/relays",
+        jsonBody({ url }),
+      ),
+    removeRelay: (name: string) =>
+      send("DELETE", `/v1/fax/relays/${encodeURIComponent(name)}`),
+    sendFax: (to: string, job: Job, image: File | null) =>
+      json<Sent>("POST", "/v1/fax/send", requestBody({ to, job }, image)),
   };
 }
 

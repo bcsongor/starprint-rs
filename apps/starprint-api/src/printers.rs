@@ -9,11 +9,13 @@ use std::time::Duration;
 use axum::body::Bytes;
 use axum::http::StatusCode;
 use starprint::transport::{TcpTransport, Transport};
+use starprint_fax::Difficulty;
 use starprint_workflows::Printer;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::config::Profile;
 use crate::data::Data;
+use crate::faxing::Faxing;
 use crate::problem::Problem;
 
 /// Shared by all printer connections in one process.
@@ -113,16 +115,21 @@ pub async fn send(printer: &Printer, payload: Bytes, queue: &PrintQueue) -> Resu
     Ok(sent)
 }
 
-/// The profiles and the queue their jobs go through: what the routes
-/// and the scheduler share.
+/// The profiles, the queue their jobs go through and the fax line: what
+/// the routes, the scheduler and the fax poll share.
 pub struct Printers {
     pub data: Arc<Data>,
     pub queue: Arc<PrintQueue>,
+    pub fax: Faxing,
 }
 
 impl Printers {
     pub fn new(data: Arc<Data>, queue: Arc<PrintQueue>) -> Self {
-        Self { data, queue }
+        Self {
+            data,
+            queue,
+            fax: Faxing::new(Difficulty::PROTOCOL),
+        }
     }
 
     /// The profile as it stands now, or the `404`.

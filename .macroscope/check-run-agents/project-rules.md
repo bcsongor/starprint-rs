@@ -67,6 +67,14 @@ The GUI's density +4 picture restriction above is intentional. Applying
 it to a saved job is not a new printing rule. The shared workflow's +3
 fallback for double-resolution sections does not replace that GUI policy.
 
+## The fax protocol
+
+`Difficulty::PROTOCOL`, the transcript labels and the line record, fax
+and request fields in `crates/starprint-fax`, and the fields of the
+contents `apps/starprint-api/src/faxing.rs` seals, are what every server
+and relay must agree on. Changing one without a protocol version bump, and a word on
+what happens to existing lines, is a finding.
+
 ## The API skill
 
 `skills/starprint-print/` is the only description of the API. An
