@@ -31,9 +31,12 @@ use the API from an agent, see the
 | `GET` | [`/v1/fax`](#get-v1fax) | The fax line, its settings and its relays |
 | `PUT` | [`/v1/fax`](#put-v1fax) | Set who answers and where faxes print |
 | `POST` | [`/v1/fax/line`](#post-v1faxline) | Activate the line |
+| `PUT` | [`/v1/fax/line`](#put-v1faxline) | Get the line a new number |
 | `POST` | [`/v1/fax/relays`](#post-v1faxrelays) | Add a relay by its address |
 | `DELETE` | [`/v1/fax/relays/{name}`](#delete-v1faxrelaysname) | Remove a relay |
-| `POST` | [`/v1/fax/send`](#post-v1faxsend) | Fax a job to a number |
+| `PUT` | [`/v1/fax/contacts/{number}`](#put-v1faxcontactsnumber) | File a number in the fax book under a name |
+| `DELETE` | [`/v1/fax/contacts/{number}`](#delete-v1faxcontactsnumber) | Take a number out of the fax book |
+| `POST` | [`/v1/fax/send`](#post-v1faxsend) | Fax a job to a number or a name in the fax book |
 
 ## Authentication
 
@@ -322,28 +325,28 @@ and prints the faxes sent to its own. Faxes travel through a
 [relay](../starprint-relay/README.md), a public server both sides
 reach, since printers sit behind home routers.
 
-**Numbers.** A line's number is ten digits written `*7441 720938`, and
-is mined from the line's identity key: Argon2id at 64 MiB, over the key
-and a counter, until the hash starts with 16 zero bits. The next 33 bits
-are the number. That takes a few minutes, once. Checking a number
-against a key takes one hash, so no relay has to be trusted to say whose
-number is whose, and forging one costs around 2^49 hashes. A number
-takes any spacing, dashes or none, and the star is optional.
+**Numbers.** A line's number is the address of its identity key,
+written `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`: the first 16 bytes of
+SHA-256 over the key, in [Bech32m](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki)
+under the prefix `star`, the way Bitcoin and Cosmos write addresses.
+Its last six characters are a checksum, so a mistyped character is
+caught. Checking a number against a key takes one hash, so no relay has
+to be trusted to say whose number is whose, and another key with the
+same number takes about 2^128 tries to find. A number takes either
+case, and the star is optional.
 
 **Encryption.** Every key is hybrid, classical and post-quantum. The
 identity signs with Ed25519 and ML-DSA-65, and faxes are sealed to an
 X-Wing key (X25519 and ML-KEM-768) that it signs, under
 ChaCha20-Poly1305. A relay sees two numbers, a time and a size.
 
-**Pinning.** The first fax either way pins a number to its identity. A
-different identity for that number later is refused.
-
 **Receiving.** The server polls each relay every ten seconds and prints
 what is waiting on the fax printer with that printer's own settings,
 then tells the relay it printed. Each fax prints under a header: a bar
 with `FAX` and when it was sent, on this server's clock, inverse on
 thermal and red on impact, then the sender's number in bold and their
-name. The name is whatever the sender set; the number is checked. A fax that cannot print yet, because
+name: the name the sender is filed under in the fax book, or else
+whatever the sender set. The number is checked. A fax that cannot print yet, because
 the printer is unreachable or there is none, waits at the relay and is
 tried again. Every fax prints: there is no approving strangers yet.
 
@@ -351,21 +354,21 @@ tried again. Every fax prints: there is no approving strangers yet.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `number` | string or `null` | Like `*7441 720938`. `null` until the line is activated |
+| `number` | string or `null` | Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. `null` until the line is activated |
 | `name` | string | Who answers, shown to whoever faxes the line. Up to 64 characters; `""` sends the number alone |
 | `printer` | string or `null` | The profile faxes print on. `null` is the first profile |
-| `activation` | object or `null` | While a number is being mined: `tried`, the hashes so far, and `expected`, the average it takes. It can take more |
-| `relays` | array | `name`, `url`, `online` (`null` until polled) and, when the last poll failed, `problem` |
+| `relays` | array | `name`, `url`, `online` (`null` until polled) and, when the last poll failed, `problem`. A relay counts as online as soon as it is added, since adding it asks it for its name |
+| `contacts` | array | The fax book: `name` and `number`, in order of name |
 
 ### `GET /v1/fax`
 
 ```json
 {
-  "number": "*7441 720938",
+  "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s",
   "name": "Csongor, TSP700",
   "printer": "tsp800ii",
-  "activation": null,
-  "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }]
+  "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }],
+  "contacts": [{ "name": "Anna", "number": "*star15089lwj8gn70m8gepwymguzl5qkangla" }]
 }
 ```
 
@@ -382,11 +385,15 @@ a printer that does not exist.
 
 ### `POST /v1/fax/line`
 
-Starts mining the line's number and answers `202` with the
-[line](#fax-line) at once. `GET /v1/fax` shows the progress under
-`activation`, and `number` once it is done. Mining carries on if the
-server restarts in the same process, as the desktop app's does, but not
-if the process stops. `409` if the line is already active.
+Gives the line a new identity and answers `200` with the
+[line](#fax-line), `number` included. `409` if the line is already
+active.
+
+### `PUT /v1/fax/line`
+
+As `POST`, but a line that is already active gets a new number too,
+under a new identity, and nobody who has the old one reaches this line
+after. `200` with the [line](#fax-line).
 
 ### `POST /v1/fax/relays`
 
@@ -400,26 +407,47 @@ there.
 
 `204`, or `404` if there is no relay of that name.
 
+### `PUT /v1/fax/contacts/{number}`
+
+Files the number, written without its star, under a name in the fax
+book, replacing the name it had. Faxes can be sent to the name, and a
+fax from the number prints under it.
+
+```json
+{ "name": "Anna" }
+```
+
+`200` with `{ "name", "number" }`. `400` if the number's checksum does
+not hold, or the name is empty, longer than 64 characters or itself a
+number. `409` if another number already has the name, in any case.
+
+### `DELETE /v1/fax/contacts/{number}`
+
+`204`, or `404` if the number is not in the fax book.
+
 ### `POST /v1/fax/send`
 
-Body: `to`, a number, and `job`, a [job](#job-kinds) as `/jobs` takes
+Body: `to`, a number or a name in the fax book, in any case, and `job`, a [job](#job-kinds) as `/jobs` takes
 it. As JSON, or as `multipart/form-data` with that JSON in the `job`
 part and the picture in `image`, as for a job. There are no `cut`,
 `density` or `speed`: the recipient prints with its own profile.
 
 ```json
-{ "to": "*7441 720938", "job": { "kind": "text", "text": "Lunch at one?" } }
+{ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "job": { "kind": "text", "text": "Lunch at one?" } }
 ```
 
 The server builds the job on its own fax printer first, so a job that
 cannot print is refused here. It then looks the number up on each relay
 in turn and leaves the fax at the first that has it.
 
-`200` with `{ "to", "name", "relay" }`: the number, the name its line
-gives and the relay that took the fax. The fax prints when the
-recipient next polls. `409` before the line is activated or a relay is
-added, `404` if no relay has the number, `502` if a relay refused or
-did not answer, or the number's identity is not the one pinned.
+`200` with `{ "to", "name", "contact", "relay" }`: the number, the name
+it is filed under in the fax book or else the name its line gives,
+whether it is in the fax book, and the relay that took the fax. The fax
+prints when the recipient next polls. `400` if `to` starts like a
+number but its checksum does not hold, `409` before the line is
+activated or a relay is added, `404` if `to` is neither a number nor a
+name in the fax book or no relay has the number, `502` if a relay refused or
+did not answer, or answered with a key that is not the number's.
 
 ## Errors
 
@@ -449,7 +477,7 @@ saying what went wrong.
 | `printers.json` | The profiles, as an object keyed by name, each in the shape [`PUT`](#put-v1printersname) takes |
 | `schedules.json` | The schedules, as an object keyed by id, each in the shape [`POST`](#post-v1schedules) takes |
 | `token` | The token |
-| `fax.json` | The fax line's secret seed, number and settings, its relays and the identities pinned to numbers |
+| `fax.json` | The fax line's secret seed, number and settings, its relays and the fax book |
 | `lock` | Held while a server has the directory open. A second server on the same directory fails to start |
 
 Each file is read once at startup and rewritten whole whenever the API

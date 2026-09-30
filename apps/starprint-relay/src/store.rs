@@ -1,8 +1,9 @@
-//! The relay's SQLite file: every line record it holds, and every fax it
-//! has taken. Nothing is deleted. A fax its line has confirmed is marked
-//! delivered and no longer handed out, and one left waiting past the
-//! hold is no longer handed out either. Numbers are kept as they are
-//! written, `*7441 720938`, so the file reads well in any SQLite browser.
+//! The relay's SQLite file: every line record it holds, and the faxes
+//! waiting for their lines. A fax is deleted once its line confirms it
+//! printed, or once it has waited past the hold, so the file holds only
+//! what is still on its way. Numbers are kept as they are
+//! written, `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`, so the file reads well in any
+//! SQLite browser.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -21,10 +22,10 @@ const SCHEMA: &str = "
         sender TEXT NOT NULL,
         size INTEGER NOT NULL,
         arrived INTEGER NOT NULL,
-        delivered INTEGER,
         fax TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS waiting ON faxes (recipient, arrived) WHERE delivered IS NULL;
+    CREATE INDEX IF NOT EXISTS waiting ON faxes (recipient, arrived);
+    CREATE INDEX IF NOT EXISTS expiring ON faxes (arrived);
 ";
 
 pub struct Store {
@@ -66,8 +67,8 @@ impl Store {
     }
 
     /// Takes `held` unless `full` says the line already has too much
-    /// waiting, counting only faxes that arrived after `since`. In one
-    /// turn of the lock, so two faxes at once cannot both squeeze in.
+    /// waiting, once faxes that arrived before `since` are deleted. In
+    /// one turn of the lock, so two faxes at once cannot both squeeze in.
     pub fn hold(
         &self,
         held: &Held,
@@ -77,7 +78,8 @@ impl Store {
         full: impl FnOnce(Waiting) -> bool,
     ) -> rusqlite::Result<bool> {
         let db = self.db.lock().unwrap();
-        let waiting = waiting(&db, held.fax.to, since)?;
+        expire(&db, since)?;
+        let waiting = waiting(&db, held.fax.to)?;
         if full(waiting) {
             return Ok(false);
         }
@@ -102,7 +104,7 @@ impl Store {
         let db = self.db.lock().unwrap();
         let mut query = db.prepare(
             "SELECT id, fax FROM faxes
-             WHERE recipient = ?1 AND delivered IS NULL AND arrived > ?2
+             WHERE recipient = ?1 AND arrived > ?2
              ORDER BY arrived, rowid",
         )?;
         query
@@ -115,23 +117,20 @@ impl Store {
             .collect()
     }
 
-    /// Marks those of `ids` still waiting for `number` delivered at
-    /// `now`, and answers with each one's id and sender.
+    /// Deletes those of `ids` waiting for `number`, since they printed,
+    /// and answers with each one's id and sender.
     pub fn deliver(
         &self,
         number: Number,
         ids: &[String],
-        now: u64,
     ) -> rusqlite::Result<Vec<(String, String)>> {
         let db = self.db.lock().unwrap();
         let mut delivered = Vec::new();
         for id in ids {
             let sender: Option<String> = db
                 .query_row(
-                    "UPDATE faxes SET delivered = ?3
-                     WHERE id = ?1 AND recipient = ?2 AND delivered IS NULL
-                     RETURNING sender",
-                    params![id, number.to_string(), now],
+                    "DELETE FROM faxes WHERE id = ?1 AND recipient = ?2 RETURNING sender",
+                    params![id, number.to_string()],
                     |row| row.get(0),
                 )
                 .optional()?;
@@ -142,21 +141,25 @@ impl Store {
         Ok(delivered)
     }
 
-    /// Every line's waiting faxes together, for the log at startup.
-    pub fn all_waiting(&self, since: u64) -> rusqlite::Result<usize> {
-        self.db.lock().unwrap().query_row(
-            "SELECT count(*) FROM faxes WHERE delivered IS NULL AND arrived > ?1",
-            [since],
-            |row| row.get(0),
-        )
+    /// Deletes the faxes that arrived before `since`, then counts every
+    /// line's waiting faxes together, for the log at startup.
+    pub fn expire_and_count(&self, since: u64) -> rusqlite::Result<usize> {
+        let db = self.db.lock().unwrap();
+        expire(&db, since)?;
+        db.query_row("SELECT count(*) FROM faxes", [], |row| row.get(0))
     }
 }
 
-fn waiting(db: &Connection, number: Number, since: u64) -> rusqlite::Result<Waiting> {
+/// Deletes the faxes that arrived before `since`: nobody polled for
+/// them within the hold.
+fn expire(db: &Connection, since: u64) -> rusqlite::Result<usize> {
+    db.execute("DELETE FROM faxes WHERE arrived <= ?1", [since])
+}
+
+fn waiting(db: &Connection, number: Number) -> rusqlite::Result<Waiting> {
     db.query_row(
-        "SELECT count(*), coalesce(sum(size), 0) FROM faxes
-         WHERE recipient = ?1 AND delivered IS NULL AND arrived > ?2",
-        params![number.to_string(), since],
+        "SELECT count(*), coalesce(sum(size), 0) FROM faxes WHERE recipient = ?1",
+        params![number.to_string()],
         |row| {
             Ok(Waiting {
                 faxes: row.get(0)?,

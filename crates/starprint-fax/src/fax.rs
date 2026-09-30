@@ -143,14 +143,13 @@ fn associated(from: Number, to: Number, sent: u64) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::line::test_line;
-    use crate::number::Difficulty;
 
     #[test]
     fn a_fax_opens_for_its_recipient_alone() {
         let (anna, anna_record) = test_line("Anna");
         let (ben, ben_record) = test_line("Ben");
-        let anna_line = anna_record.check(Difficulty::TEST, None).unwrap();
-        let ben_line = ben_record.check(Difficulty::TEST, None).unwrap();
+        let anna_line = anna_record.check().unwrap();
+        let ben_line = ben_record.check().unwrap();
 
         let fax = Fax::seal(&anna, anna_line.number, &ben_line, b"Hello", 7);
         assert!(!fax.sealed.windows(5).any(|w| w == b"Hello"), "sealed");
@@ -175,8 +174,8 @@ mod tests {
     fn a_relay_cannot_alter_a_fax() {
         let (anna, anna_record) = test_line("Anna");
         let (ben, ben_record) = test_line("Ben");
-        let anna_line = anna_record.check(Difficulty::TEST, None).unwrap();
-        let ben_line = ben_record.check(Difficulty::TEST, None).unwrap();
+        let anna_line = anna_record.check().unwrap();
+        let ben_line = ben_record.check().unwrap();
         let fax = Fax::seal(&anna, anna_line.number, &ben_line, b"Hello", 7);
 
         let mut later = fax.clone();

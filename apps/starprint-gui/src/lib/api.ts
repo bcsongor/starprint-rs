@@ -263,23 +263,31 @@ export interface FaxRelay {
   problem?: string;
 }
 
+/** A number in the fax book, under the name given here. */
+export interface FaxContact {
+  name: string;
+  number: string;
+}
+
 /** The server's fax line, as `GET /v1/fax` gives it. */
 export interface FaxLine {
-  /** Like `*7441 720938`; null until the line is activated. */
+  /** Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`; null until the line is activated. */
   number: string | null;
   /** Who answers, shown to whoever faxes this line. */
   name: string;
   /** The profile faxes print on; null for the first one. */
   printer: string | null;
-  /** While a number is being mined, which takes minutes. */
-  activation: { tried: number; expected: number } | null;
   relays: FaxRelay[];
+  /** The fax book, by name. */
+  contacts: FaxContact[];
 }
 
 export interface Sent {
   to: string;
-  /** The recipient's name, as its line gives it. */
+  /** The recipient's name in the fax book, or as its line gives it. */
   name: string;
+  /** Whether `to` is in the fax book. */
+  contact: boolean;
   relay: string;
 }
 
@@ -324,6 +332,9 @@ export function createClient({ url, token }: Server) {
   const json = <T>(method: string, path: string, init?: RequestInit) =>
     send(method, path, init).then((response) => response.json() as Promise<T>);
   const printer = (name: string) => `/v1/printers/${encodeURIComponent(name)}`;
+  /** A number in a path goes without its star. */
+  const contact = (number: string) =>
+    `/v1/fax/contacts/${encodeURIComponent(number.trim().replace(/^\*/, ""))}`;
 
   return {
     printers: () =>
@@ -349,6 +360,7 @@ export function createClient({ url, token }: Server) {
     putFax: (settings: { name: string; printer: string | null }) =>
       json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
     activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
+    replaceFaxLine: () => json<FaxLine>("PUT", "/v1/fax/line"),
     addRelay: (url: string) =>
       json<{ name: string; url: string }>(
         "POST",
@@ -357,6 +369,9 @@ export function createClient({ url, token }: Server) {
       ),
     removeRelay: (name: string) =>
       send("DELETE", `/v1/fax/relays/${encodeURIComponent(name)}`),
+    putContact: (number: string, name: string) =>
+      json<FaxContact>("PUT", contact(number), jsonBody({ name })),
+    deleteContact: (number: string) => send("DELETE", contact(number)),
     sendFax: (to: string, job: Job, image: File | null) =>
       json<Sent>("POST", "/v1/fax/send", requestBody({ to, job }, image)),
   };

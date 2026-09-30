@@ -223,22 +223,25 @@ exists before changing or deleting anything.
 ## Faxing
 
 Any job can be faxed to someone else's printer by their number, which
-looks like `*7441 720938`. The fax is sealed end to end and prints on
-their printer with their own settings.
+looks like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`, or by the name
+they are filed under in the fax book. The fax is sealed end to end and
+prints on their printer with their own settings.
 
 ```bash
 curl -s -X POST http://127.0.0.1:9110/v1/fax/send \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
-  -d '{"to":"*7441 720938","job":{"kind":"text","text":"Lunch at one?"}}'
+  -d '{"to":"*star1en2su3z68yscvky0n3j3l2qwny4dkq7s","job":{"kind":"text","text":"Lunch at one?"}}'
 ```
 
 ```json
-{ "to": "*7441 720938", "name": "Csongor, TSP700", "relay": "LONRELAY01" }
+{ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "name": "Csongor, TSP700", "contact": false, "relay": "LONRELAY01" }
 ```
 
-`name` is who the line says it is; read it back to the user, since it
-is how they know the number was right. A picture goes as a form, as for
+When the user names someone, send `"to": "Anna"`; the server looks the
+name up in the fax book. `name` is who the number is filed as there,
+or who its line says it is when `contact` is `false`; read it back to
+the user, since it is how they know the number was right. A picture goes as a form, as for
 printing: the JSON above in the `job` part and the file in `image`.
 There is no `cut`, `density` or `speed`. The fax prints when the other
 side next checks its relay, usually within ten seconds, but only while
@@ -247,13 +250,19 @@ their server is running; until then it waits.
 Faxing needs the line set up. `GET /v1/fax` shows it:
 
 ```json
-{ "number": "*2053 393035", "name": "Anna", "printer": null, "activation": null, "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }] }
+{ "number": "*star15089lwj8gn70m8gepwymguzl5qkangla", "name": "Anna", "printer": null, "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }], "contacts": [{ "name": "Csongor", "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s" }] }
 ```
 
+`contacts` is the fax book. `PUT /v1/fax/contacts/{number}`, with the
+number written without its star, files it under `{"name":"..."}`, and
+`DELETE` takes it out. Offer to save a number the user faxed for the
+first time, and ask what to call it.
+
 A `409` on sending means `number` is still `null` or there are no
-`relays`. `POST /v1/fax/line` activates the line, which takes a few
-minutes once while the server works out its number; `activation` shows
-the progress. `POST /v1/fax/relays` with `{"url":"https://..."}` adds a
+`relays`. `POST /v1/fax/line` activates the line and answers with its
+number. `PUT /v1/fax/line` gets an active line a new number, and
+anyone with the old one can no longer reach it, so only do that when
+the user asks. `POST /v1/fax/relays` with `{"url":"https://..."}` adds a
 relay, which answers with its name. `PUT /v1/fax` with `{"name":
 "...","printer":null}` sets who answers and which profile faxes print
 on (`null` is the first). Ask before doing any of these: the user
@@ -261,10 +270,13 @@ chooses their relay and their name.
 
 A fax is printing on someone else's paper. Confirm the number and what
 is being sent before sending, send it once, and never fax anyone the
-user did not name. A `404` means no relay the server knows has that
-number; check it with the user rather than guessing digits. A `502`
-saying the number's key has changed means it may not be who it was
-before: tell the user and do not work around it.
+user did not name. A `404` means no one in the fax book has that name,
+or no relay the server knows has that number; check it with the user
+rather than guessing any part of it. A
+`400` means the number's checksum does not hold, so a character is
+mistyped. A `502` saying the record's key is not the number's means a
+relay is answering for someone else: tell the user and do not work
+around it.
 
 Every fax that arrives prints on this server's fax printer, under a
 header with the sender's name, number and when it was sent. There is no

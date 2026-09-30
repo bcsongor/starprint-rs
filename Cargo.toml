@@ -31,9 +31,3 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.image-webp]
 opt-level = 3
-# Mining a fax number is tens of thousands of Argon2 hashes, which would
-# take hours unoptimised.
-[profile.dev.package.argon2]
-opt-level = 3
-[profile.dev.package.blake2]
-opt-level = 3

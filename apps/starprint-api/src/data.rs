@@ -14,8 +14,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::RwLock;
 
 use crate::config::{self, Profile};
 use crate::faxing::FaxSettings;
@@ -38,10 +37,6 @@ pub struct Data {
     profiles: RwLock<Vec<Profile>>,
     schedules: RwLock<BTreeMap<String, ScheduleSpec>>,
     fax: RwLock<FaxSettings>,
-    /// Tries so far while a line is being mined. Kept here rather than
-    /// with a server, since the desktop app restarts its server on the
-    /// same directory and mining takes minutes.
-    pub(crate) activating: Mutex<Option<Arc<AtomicU64>>>,
 }
 
 impl Data {
@@ -86,7 +81,6 @@ impl Data {
             profiles: RwLock::new(profiles),
             schedules: RwLock::new(schedules),
             fax: RwLock::new(fax),
-            activating: Mutex::default(),
         })
     }
 
@@ -100,7 +94,6 @@ impl Data {
             profiles: RwLock::new(profiles),
             schedules: RwLock::default(),
             fax: RwLock::default(),
-            activating: Mutex::default(),
         }
     }
 

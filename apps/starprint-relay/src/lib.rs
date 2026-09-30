@@ -5,19 +5,24 @@
 //! themselves and faxes are sealed. A relay has a name, such as
 //! `LONRELAY01`, which a server learns when a relay is added to it.
 //!
-//! Lines and faxes are kept in one SQLite file (see `store`), so a
-//! restart loses nothing, and every fax taken and delivered is logged:
-//! who to whom and how big, never what it says.
+//! Lines and waiting faxes are kept in one SQLite file (see `store`), so
+//! a restart loses nothing. A fax is deleted once its line confirms it,
+//! or after the hold, and every fax taken and delivered is logged: who
+//! to whom and how big, never what it says. Each client address
+//! may leave only so many faxes and new lines (see `limit`).
 //!
 //! What a relay and a server say to each other is `starprint-fax`'s;
 //! this is only the keeping.
 
+mod limit;
 mod store;
 
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
-use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -25,9 +30,10 @@ use axum::{Json, Router};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use starprint_fax::{
-    Action, Collect, Difficulty, Fax, Held, HeldFaxes, Line, LineRecord, Number, RelayInfo, now,
+    Action, Collect, Fax, Held, HeldFaxes, Line, LineRecord, Number, RelayInfo, now,
 };
 
+use crate::limit::Limit;
 use crate::store::Store;
 
 /// Records and requests are text; anything larger is a client gone wrong.
@@ -37,21 +43,84 @@ const FAX_LIMIT: usize = 32 << 20;
 /// What a relay holds for one line before it turns faxes away.
 const HELD_FAXES: usize = 100;
 const HELD_BYTES: usize = 64 << 20;
-/// A fax nobody polls for is no longer handed out after thirty days.
+/// Faxes a client address may leave: a burst, then so many an hour.
+const FAXES: (u32, u32) = (10, 30);
+/// Lines a client address may publish: each is a new identity to fax
+/// from, so they are held to fewer.
+const NEW_LINES: (u32, u32) = (5, 10);
+/// A fax nobody polls for is deleted after thirty days.
 const HOLD_SECONDS: u64 = 30 * 24 * 60 * 60;
 /// How far a poll's clock may be from the relay's.
 const CLOCK_SKEW: u64 = 5 * 60;
-/// Number checks at once. Each takes 64 MiB, so a burst of new records
-/// queues here rather than running the relay out of memory.
-const CHECKS: usize = 4;
-
 struct Relay {
     name: String,
-    difficulty: Difficulty,
+    clients: Clients,
     /// Every line in the store, with its keys decoded.
     lines: RwLock<HashMap<Number, (LineRecord, Line)>>,
-    checks: tokio::sync::Semaphore,
     store: Store,
+    faxes: Limit,
+    new_lines: Limit,
+}
+
+/// Where a request's client address comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clients {
+    /// The connection's own address.
+    Direct,
+    /// The last address in `X-Forwarded-For`, the one the TLS proxy in
+    /// front of the relay added. Trusting it without a proxy would let
+    /// anyone claim any address.
+    BehindProxy,
+}
+
+impl Relay {
+    /// Who sent `request`, if it can be told: a router called without
+    /// connection details, as in tests, limits no one.
+    fn client(&self, request: &Request) -> Option<IpAddr> {
+        let forwarded = || {
+            let header = request
+                .headers()
+                .get_all("x-forwarded-for")
+                .iter()
+                .next_back()?;
+            header
+                .to_str()
+                .ok()?
+                .rsplit(',')
+                .next()?
+                .trim()
+                .parse()
+                .ok()
+        };
+        let direct = || {
+            request
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|info| info.0.ip())
+        };
+        match self.clients {
+            Clients::BehindProxy => forwarded().or_else(direct),
+            Clients::Direct => direct(),
+        }
+    }
+}
+
+/// A token from `limit` for `client`, or the `429` saying when to try
+/// again.
+fn take(limit: &Limit, client: Option<IpAddr>, what: &str) -> Result<(), Problem> {
+    let Some(client) = client else {
+        return Ok(());
+    };
+    limit
+        .take(client, Instant::now())
+        .map_err(|wait: Duration| {
+            let seconds = wait.as_secs() + 1;
+            Problem::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                format!("Too many {what} from this address; try again in {seconds} seconds."),
+            )
+            .retry_after(seconds)
+        })
 }
 
 impl Relay {
@@ -65,28 +134,23 @@ impl Relay {
     }
 }
 
-/// The relay's routes, answering to `name`, checking numbers at
-/// `difficulty`, which is [`Difficulty::PROTOCOL`] outside tests, and
-/// keeping everything in the SQLite file at `db`.
-pub fn router(
-    name: String,
-    difficulty: Difficulty,
-    db: &std::path::Path,
-) -> Result<Router, String> {
+/// The relay's routes, answering to `name`, telling clients apart as
+/// `clients` says, and keeping everything in the SQLite file at `db`.
+/// Serve it with connection details, so it knows its clients.
+pub fn router(name: String, clients: Clients, db: &std::path::Path) -> Result<Router, String> {
     let store = Store::open(db)?;
     let records = store
         .lines()
         .map_err(|e| format!("{} could not be read: {e}", db.display()))?;
-    // Checked when they arrived, so each skips the hash now.
     let lines: HashMap<_, _> = records
         .into_iter()
         .filter_map(|record| {
-            let line = record.check(difficulty, Some(&record.identity)).ok()?;
+            let line = record.check().ok()?;
             Some((record.number, (record, line)))
         })
         .collect();
     let waiting = store
-        .all_waiting(now().saturating_sub(HOLD_SECONDS))
+        .expire_and_count(now().saturating_sub(HOLD_SECONDS))
         .map_err(|e| format!("{} could not be read: {e}", db.display()))?;
     log(format!(
         "{} lines and {waiting} faxes waiting in {}",
@@ -95,10 +159,11 @@ pub fn router(
     ));
     let relay = Arc::new(Relay {
         name,
-        difficulty,
+        clients,
         lines: RwLock::new(lines),
-        checks: tokio::sync::Semaphore::new(CHECKS),
         store,
+        faxes: Limit::new(FAXES.0, FAXES.1),
+        new_lines: Limit::new(NEW_LINES.0, NEW_LINES.1),
     });
     Ok(Router::new()
         .route("/v1/relay", get(info))
@@ -147,14 +212,15 @@ async fn get_line(
         .ok_or_else(|| Problem::not_found(format!("No line {number} on this relay.")))
 }
 
-/// Keeps a record that checks, unless the number belongs to another
-/// identity here or a newer record is already held.
+/// Keeps a record that checks, unless a newer one is already held. A
+/// number is its identity's address, so no other identity can claim it.
 async fn put_line(
     State(relay): State<Arc<Relay>>,
     Path(text): Path<String>,
     request: Request,
 ) -> Result<StatusCode, Problem> {
     let number = number(&text)?;
+    let client = relay.client(&request);
     let record: LineRecord = json(request, JSON_LIMIT).await?;
     if record.number != number {
         return Err(Problem::bad_request(format!(
@@ -162,35 +228,11 @@ async fn put_line(
             record.number
         )));
     }
-    // A number already held here stays with its identity, whose number
-    // was checked when it arrived, so a newer record skips the hash.
-    let held = relay
-        .lines
-        .read()
-        .unwrap()
-        .get(&number)
-        .map(|(held, _)| held.identity.clone());
-    if held.as_ref().is_some_and(|held| *held != record.identity) {
-        return Err(Problem::new(
-            StatusCode::CONFLICT,
-            format!("{number} belongs to another identity on this relay."),
-        ));
-    }
-    let difficulty = relay.difficulty;
-    let checked = record.clone();
-    let _turn = relay.checks.acquire().await.expect("never closed");
-    let line = tokio::task::spawn_blocking(move || checked.check(difficulty, held.as_deref()))
-        .await
-        .map_err(|e| Problem::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    let line = record
+        .check()
         .map_err(|e| Problem::bad_request(format!("The record does not check: {e}.")))?;
     let mut lines = relay.lines.write().unwrap();
     match lines.get(&number) {
-        Some((held, _)) if held.identity != record.identity => {
-            return Err(Problem::new(
-                StatusCode::CONFLICT,
-                format!("{number} belongs to another identity on this relay."),
-            ));
-        }
         Some((held, _)) if held.updated > record.updated => {
             return Err(Problem::new(
                 StatusCode::CONFLICT,
@@ -199,7 +241,10 @@ async fn put_line(
         }
         Some((held, _)) if *held == record => return Ok(StatusCode::NO_CONTENT),
         Some(_) => log(format!("line {number} updated")),
-        None => log(format!("line {number} published")),
+        None => {
+            take(&relay.new_lines, client, "new lines")?;
+            log(format!("line {number} published"));
+        }
     }
     stored(relay.store.put_line(&record))?;
     lines.insert(number, (record, line));
@@ -214,6 +259,8 @@ async fn hold_fax(
     request: Request,
 ) -> Result<(StatusCode, Json<Held>), Problem> {
     let number = number(&text)?;
+    // Before the body, so a flood costs the relay no more than a refusal.
+    take(&relay.faxes, relay.client(&request), "faxes")?;
     let fax: Fax = json(request, FAX_LIMIT).await?;
     if fax.to != number {
         return Err(Problem::bad_request(format!(
@@ -291,7 +338,7 @@ async fn confirm(
     let number = number(&text)?;
     let collect: Collect = json(request, JSON_LIMIT).await?;
     check(&collect, Action::Confirm, &relay.line(number)?)?;
-    for (id, sender) in stored(relay.store.deliver(number, &collect.ids, now()))? {
+    for (id, sender) in stored(relay.store.deliver(number, &collect.ids))? {
         log(format!(
             "fax {} from {sender} delivered to {number}",
             short(&id)
@@ -350,6 +397,9 @@ struct Problem {
     title: &'static str,
     status: u16,
     detail: String,
+    /// Seconds, for a `429`.
+    #[serde(skip)]
+    retry_after: Option<u64>,
 }
 
 impl Problem {
@@ -359,7 +409,13 @@ impl Problem {
             title: status.canonical_reason().unwrap_or("Error"),
             status: status.as_u16(),
             detail: detail.into(),
+            retry_after: None,
         }
+    }
+
+    fn retry_after(mut self, seconds: u64) -> Self {
+        self.retry_after = Some(seconds);
+        self
     }
 
     fn bad_request(detail: impl Into<String>) -> Self {
@@ -375,12 +431,18 @@ impl IntoResponse for Problem {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.status).expect("made from a StatusCode");
         let body = serde_json::to_vec(&self).expect("problem details serialise");
-        (
+        let mut response = (
             status,
             [(header::CONTENT_TYPE, "application/problem+json")],
             body,
         )
-            .into_response()
+            .into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, seconds.into());
+        }
+        response
     }
 }
 
@@ -391,7 +453,6 @@ mod tests {
     use axum::http::{Method, header};
     use serde_json::Value;
     use starprint_fax::Identity;
-    use std::sync::atomic::{AtomicBool, AtomicU64};
     use tower::ServiceExt as _;
 
     async fn call(
@@ -426,28 +487,21 @@ mod tests {
     fn test_router(name: &str) -> Router {
         router(
             name.to_owned(),
-            Difficulty::TEST,
+            Clients::BehindProxy,
             std::path::Path::new(":memory:"),
         )
         .unwrap()
     }
 
-    /// A new line mined at the test difficulty, with its record.
+    /// A new line with its record.
     fn test_line(name: &str) -> (Identity, LineRecord) {
         let identity = Identity::generate();
-        let (counter, number) = Difficulty::TEST
-            .mine(
-                &identity.key().to_bytes(),
-                &AtomicU64::new(0),
-                &AtomicBool::new(false),
-            )
-            .unwrap();
-        let record = identity.record(number, counter, name, 1);
+        let record = identity.record(name, 1);
         (identity, record)
     }
 
     fn path(number: Number, rest: &str) -> String {
-        format!("/v1/lines/{}{rest}", number.digits())
+        format!("/v1/lines/{}{rest}", number.slug())
     }
 
     fn json<T: Serialize>(value: &T) -> Option<Value> {
@@ -467,7 +521,7 @@ mod tests {
         let (anna, anna_record) = test_line("Anna");
         let (ben, ben_record) = test_line("Ben");
         let (a, b) = (anna_record.number, ben_record.number);
-        let ben_line = ben_record.check(Difficulty::TEST, None).unwrap();
+        let ben_line = ben_record.check().unwrap();
         let fax = Fax::seal(&anna, a, &ben_line, b"Hello Ben", now());
 
         let (status, _) = call(&router, Method::POST, &path(b, "/faxes"), json(&fax)).await;
@@ -531,13 +585,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_restart_loses_nothing_and_a_delivered_fax_is_kept() {
+    async fn a_restart_loses_nothing_and_a_delivered_fax_is_deleted() {
         let file = tempfile::NamedTempFile::new().unwrap();
-        let open = || router("LONRELAY01".to_owned(), Difficulty::TEST, file.path()).unwrap();
+        let open = || router("LONRELAY01".to_owned(), Clients::Direct, file.path()).unwrap();
         let (anna, anna_record) = test_line("Anna");
         let (ben, ben_record) = test_line("Ben");
         let (a, b) = (anna_record.number, ben_record.number);
-        let ben_line = ben_record.check(Difficulty::TEST, None).unwrap();
+        let ben_line = ben_record.check().unwrap();
 
         let before = open();
         call(&before, Method::PUT, &path(a, ""), json(&anna_record)).await;
@@ -561,17 +615,47 @@ mod tests {
         let confirm = json(&Collect::confirm(&ben, b, ids));
         call(&after, Method::POST, &path(b, "/confirm"), confirm).await;
         let (_, body) = call(&after, Method::POST, &path(b, "/poll"), poll()).await;
-        assert_eq!(body["faxes"], serde_json::json!([]), "no longer handed out");
+        assert_eq!(body["faxes"], serde_json::json!([]), "confirmed");
 
-        let delivered: Option<u64> = rusqlite::Connection::open(file.path())
+        let left: u64 = rusqlite::Connection::open(file.path())
             .unwrap()
-            .query_row("SELECT delivered FROM faxes", [], |row| row.get(0))
+            .query_row("SELECT count(*) FROM faxes", [], |row| row.get(0))
             .unwrap();
-        assert!(delivered.is_some(), "kept and marked");
+        assert_eq!(left, 0, "deleted, not just hidden");
     }
 
     #[tokio::test]
-    async fn a_number_stays_with_its_identity() {
+    async fn an_address_publishes_only_so_many_new_lines() {
+        let router = test_router("LONRELAY01");
+        let publish = |from: &'static str| {
+            let router = router.clone();
+            async move {
+                let (_, record) = test_line("Anna");
+                let request = axum::http::Request::builder()
+                    .method(Method::PUT)
+                    .uri(path(record.number, ""))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-forwarded-for", format!("198.51.100.9, {from}"))
+                    .body(Body::from(serde_json::to_string(&record).unwrap()))
+                    .unwrap();
+                router.oneshot(request).await.unwrap()
+            }
+        };
+        for _ in 0..NEW_LINES.0 {
+            assert_eq!(publish("192.0.2.1").await.status(), StatusCode::NO_CONTENT);
+        }
+        let refused = publish("192.0.2.1").await;
+        assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(refused.headers().contains_key(header::RETRY_AFTER));
+        assert_eq!(
+            publish("192.0.2.2").await.status(),
+            StatusCode::NO_CONTENT,
+            "the last address is the proxy's word for the client"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_newer_record_replaces_an_older_one() {
         let router = test_router("LONRELAY01");
         let (anna, record) = test_line("Anna");
         call(
@@ -582,7 +666,7 @@ mod tests {
         )
         .await;
 
-        let renamed = anna.record(record.number, record.counter, "Anna B", 2);
+        let renamed = anna.record("Anna B", 2);
         let (status, _) = call(
             &router,
             Method::PUT,

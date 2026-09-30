@@ -17,7 +17,10 @@ use starprint_workflows::Preview;
 
 use crate::body;
 use crate::config::{Profile, ProfileSpec};
-use crate::faxing::{self, AddRelay, FaxView, RelayEntry, SendRequest, Sent, SettingsRequest};
+use crate::faxing::{
+    self, AddRelay, Contact, ContactRequest, FaxView, RelayEntry, SendRequest, Sent,
+    SettingsRequest,
+};
 use crate::job::JobRequest;
 use crate::printers::{self, Printers};
 use crate::problem::Problem;
@@ -52,9 +55,13 @@ pub fn router(printers: Arc<Printers>) -> Router {
         .route("/v1/printers/{name}/raw", post(create_raw_job))
         .route("/v1/schedules", get(list_schedules).post(create_schedule))
         .route("/v1/fax", get(get_fax).put(put_fax))
-        .route("/v1/fax/line", post(activate_line))
+        .route("/v1/fax/line", post(activate_line).put(replace_line))
         .route("/v1/fax/relays", post(add_relay))
         .route("/v1/fax/relays/{name}", axum::routing::delete(remove_relay))
+        .route(
+            "/v1/fax/contacts/{number}",
+            axum::routing::put(put_contact).delete(remove_contact),
+        )
         .route(
             "/v1/fax/send",
             post(send_fax).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
@@ -370,13 +377,16 @@ async fn put_fax(
     Ok(Json(faxing::view(&printers)))
 }
 
-/// Starts mining the line's number, which takes minutes; `GET /v1/fax`
-/// reports the progress.
-async fn activate_line(
-    State(printers): State<Arc<Printers>>,
-) -> Result<(StatusCode, Json<FaxView>), Problem> {
-    faxing::activate(&printers)?;
-    Ok((StatusCode::ACCEPTED, Json(faxing::view(&printers))))
+/// Gives the line its number.
+async fn activate_line(State(printers): State<Arc<Printers>>) -> Result<Json<FaxView>, Problem> {
+    faxing::activate(&printers, false)?;
+    Ok(Json(faxing::view(&printers)))
+}
+
+/// As activating, but a line already active gets a new number too.
+async fn replace_line(State(printers): State<Arc<Printers>>) -> Result<Json<FaxView>, Problem> {
+    faxing::activate(&printers, true)?;
+    Ok(Json(faxing::view(&printers)))
 }
 
 async fn add_relay(
@@ -396,6 +406,35 @@ async fn remove_relay(
 ) -> Result<StatusCode, Problem> {
     if !faxing::remove_relay(&printers, &name)? {
         return Err(Problem::not_found(format!("No relay named `{name}`.")));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A number from a path, with or without its star.
+fn fax_number(text: &str) -> Result<starprint_fax::Number, Problem> {
+    text.parse()
+        .map_err(|e: String| Problem::bad_request(format!("{e}.")))
+}
+
+async fn put_contact(
+    State(printers): State<Arc<Printers>>,
+    Path(number): Path<String>,
+    request: Request,
+) -> Result<Json<Contact>, Problem> {
+    let number = fax_number(&number)?;
+    let request: ContactRequest = body::json(request).await?;
+    Ok(Json(faxing::put_contact(&printers, number, request)?))
+}
+
+async fn remove_contact(
+    State(printers): State<Arc<Printers>>,
+    Path(number): Path<String>,
+) -> Result<StatusCode, Problem> {
+    let number = fax_number(&number)?;
+    if !faxing::remove_contact(&printers, number)? {
+        return Err(Problem::not_found(format!(
+            "{number} is not in the fax book."
+        )));
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -622,11 +661,29 @@ mod tests {
         .await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST);
 
-        let send = json!({ "to": "*7441 720938", "job": { "kind": "text", "text": "Hi" } });
+        let send = json!({ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "job": { "kind": "text", "text": "Hi" } });
         let reply = call(Arc::clone(&printers), post_json("/v1/fax/send", send)).await;
         assert_eq!(reply.status, StatusCode::CONFLICT);
-        let reply = call(printers, delete("/v1/fax/relays/LONRELAY01")).await;
+        let reply = call(Arc::clone(&printers), delete("/v1/fax/relays/LONRELAY01")).await;
         assert_eq!(reply.status, StatusCode::NOT_FOUND);
+
+        let anna = "/v1/fax/contacts/star15089lwj8gn70m8gepwymguzl5qkangla";
+        let reply = call(
+            Arc::clone(&printers),
+            put_json(anna, json!({ "name": "Anna" })),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(
+            reply.json["number"],
+            "*star15089lwj8gn70m8gepwymguzl5qkangla"
+        );
+        let reply = call(Arc::clone(&printers), get("/v1/fax")).await;
+        assert_eq!(reply.json["contacts"][0]["name"], "Anna");
+        let reply = call(Arc::clone(&printers), delete(anna)).await;
+        assert_eq!(reply.status, StatusCode::NO_CONTENT);
+        let reply = call(printers, delete("/v1/fax/contacts/star1typo")).await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -86,10 +86,11 @@ including running the server on its own.
 ## Fax
 
 Send any job to someone else's receipt printer by their number, like
-`*7441 720938`. Open the phone button in the header, activate your line
-(a few minutes, once) and add a relay by its address; it tells you its
-name, like `LONRELAY01`. Then press **Fax** beside **Print**, type a
-number and send. Faxes are sealed end to end with post-quantum keys, so
+`*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. Open the phone button in the header,
+activate your line and add a relay by its address; it tells you its
+name, like `LONRELAY01`. Then press **Fax** beside **Print**, paste a
+number or pick someone from your fax book, and send. Numbers you save in
+the fax book print under your name for them. Faxes are sealed end to end with post-quantum keys, so
 the relay cannot read them, and every fax sent to you prints on your
 fax printer while the app runs, headed with who sent it and when.
 

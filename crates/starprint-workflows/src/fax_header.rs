@@ -14,7 +14,7 @@ use crate::text::TextStyle;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaxHeader {
     pub name: String,
-    /// As written, like `*7441 720938`.
+    /// As written, like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`.
     pub number: String,
     /// On the recipient's clock.
     pub sent: NaiveDateTime,
@@ -26,8 +26,10 @@ pub struct Layout {
     /// `FAX` and the time, padded to the full width.
     pub bar: String,
     pub number: String,
-    /// Padded on the left to end at the right edge.
+    /// Padded on the left to end at the right edge: beside the number
+    /// when there is room, and on a line of its own under it when not.
     pub name: String,
+    pub name_below: bool,
 }
 
 impl FaxHeader {
@@ -50,12 +52,16 @@ impl FaxHeader {
             .chars()
             .map(|c| if c.is_control() { ' ' } else { c })
             .collect();
-        let width = columns.saturating_sub(self.number.chars().count());
-        let name: String = name.trim().chars().take(width.saturating_sub(2)).collect();
+        let name = name.trim();
+        let beside = columns.saturating_sub(self.number.chars().count());
+        let name_below = name.chars().count() + 2 > beside;
+        let width = if name_below { columns } else { beside };
+        let name: String = name.chars().take(width).collect();
         Layout {
             bar,
             number: self.number.clone(),
             name: format!("{name:>width$}"),
+            name_below,
         }
     }
 
@@ -66,17 +72,20 @@ impl FaxHeader {
         Builder<P>: TextStyle,
     {
         let layout = self.layout::<P>(paper);
-        builder
+        let builder = builder
             .bold(true)
             .set_accent(true)
             .text(&layout.bar)
             .set_accent(false)
             .raw(b"\n")
             .text(&layout.number)
-            .bold(false)
-            .text(&layout.name)
-            .raw(b"\n")
-            .feed(1)
+            .bold(false);
+        let builder = if layout.name_below {
+            builder.raw(b"\n")
+        } else {
+            builder
+        };
+        builder.text(&layout.name).raw(b"\n").feed(1)
     }
 }
 
@@ -89,7 +98,7 @@ mod tests {
     fn header(name: &str) -> FaxHeader {
         FaxHeader {
             name: name.to_owned(),
-            number: "*2053 393035".to_owned(),
+            number: "*star15089lwj8gn70m8gepwymguzl5qkangla".to_owned(),
             sent: NaiveDate::from_ymd_opt(2026, 9, 27)
                 .unwrap()
                 .and_hms_opt(14, 32, 0)
@@ -102,24 +111,42 @@ mod tests {
         for (layout, columns) in [
             (header("Anna").layout::<StarLine>(Paper::Mm80), 48),
             (header("Anna").layout::<StarLine>(Paper::Mm112), 69),
-            (header("Anna").layout::<Impact>(Paper::Mm80), 42),
         ] {
             assert_eq!(layout.bar.chars().count(), columns);
             assert!(layout.bar.starts_with(" FAX  "));
             assert!(layout.bar.ends_with("  27 SEP 2026 14:32 "));
+            assert!(!layout.name_below);
             let from = layout.number + &layout.name;
             assert_eq!(from.chars().count(), columns);
-            assert!(from.starts_with("*2053 393035  ") && from.ends_with(" Anna"));
+            assert!(
+                from.starts_with("*star15089lwj8gn70m8gepwymguzl5qkangla  ")
+                    && from.ends_with(" Anna")
+            );
         }
+        let impact = header("Anna").layout::<Impact>(Paper::Mm80);
+        assert_eq!(impact.bar.chars().count(), 42);
     }
 
     #[test]
-    fn a_long_or_unruly_name_stays_on_its_line() {
+    fn a_name_without_room_goes_under_the_number() {
         let layout = header(&format!("Anna\n{}", "B".repeat(60))).layout::<StarLine>(Paper::Mm80);
-        let from = layout.number + &layout.name;
-        assert_eq!(from.chars().count(), 48);
-        assert!(from.starts_with("*2053 393035  Anna B"), "{from}");
+        assert!(layout.name_below);
+        assert_eq!(layout.name.chars().count(), 48);
+        assert!(layout.name.starts_with("Anna B"), "{}", layout.name);
+
+        // A number leaves a 42-column impact line no room for a name.
+        let layout = header("Anna").layout::<Impact>(Paper::Mm80);
+        assert!(layout.name_below);
+        assert!(layout.name.ends_with(" Anna"));
+        let bytes = header("Anna")
+            .print(starprint::impact(), Paper::Mm80)
+            .build();
+        let text = String::from_utf8_lossy(bytes.as_bytes()).into_owned();
+        let (number, name) = (text.find("qkangla").unwrap(), text.find("Anna").unwrap());
+        assert!(text[number..name].contains('\n'), "{text:?}");
+
         let nameless = header("").layout::<StarLine>(Paper::Mm80);
+        assert!(!nameless.name_below);
         assert_eq!(nameless.name.trim(), "");
     }
 

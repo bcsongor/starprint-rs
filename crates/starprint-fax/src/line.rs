@@ -14,7 +14,7 @@ use ml_dsa::{EncodedSignature, EncodedVerifyingKey, KeyExport as _, MlDsa65};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::number::{Difficulty, Number};
+use crate::number::Number;
 
 const ED25519_KEY: usize = 32;
 const ED25519_SIGNATURE: usize = 64;
@@ -84,13 +84,17 @@ impl Identity {
         &self.fax
     }
 
+    /// The number this line answers on: the address of its identity key.
+    pub fn number(&self) -> Number {
+        Number::of(&self.key().to_bytes())
+    }
+
     /// This line's record, signed at `updated`.
-    pub fn record(&self, number: Number, counter: u64, name: &str, updated: u64) -> LineRecord {
+    pub fn record(&self, name: &str, updated: u64) -> LineRecord {
         use x_wing::Decapsulator as _;
         let mut record = LineRecord {
-            number,
+            number: self.number(),
             identity: self.key().to_bytes(),
-            counter,
             fax_key: self.fax.encapsulation_key().to_bytes().to_vec(),
             name: name.to_owned(),
             updated,
@@ -101,8 +105,8 @@ impl Identity {
     }
 }
 
-/// The public half of an [`Identity`]: what a number is mined from and
-/// what checks a line's signatures.
+/// The public half of an [`Identity`]: what a number is the address of
+/// and what checks a line's signatures.
 #[derive(Clone)]
 pub struct IdentityKey {
     ed25519: ed25519_dalek::VerifyingKey,
@@ -154,8 +158,8 @@ impl IdentityKey {
 }
 
 /// What a relay stores and hands out for a number. It checks itself:
-/// the number against the identity and counter, the rest against the
-/// identity's signature. Of two records for a number, the one updated
+/// the number against the identity, the rest against the identity's
+/// signature. Of two records for a number, the one updated
 /// last wins.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -163,7 +167,6 @@ pub struct LineRecord {
     pub number: Number,
     #[serde(with = "base64_bytes")]
     pub identity: Vec<u8>,
-    pub counter: u64,
     /// The X-Wing key faxes to this line are sealed to.
     #[serde(with = "base64_bytes")]
     pub fax_key: Vec<u8>,
@@ -183,7 +186,6 @@ impl LineRecord {
             &[
                 &self.number.to_string().into_bytes(),
                 &self.identity,
-                &self.counter.to_be_bytes(),
                 &self.fax_key,
                 self.name.as_bytes(),
                 &self.updated.to_be_bytes(),
@@ -191,17 +193,13 @@ impl LineRecord {
         )
     }
 
-    /// The keys, once the number, the name and the signature hold. Runs
-    /// one Argon2 hash, so call it off the async runtime.
-    ///
-    /// `pinned` is the identity this number had when it was first seen,
-    /// if it has been. Another identity is refused, and the same one
-    /// skips the hash, since its number was checked then.
-    pub fn check(&self, difficulty: Difficulty, pinned: Option<&[u8]>) -> Result<Line, String> {
-        if pinned.is_some_and(|pinned| pinned != self.identity) {
+    /// The keys, once the number, the name and the signature hold: the
+    /// number must be the address of the identity, so a relay cannot
+    /// hand out another key under it.
+    pub fn check(&self) -> Result<Line, String> {
+        if self.number != Number::of(&self.identity) {
             return Err(format!(
-                "{} has a different key from the one it had when first seen; it may not be who \
-                 it says it is",
+                "the record's key is not the one {} belongs to; it may not be who it says it is",
                 self.number
             ));
         }
@@ -214,9 +212,6 @@ impl LineRecord {
         }
         let fax_key = x_wing::EncapsulationKey::try_from(self.fax_key.as_slice())
             .map_err(|_| "the line's fax key is invalid")?;
-        if pinned.is_none() && !difficulty.check(&self.identity, self.counter, self.number) {
-            return Err(format!("{} was not mined from this identity", self.number));
-        }
         Ok(Line {
             number: self.number,
             identity,
@@ -304,19 +299,11 @@ pub mod base64_bytes {
     }
 }
 
-/// A new line mined at the test difficulty, with its record.
+/// A new line with its record.
 #[cfg(test)]
 pub(crate) fn test_line(name: &str) -> (Identity, LineRecord) {
-    use std::sync::atomic::{AtomicBool, AtomicU64};
     let identity = Identity::generate();
-    let (counter, number) = Difficulty::TEST
-        .mine(
-            &identity.key().to_bytes(),
-            &AtomicU64::new(0),
-            &AtomicBool::new(false),
-        )
-        .unwrap();
-    let record = identity.record(number, counter, name, 1);
+    let record = identity.record(name, 1);
     (identity, record)
 }
 
@@ -352,28 +339,21 @@ mod tests {
         let (_, record) = test_line("Anna");
         let json = serde_json::to_string(&record).unwrap();
         let back: LineRecord = serde_json::from_str(&json).unwrap();
-        let line = back.check(Difficulty::TEST, None).unwrap();
+        let line = back.check().unwrap();
         assert_eq!(line.number, record.number);
         assert_eq!(line.name, "Anna");
 
         let mut renamed = record.clone();
         renamed.name = "Mallory".to_owned();
-        assert!(renamed.check(Difficulty::TEST, None).is_err(), "signed");
+        assert!(renamed.check().is_err(), "signed");
 
-        // A relay swapping in its own identity has to re-sign, and then
-        // the number no longer comes from the key.
-        let (_, theirs) = test_line("Anna");
-        let forged = Identity::generate().record(record.number, theirs.counter, "Anna", 2);
-        let error = forged.check(Difficulty::TEST, None).unwrap_err();
-        assert!(error.contains("was not mined"), "{error}");
-        let error = forged
-            .check(Difficulty::TEST, Some(&record.identity))
-            .unwrap_err();
-        assert!(error.contains("different key"), "{error}");
-        assert!(
-            record
-                .check(Difficulty::TEST, Some(&record.identity))
-                .is_ok()
-        );
+        // A relay swapping in its own identity can sign the record, but
+        // the number is not that identity's address.
+        let mallory = Identity::generate();
+        let mut forged = mallory.record("Anna", 2);
+        forged.number = record.number;
+        forged.signature = mallory.sign(&forged.signed());
+        let error = forged.check().unwrap_err();
+        assert!(error.contains("not the one"), "{error}");
     }
 }

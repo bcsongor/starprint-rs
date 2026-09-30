@@ -4,12 +4,10 @@
 //! talks to relays and printers, and what a fax carries.
 //!
 //! Every fax prints, under a header saying who sent it and when: there
-//! is no approving strangers yet. Numbers are
-//! pinned to the identity they had the first time a fax went either
-//! way, so a relay cannot swap one later.
+//! is no approving strangers yet. A number is the address of its line's
+//! identity key, so a relay cannot hand out another key under it.
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -18,8 +16,8 @@ use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use starprint_fax::{
-    Collect, Difficulty, Fax, Held, HeldFaxes, Identity, Line, LineRecord, NAME_LIMIT, Number,
-    RelayInfo, base64_bytes, check_relay_name, now,
+    Collect, Fax, Held, HeldFaxes, Identity, Line, LineRecord, NAME_LIMIT, Number, RelayInfo,
+    base64_bytes, check_relay_name, now,
 };
 use starprint_workflows::{FaxHeader, Job};
 
@@ -49,7 +47,7 @@ struct Contents {
     image: Option<Vec<u8>>,
 }
 
-/// `fax.json`: the line, the relays it uses and the numbers it has met.
+/// `fax.json`: the line, the relays it uses and the fax book.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FaxSettings {
@@ -64,20 +62,23 @@ pub struct FaxSettings {
     pub printer: Option<String>,
     #[serde(default)]
     pub relays: Vec<RelayEntry>,
-    /// Identity keys by number, from the first fax either way.
+    /// The fax book, by name.
     #[serde(default)]
-    pub pins: BTreeMap<Number, Pin>,
+    pub contacts: Vec<Contact>,
 }
 
+/// A number in the fax book, under the name its owner here gave it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Pin(#[serde(with = "base64_bytes")] pub Vec<u8>);
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Contact {
+    pub name: String,
+    pub number: Number,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LineSecret {
     pub number: Number,
-    pub counter: u64,
     #[serde(with = "base64_bytes")]
     pub seed: Vec<u8>,
     /// When the record last changed, so relays keep the newest.
@@ -106,24 +107,18 @@ impl FaxSettings {
             None => data.profiles().into_iter().next(),
         }
     }
-
-    fn pin(&self, number: Number) -> Option<Vec<u8>> {
-        self.pins.get(&number).map(|pin| pin.0.clone())
-    }
 }
 
 /// What the routes and the poll loop share for as long as a server runs.
 pub struct Faxing {
-    difficulty: Difficulty,
     client: reqwest::Client,
     /// Each relay's last poll by name: `None` when it went through.
     polled: Mutex<HashMap<String, Option<String>>>,
 }
 
-impl Faxing {
-    pub fn new(difficulty: Difficulty) -> Self {
+impl Default for Faxing {
+    fn default() -> Self {
         Self {
-            difficulty,
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(60))
@@ -141,16 +136,8 @@ pub struct FaxView {
     number: Option<Number>,
     name: String,
     printer: Option<String>,
-    activation: Option<Activation>,
     relays: Vec<RelayView>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Activation {
-    tried: u64,
-    /// The tries mining takes on average; it may take more or fewer.
-    expected: u64,
+    contacts: Vec<Contact>,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,16 +158,7 @@ pub fn view(printers: &Printers) -> FaxView {
         number: settings.line.as_ref().map(|line| line.number),
         name: settings.name,
         printer: settings.printer,
-        activation: printers
-            .data
-            .activating
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|tried| Activation {
-                tried: tried.load(Ordering::Relaxed),
-                expected: printers.fax.difficulty.expected_tries(),
-            }),
+        contacts: settings.contacts,
         relays: settings
             .relays
             .into_iter()
@@ -232,43 +210,29 @@ pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Pr
         .map_err(Problem::not_saved)
 }
 
-/// Starts mining a number on a thread of its own, which outlives the
-/// server that started it. A `409` if the line is already active.
-pub fn activate(printers: &Printers) -> Result<(), Problem> {
-    if printers.data.fax().line.is_some() {
+/// Gives the line a new identity, whose address is its number. With
+/// `replace`, an active line gets one too, and nobody holding its old
+/// number reaches it after. Without it, a `409` if the line is already
+/// active.
+pub fn activate(printers: &Printers, replace: bool) -> Result<(), Problem> {
+    if !replace && printers.data.fax().line.is_some() {
         return Err(Problem::new(
             StatusCode::CONFLICT,
             "The fax line is already active.",
         ));
     }
-    let mut activating = printers.data.activating.lock().unwrap();
-    if activating.is_some() {
-        return Ok(());
-    }
-    let tried = Arc::new(AtomicU64::new(0));
-    *activating = Some(Arc::clone(&tried));
-    let data = Arc::clone(&printers.data);
-    let difficulty = printers.fax.difficulty;
-    std::thread::spawn(move || {
-        let identity = Identity::generate();
-        let mined = difficulty.mine(&identity.key().to_bytes(), &tried, &AtomicBool::new(false));
-        if let Some((counter, number)) = mined {
-            let saved = data.change_fax(|settings| {
-                settings.line = Some(LineSecret {
-                    number,
-                    counter,
-                    seed: identity.seed().to_vec(),
-                    updated: now(),
-                });
-                Ok(())
+    let identity = Identity::generate();
+    printers
+        .data
+        .change_fax(|settings| {
+            settings.line = Some(LineSecret {
+                number: identity.number(),
+                seed: identity.seed().to_vec(),
+                updated: now(),
             });
-            if let Err(e) = saved {
-                eprintln!("starprint-api: the fax line could not be saved: {e}");
-            }
-        }
-        *data.activating.lock().unwrap() = None;
-    });
-    Ok(())
+            Ok(())
+        })
+        .map_err(Problem::not_saved)
 }
 
 /// `POST /v1/fax/relays`.
@@ -295,6 +259,13 @@ pub async fn add_relay(printers: &Printers, request: AddRelay) -> Result<RelayEn
         name: info.name,
         url,
     };
+    // It just answered, so it is online until a poll says otherwise.
+    printers
+        .fax
+        .polled
+        .lock()
+        .unwrap()
+        .insert(entry.name.clone(), None);
     let added = entry.clone();
     printers
         .data
@@ -321,12 +292,76 @@ pub fn remove_relay(printers: &Printers, name: &str) -> Result<bool, Problem> {
         .map_err(Problem::not_saved)
 }
 
-/// `POST /v1/fax/send`: a number and a job as `/jobs` takes it, without
-/// overrides, since the recipient's profile decides.
+/// `PUT /v1/fax/contacts/{number}`: the name to file a number under.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContactRequest {
+    name: String,
+}
+
+/// Files `number` under a name in the fax book, replacing its old one.
+/// A `409` if another number already has that name, since faxes can be
+/// sent to a name.
+pub fn put_contact(
+    printers: &Printers,
+    number: Number,
+    request: ContactRequest,
+) -> Result<Contact, Problem> {
+    let name = request.name.trim().to_owned();
+    if name.is_empty() || name.chars().count() > NAME_LIMIT {
+        return Err(Problem::bad_request(format!(
+            "`name` must be 1 to {NAME_LIMIT} characters."
+        )));
+    }
+    if name.parse::<Number>().is_ok() {
+        return Err(Problem::bad_request("`name` cannot be a number."));
+    }
+    let contact = Contact { name, number };
+    let filed = contact.clone();
+    let taken = printers
+        .data
+        .change_fax(|settings| {
+            if settings
+                .contacts
+                .iter()
+                .any(|c| c.number != number && c.name.eq_ignore_ascii_case(&filed.name))
+            {
+                return Ok(true);
+            }
+            settings.contacts.retain(|c| c.number != number);
+            settings.contacts.push(filed);
+            settings.contacts.sort_by_key(|c| c.name.to_lowercase());
+            Ok(false)
+        })
+        .map_err(Problem::not_saved)?;
+    if taken {
+        return Err(Problem::new(
+            StatusCode::CONFLICT,
+            format!("Another number is already called `{}`.", contact.name),
+        ));
+    }
+    Ok(contact)
+}
+
+/// `false` when the number was not in the fax book.
+pub fn remove_contact(printers: &Printers, number: Number) -> Result<bool, Problem> {
+    printers
+        .data
+        .change_fax(|settings| {
+            let before = settings.contacts.len();
+            settings.contacts.retain(|c| c.number != number);
+            Ok(settings.contacts.len() != before)
+        })
+        .map_err(Problem::not_saved)
+}
+
+/// `POST /v1/fax/send`: a number, or a name in the fax book, and a job
+/// as `/jobs` takes it, without overrides, since the recipient's profile
+/// decides.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SendRequest {
-    pub(crate) to: Number,
+    pub(crate) to: String,
     pub(crate) job: Job,
 }
 
@@ -334,9 +369,38 @@ pub struct SendRequest {
 #[serde(rename_all = "camelCase")]
 pub struct Sent {
     to: Number,
-    /// The recipient's name, as its line gives it.
+    /// The recipient's name in the fax book, or as its line gives it.
     name: String,
+    /// Whether `to` is in the fax book.
+    contact: bool,
     relay: String,
+}
+
+impl FaxSettings {
+    /// The contact filed under `number`, if any.
+    fn contact(&self, number: Number) -> Option<&Contact> {
+        self.contacts.iter().find(|c| c.number == number)
+    }
+
+    /// `to` as a number: one written out, or a name in the fax book. A
+    /// `400` for text that starts like a number but is not one, so a typo
+    /// is reported as one.
+    fn resolve(&self, to: &str) -> Result<Number, Problem> {
+        let to = to.trim();
+        let numberish = to.starts_with('*') || to.to_lowercase().starts_with("star1");
+        match to.parse::<Number>() {
+            Ok(number) => Ok(number),
+            Err(e) if numberish => Err(Problem::bad_request(format!("{e}."))),
+            Err(_) => self
+                .contacts
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(to))
+                .map(|c| c.number)
+                .ok_or_else(|| {
+                    Problem::not_found(format!("No one called `{to}` in the fax book."))
+                }),
+        }
+    }
 }
 
 /// Seals the job to the number and leaves it at the first relay that
@@ -359,6 +423,7 @@ pub async fn send(
             "Add a relay before sending.",
         ));
     }
+    let to = settings.resolve(&request.to)?;
     if request.job.needs_image() && image.is_none() {
         return Err(Problem::bad_request(
             "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
@@ -381,7 +446,7 @@ pub async fn send(
     let client = &printers.fax.client;
     let mut problems = Vec::new();
     for relay in &settings.relays {
-        let record = match get_line(client, &relay.url, request.to).await {
+        let record = match get_line(client, &relay.url, to).await {
             Ok(Some(record)) => record,
             Ok(None) => continue,
             Err(e) => {
@@ -389,41 +454,31 @@ pub async fn send(
                 continue;
             }
         };
-        let line = check(printers, record, settings.pin(request.to))
-            .await
-            .map_err(|e| Problem::bad_gateway(format!("{e}.")))?;
+        let line = checked(record, to).map_err(|e| Problem::bad_gateway(format!("{e}.")))?;
         // The relay holds faxes only from lines it has, so publish ours
         // there first. It is cheap for a relay that already has it.
-        let own = identity.record(
-            secret.number,
-            secret.counter,
-            &settings.name,
-            secret.updated,
-        );
+        let own = identity.record(&settings.name, secret.updated);
         put_line(client, &relay.url, &own)
             .await
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
         let fax = Fax::seal(&identity, secret.number, &line, &contents, now());
-        relay_ok(
-            client
-                .post(line_url(&relay.url, request.to, "/faxes"))
-                .json(&fax),
-        )
-        .await
-        .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
-        pin(printers, &line)?;
+        relay_ok(client.post(line_url(&relay.url, to, "/faxes")).json(&fax))
+            .await
+            .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
+        let contact = settings.contact(to);
         return Ok(Sent {
-            to: line.number,
-            name: line.name,
+            to,
+            name: contact.map_or(line.name, |c| c.name.clone()),
+            contact: contact.is_some(),
             relay: relay.name.clone(),
         });
     }
     Err(if problems.is_empty() {
-        Problem::not_found(format!("No relay has {}.", request.to))
+        Problem::not_found(format!("No relay has {}.", to))
     } else {
         Problem::bad_gateway(format!(
             "{} was not found, and some relays did not answer: {}.",
-            request.to,
+            to,
             problems.join("; ")
         ))
     })
@@ -438,28 +493,17 @@ fn request_for(job: Job) -> JobRequest {
     }
 }
 
-/// Checks a record off the async runtime, since a number not seen
-/// before costs one Argon2 hash.
-async fn check(
-    printers: &Printers,
-    record: LineRecord,
-    pinned: Option<Vec<u8>>,
-) -> Result<Line, String> {
-    let difficulty = printers.fax.difficulty;
-    tokio::task::spawn_blocking(move || record.check(difficulty, pinned.as_deref()))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-fn pin(printers: &Printers, line: &Line) -> Result<(), Problem> {
-    let identity = line.identity.to_bytes();
-    printers
-        .data
-        .change_fax(|settings| {
-            settings.pins.entry(line.number).or_insert(Pin(identity));
-            Ok(())
-        })
-        .map_err(Problem::not_saved)
+/// `record` checked, and for `number`, since a relay could answer with
+/// another line's.
+fn checked(record: LineRecord, number: Number) -> Result<Line, String> {
+    let line = record.check()?;
+    if line.number != number {
+        return Err(format!(
+            "the relay answered for {} with {}",
+            number, line.number
+        ));
+    }
+    Ok(line)
 }
 
 /// Polls every relay each [`POLL_EVERY`] for as long as the future is
@@ -507,12 +551,7 @@ async fn poll_relay(
 ) -> Result<(), String> {
     let client = &printers.fax.client;
     if published.get(&relay.url) != Some(&secret.updated) {
-        let record = identity.record(
-            secret.number,
-            secret.counter,
-            &settings.name,
-            secret.updated,
-        );
+        let record = identity.record(&settings.name, secret.updated);
         put_line(client, &relay.url, &record).await?;
         published.insert(relay.url.clone(), secret.updated);
     }
@@ -576,15 +615,12 @@ async fn receive(
         .await
         .map_err(Receive::Later)?
         .ok_or_else(|| Receive::Refused(format!("the relay no longer has {}", fax.from)))?;
-    let sender = check(printers, record, settings.pin(fax.from))
-        .await
-        .map_err(Receive::Refused)?;
+    let sender = checked(record, fax.from).map_err(Receive::Refused)?;
     let contents = fax
         .open(identity, number, &sender)
         .map_err(Receive::Refused)?;
     let contents: Contents = serde_json::from_slice(&contents)
         .map_err(|e| Receive::Refused(format!("the fax's contents are not a job: {e}")))?;
-    pin(printers, &sender).map_err(|p| Receive::Later(p.detail().to_owned()))?;
     let Some(profile) = settings.printer(&printers.data) else {
         return Err(Receive::Later(
             "there is no printer to print it on".to_owned(),
@@ -594,7 +630,9 @@ async fn receive(
         return Err(Receive::Later(format!("{} has no address", profile.name)));
     }
     let header = FaxHeader {
-        name: sender.name.clone(),
+        name: settings
+            .contact(sender.number)
+            .map_or_else(|| sender.name.clone(), |c| c.name.clone()),
         number: sender.number.to_string(),
         sent: local(fax.sent),
     };
@@ -617,7 +655,7 @@ fn local(seconds: u64) -> chrono::NaiveDateTime {
 }
 
 fn line_url(relay: &str, number: Number, rest: &str) -> String {
-    format!("{relay}/v1/lines/{}{rest}", number.digits())
+    format!("{relay}/v1/lines/{}{rest}", number.slug())
 }
 
 /// The record for `number`, or `None` if the relay does not have it.
@@ -692,7 +730,7 @@ mod tests {
                 listener,
                 starprint_relay::router(
                     "LONRELAY01".to_owned(),
-                    Difficulty::TEST,
+                    starprint_relay::Clients::Direct,
                     std::path::Path::new(":memory:"),
                 )
                 .unwrap(),
@@ -712,9 +750,7 @@ mod tests {
             }],
             "t".to_owned(),
         );
-        let mut printers = Printers::new(Arc::new(data), Arc::new(PrintQueue::default()));
-        printers.fax = Faxing::new(Difficulty::TEST);
-        printers
+        Printers::new(Arc::new(data), Arc::new(PrintQueue::default()))
     }
 
     async fn active(printers: &Printers, name: &str, relay: &str) -> Number {
@@ -726,10 +762,7 @@ mod tests {
             },
         )
         .unwrap();
-        activate(printers).unwrap();
-        while printers.data.activating.lock().unwrap().is_some() {
-            tokio::task::yield_now().await;
-        }
+        activate(printers, false).unwrap();
         let entry = add_relay(
             printers,
             AddRelay {
@@ -745,7 +778,7 @@ mod tests {
 
     fn note() -> SendRequest {
         SendRequest {
-            to: "*0000 000001".parse().unwrap(),
+            to: "*star1y0stjmvgr0el9qnxd0uy8c2ge52hd4p2".to_owned(),
             job: serde_json::from_value(serde_json::json!({ "kind": "text", "text": "Hello Ben" }))
                 .unwrap(),
         }
@@ -761,7 +794,7 @@ mod tests {
         let ben_number = active(&ben, "Ben", &relay).await;
 
         let mut request = note();
-        request.to = ben_number;
+        request.to = ben_number.to_string();
         let error = send(&anna, request, None).await.unwrap_err();
         assert_eq!(error.detail(), format!("No relay has {ben_number}."));
 
@@ -769,10 +802,23 @@ mod tests {
         let mut published = HashMap::new();
         poll(&ben, &mut published).await;
         let mut request = note();
-        request.to = ben_number;
+        request.to = ben_number.to_string();
         let sent = send(&anna, request, None).await.unwrap();
-        assert_eq!(sent.name, "Ben");
+        assert_eq!(sent.name, "Ben", "as his line gives it");
+        assert!(!sent.contact);
         assert_eq!(sent.relay, "LONRELAY01");
+
+        // Ben files Anna under a name of his own, which her faxes print
+        // under from now on.
+        let anna_number = anna.data.fax().line.unwrap().number;
+        put_contact(
+            &ben,
+            anna_number,
+            ContactRequest {
+                name: "Mum".to_owned(),
+            },
+        )
+        .unwrap();
 
         let received = tokio::spawn(async move {
             let (mut socket, _) = printer.accept().await.unwrap();
@@ -783,10 +829,9 @@ mod tests {
         poll(&ben, &mut published).await;
         let bytes = received.await.unwrap();
         let text = String::from_utf8_lossy(&bytes);
-        let anna_number = anna.data.fax().line.unwrap().number;
         let header = text.find(" FAX ").expect("a header");
         let from = text.find(&anna_number.to_string()).expect("the sender");
-        let name = text.find("Anna").expect("the sender's name");
+        let name = text.find("Mum").expect("the sender's name in the fax book");
         let fax = text.find("Hello Ben").expect("the fax");
         assert!(header < from && from < name && name < fax, "{text}");
         let view = view(&ben);
@@ -794,8 +839,6 @@ mod tests {
 
         // Confirmed, so nothing prints twice.
         poll(&ben, &mut published).await;
-        assert!(ben.data.fax().pins.contains_key(&anna_number));
-        assert!(anna.data.fax().pins.contains_key(&ben_number));
     }
 
     #[tokio::test]
@@ -803,16 +846,20 @@ mod tests {
         let anna = server(1);
         let error = send(&anna, note(), None).await.unwrap_err();
         assert!(error.detail().starts_with("Activate"));
-        activate(&anna).unwrap();
-        while anna.data.activating.lock().unwrap().is_some() {
-            tokio::task::yield_now().await;
-        }
+        activate(&anna, false).unwrap();
         let error = send(&anna, note(), None).await.unwrap_err();
         assert!(error.detail().starts_with("Add a relay"));
         assert_eq!(
-            activate(&anna).unwrap_err().detail(),
+            activate(&anna, false).unwrap_err().detail(),
             "The fax line is already active."
         );
+
+        // Replacing mines a new number under a new identity.
+        let before = anna.data.fax().line.unwrap();
+        activate(&anna, true).unwrap();
+        let after = anna.data.fax().line.unwrap();
+        assert_ne!(after.seed, before.seed);
+        assert_ne!(after.number, before.number);
     }
 
     #[tokio::test]
@@ -833,7 +880,44 @@ mod tests {
             .unwrap();
         add_relay(&anna, AddRelay { url: relay }).await.unwrap();
         assert_eq!(anna.data.fax().relays.len(), 1, "one per name");
+        assert_eq!(view(&anna).relays[0].online, Some(true), "it just answered");
         assert!(remove_relay(&anna, "LONRELAY01").unwrap());
         assert!(!remove_relay(&anna, "LONRELAY01").unwrap());
+    }
+
+    #[test]
+    fn the_fax_book_files_a_number_under_one_name() {
+        let anna = server(1);
+        let (ben, carl) = (Number::of(b"ben"), Number::of(b"carl"));
+        let name = |name: &str| ContactRequest {
+            name: name.to_owned(),
+        };
+        put_contact(&anna, ben, name(" Ben ")).unwrap();
+        put_contact(&anna, carl, name("Carl")).unwrap();
+        let error = put_contact(&anna, carl, name("ben")).unwrap_err();
+        assert_eq!(error.status(), StatusCode::CONFLICT, "names are unique");
+        put_contact(&anna, ben, name("Benjamin")).unwrap();
+
+        let settings = anna.data.fax();
+        let names: Vec<_> = settings.contacts.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Benjamin", "Carl"], "renamed, in order");
+        assert_eq!(settings.resolve("carl").unwrap(), carl, "by name");
+        assert_eq!(
+            settings.resolve(&ben.to_string()).unwrap(),
+            ben,
+            "by number"
+        );
+        let typo = ben.to_string().replace('q', "p").replace('z', "q");
+        assert_eq!(
+            settings.resolve(&typo).unwrap_err().status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            settings.resolve("Dora").unwrap_err().status(),
+            StatusCode::NOT_FOUND
+        );
+
+        assert!(remove_contact(&anna, ben).unwrap());
+        assert!(!remove_contact(&anna, ben).unwrap());
     }
 }

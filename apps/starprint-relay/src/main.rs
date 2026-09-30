@@ -6,18 +6,22 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use starprint_fax::{Difficulty, check_relay_name};
+use starprint_fax::check_relay_name;
+use starprint_relay::Clients;
 
 const USAGE: &str = "\
 starprint-relay. Hold starprint faxes until their line polls for them.
 
-Usage: starprint-relay --name <NAME> [--listen <addr>] [--db <file>]
+Usage: starprint-relay --name <NAME> [--listen <addr>] [--db <file>] [--behind-proxy]
 
   --name <NAME>    What servers call this relay, in capitals, digits and
                    dashes, like LONRELAY01
   --listen <addr>  Address to bind (default: 0.0.0.0:9120)
   --db <file>      SQLite file for lines and faxes, created if missing
                    (default: relay.db)
+  --behind-proxy   Take each client's address from X-Forwarded-For, as
+                   set by the TLS proxy in front, for the rate limits.
+                   Only behind a proxy, or anyone can claim any address
   -h, --help       Print this message
 ";
 
@@ -35,6 +39,7 @@ fn run() -> Result<(), String> {
     let mut name = None;
     let mut listen: SocketAddr = ([0, 0, 0, 0], 9120).into();
     let mut db = PathBuf::from("relay.db");
+    let mut clients = Clients::Direct;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |flag: &str| {
@@ -54,12 +59,13 @@ fn run() -> Result<(), String> {
                     .map_err(|e| format!("`--listen {text}` is not an address with a port: {e}"))?;
             }
             "--db" => db = value("--db")?.into(),
+            "--behind-proxy" => clients = Clients::BehindProxy,
             other => return Err(format!("`{other}` is not an option; see --help")),
         }
     }
     let name = name.ok_or("`--name` is required; see --help")?;
     check_relay_name(&name)?;
-    let router = starprint_relay::router(name.clone(), Difficulty::PROTOCOL, &db)?;
+    let router = starprint_relay::router(name.clone(), clients, &db)?;
 
     tokio::runtime::Runtime::new()
         .map_err(|e| format!("the runtime could not start: {e}"))?
@@ -68,11 +74,14 @@ fn run() -> Result<(), String> {
                 .await
                 .map_err(|e| format!("{listen} could not be bound: {e}"))?;
             println!("starprint-relay: {name} listening on http://{listen}");
-            axum::serve(listener, router)
-                .with_graceful_shutdown(async {
-                    let _ = tokio::signal::ctrl_c().await;
-                })
-                .await
-                .map_err(|e| format!("the relay stopped: {e}"))
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async {
+                let _ = tokio::signal::ctrl_c().await;
+            })
+            .await
+            .map_err(|e| format!("the relay stopped: {e}"))
         })
 }

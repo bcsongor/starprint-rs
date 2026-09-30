@@ -69,8 +69,9 @@ fallback for double-resolution sections does not replace that GUI policy.
 
 ## The fax protocol
 
-`Difficulty::PROTOCOL`, the transcript labels and the line record, fax
-and request fields in `crates/starprint-fax`, and the fields of the
+How a number is made from a key, the transcript
+labels and the line record, fax and request fields in
+`crates/starprint-fax`, and the fields of the
 contents `apps/starprint-api/src/faxing.rs` seals, are what every server
 and relay must agree on. Changing one without a protocol version bump, and a word on
 what happens to existing lines, is a finding.

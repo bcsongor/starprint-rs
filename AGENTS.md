@@ -71,8 +71,14 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
   newly assigned open issue, posted to the server like any other job.
   Fax is the server's too: the phone button opens a drawer to activate
-  the line, name it, choose its printer and add relays, and **Fax**
-  beside **Print** sends the job in the form to a number.
+  the line, name it, choose its printer, keep the fax book and add
+  relays, and **Fax** beside **Print** sends the job in the form to a
+  number or a name in the fax book. Every number on screen is drawn by
+  `FaxNumber`: chunks of uneven length, each its own colour with a gap
+  before it, cut by a hash of the whole number
+  (`src/lib/fax-number.ts`), so a one-character change moves every
+  chunk. It is for the eye only, and a phone page that
+  shows numbers must use the same rule.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs, and the home of everything that has to run
   unattended. A library with a thin command line on top, so the desktop
@@ -103,8 +109,7 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `printers::PrintQueue`, exported at the crate root, serialises
   connections by host and port.
   `faxing` is the server's side of fax: `fax.json` in the data
-  directory, activating the line on a thread that outlives a server
-  restart, sending, what a fax carries, and the loop that polls relays
+  directory, activating the line, sending, what a fax carries, and the loop that polls relays
   and prints through the queue like the scheduler. A received fax
   prints under the workflows crate's `FaxHeader`, through
   `Printer::fax`, so the API still builds no bytes of its own. Its tests send
@@ -114,16 +119,17 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   live inside the blocking task so cancellation cannot release a write
   still in progress.
 - `crates/starprint-fax/`: the fax protocol, which does no I/O. A
-  number is mined from an identity key with Argon2id (`number`), a line
+  number is the Bech32m address of an identity key (`number`), a line
   record is signed by Ed25519 and ML-DSA-65 (`line`), a fax is sealed to
   an X-Wing key under ChaCha20-Poly1305 (`fax`), and `relay` holds the
   requests a line makes of a relay. A fax's contents are bytes here; the
-  API decides they are a job. Tests mine at `Difficulty::TEST`, so
-  nothing waits minutes.
+  API decides they are a job.
 - `apps/starprint-relay/`: the public server faxes travel through, a
   router in `lib.rs`, its SQLite file in `store.rs` and a command line
-  in `main.rs`. It deletes nothing: a confirmed fax is marked
-  delivered. It logs who faxed whom, never what, and knows nothing of
+  in `main.rs`. It keeps a fax only until its line confirms it
+  printed, or 30 days. Since every fax prints, `limit` holds each client address
+  to so many faxes and new lines an hour, the address coming from
+  `X-Forwarded-For` only with `--behind-proxy`. It logs who faxed whom, never what, and knows nothing of
   printers.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
@@ -264,10 +270,11 @@ sent as `ESC GS y` instead of a bitmap, and a job that selects
 
 ### The fax protocol
 
-`Difficulty::PROTOCOL`, the transcript labels and the record, fax and
-request fields in `crates/starprint-fax`, and the fields of the contents
+How a number is made from a key, the transcript
+labels and the record, fax and request fields in `crates/starprint-fax`,
+and the fields of the contents
 `faxing` seals, are what every server and relay must agree on. Changing one
-breaks every line mined or fax sent before it, so it is a finding
+breaks every line made or fax sent before it, so it is a finding
 unless the PR bumps the protocol version and says what happens to
 existing lines.
 

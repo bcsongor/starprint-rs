@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ApiButton } from "@/components/api-button";
 import { CardPreview } from "@/components/card-preview";
 import { FaxButton } from "@/components/fax-button";
+import { FaxNumber } from "@/components/fax-number";
 import { FaxDrawer } from "@/components/fax-drawer";
 import { LinearBar } from "@/components/linear-bar";
 import { NoteForm } from "@/components/note-form";
@@ -201,7 +202,22 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
         job.kind === "picture" ? pictureFile : null,
       );
       toast.success(`Faxed ${what} to ${sent.name || sent.to}`, {
-        description: `${sent.to} via ${sent.relay}.`,
+        description: (
+          <>
+            <FaxNumber number={sent.to} /> via {sent.relay}.
+          </>
+        ),
+        // A number typed out once is worth keeping.
+        action: sent.contact
+          ? undefined
+          : {
+              label: "Save",
+              onClick: () =>
+                void attempt("Could not save the contact", async () => {
+                  await api.putContact(sent.to, sent.name || "New contact");
+                  await refreshFax();
+                }),
+            },
       });
     } catch (error) {
       toast.error(`Could not fax ${what}`, { description: String(error) });
@@ -530,6 +546,12 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               await refreshFax();
             })
           }
+          onReplace={() =>
+            attempt("Could not get a new number", async () => {
+              await api.replaceFaxLine();
+              await refreshFax();
+            })
+          }
           onSettings={(changes) =>
             attempt("Could not save the fax settings", async () => {
               await api.putFax(changes);
@@ -551,6 +573,23 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
           onRemoveRelay={(relay) =>
             attempt("Could not remove the relay", async () => {
               await api.removeRelay(relay.name);
+              await refreshFax();
+            })
+          }
+          onSaveContact={async (number, name) => {
+            try {
+              await api.putContact(number, name);
+              await refreshFax();
+            } catch (error) {
+              toast.error("Could not save the contact", {
+                description: String(error),
+              });
+              throw error;
+            }
+          }}
+          onRemoveContact={(contact) =>
+            attempt("Could not remove the contact", async () => {
+              await api.deleteContact(contact.number);
               await refreshFax();
             })
           }

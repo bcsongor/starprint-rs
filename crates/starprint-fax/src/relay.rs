@@ -121,7 +121,6 @@ pub struct HeldFaxes {
 mod tests {
     use super::*;
     use crate::line::test_line;
-    use crate::number::Difficulty;
 
     #[test]
     fn a_name_reads_like_one() {
@@ -136,7 +135,7 @@ mod tests {
     fn only_the_line_collects_and_only_as_it_asked() {
         let (anna, anna_record) = test_line("Anna");
         let (ben, _) = test_line("Ben");
-        let line = anna_record.check(Difficulty::TEST, None).unwrap();
+        let line = anna_record.check().unwrap();
 
         let poll = Collect::poll(&anna, line.number);
         assert!(poll.signed_by(Action::Poll, &line));

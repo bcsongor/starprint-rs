@@ -7,7 +7,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { FaxLine } from "@/lib/api";
+import { FaxNumber } from "@/components/fax-number";
+import type { FaxContact, FaxLine } from "@/lib/api";
+import { isFaxNumber } from "@/lib/fax-number";
 
 interface Props {
   fax: FaxLine | null;
@@ -19,30 +21,38 @@ interface Props {
   onSetUp: () => void;
 }
 
-/** Shows what is typed as a number reads: `*7441 720938`. */
-function asNumber(typed: string): string {
-  const digits = typed.replace(/\D/g, "").slice(0, 10);
-  if (!digits) return "";
-  return `*${digits.slice(0, 4)}${digits.length > 4 ? ` ${digits.slice(4)}` : ""}`;
+/** The contact `to` names, if it names one. */
+function named(contacts: FaxContact[], to: string): FaxContact | undefined {
+  const name = to.trim().toLowerCase();
+  return contacts.find((c) => c.name.toLowerCase() === name);
 }
 
-/** Faxes the job in the form: type a number, press Send. */
+/** Faxes the job in the form: pick someone from the fax book, or paste
+ * a number, and press Send. */
 export function FaxButton({ fax, ready, onSend, onSetUp }: Props) {
   const [open, setOpen] = useState(false);
-  const [number, setNumber] = useState("");
+  const [to, setTo] = useState("");
   const [sending, setSending] = useState(false);
   const setUp = fax?.number != null && fax.relays.length > 0;
-  const complete = number.replace(/\D/g, "").length === 10;
+  const contacts = fax?.contacts ?? [];
+  const chosen = named(contacts, to);
+  const complete = chosen !== undefined || isFaxNumber(to);
+  const typed = to.trim().toLowerCase();
+  const matches = contacts.filter(
+    (c) =>
+      c !== chosen &&
+      (c.name.toLowerCase().includes(typed) || c.number.includes(typed)),
+  );
 
   const send = async () => {
     if (!complete || sending) return;
     setSending(true);
     try {
-      await onSend(number);
+      await onSend(to.trim());
       setOpen(false);
-      setNumber("");
+      setTo("");
     } catch {
-      // Reported by the caller; the number stays to try again.
+      // Reported by the caller; what was typed stays to try again.
     } finally {
       setSending(false);
     }
@@ -56,35 +66,58 @@ export function FaxButton({ fax, ready, onSend, onSetUp }: Props) {
         <SendIcon />
         Fax
       </PopoverTrigger>
-      <PopoverContent align="start" side="top" className="w-72">
+      <PopoverContent align="start" side="top" className="w-96">
         {setUp ? (
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            <Input
-              autoFocus
-              aria-label="Fax number"
-              placeholder="*7441 720938"
-              inputMode="numeric"
-              autoComplete="off"
-              className="font-mono tabular-nums"
-              value={number}
-              onChange={(e) => setNumber(asNumber(e.target.value))}
-            />
-            <Button type="submit" disabled={!complete || sending}>
-              {sending ? "Sending…" : "Send"}
-            </Button>
-          </form>
+          <>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              <Input
+                autoFocus
+                aria-label="Name or fax number"
+                placeholder="A name, or *star1…"
+                autoComplete="off"
+                spellCheck={false}
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+              <Button type="submit" disabled={!complete || sending}>
+                {sending ? "Sending…" : "Send"}
+              </Button>
+            </form>
+            {(chosen ?? isFaxNumber(to)) && (
+              <p className="truncate text-xs">
+                <FaxNumber number={chosen?.number ?? to} />
+              </p>
+            )}
+            {matches.length > 0 && (
+              <ul className="flex max-h-48 flex-col overflow-y-auto">
+                {matches.map((contact) => (
+                  <li key={contact.number}>
+                    <button
+                      type="button"
+                      className="flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left hover:bg-muted"
+                      onClick={() => setTo(contact.name)}
+                    >
+                      <span className="shrink-0">{contact.name}</span>
+                      <FaxNumber
+                        number={contact.number}
+                        className="truncate text-xs"
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-start gap-2">
             <p className="text-sm text-muted-foreground">
-              {fax?.number
-                ? "No relay."
-                : "Line not active."}
+              {fax?.number ? "No relay." : "Line not active."}
             </p>
             <Button
               variant="outline"

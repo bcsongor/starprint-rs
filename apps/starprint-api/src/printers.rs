@@ -9,7 +9,6 @@ use std::time::Duration;
 use axum::body::Bytes;
 use axum::http::StatusCode;
 use starprint::transport::{TcpTransport, Transport};
-use starprint_fax::Difficulty;
 use starprint_workflows::Printer;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
@@ -128,7 +127,7 @@ impl Printers {
         Self {
             data,
             queue,
-            fax: Faxing::new(Difficulty::PROTOCOL),
+            fax: Faxing::default(),
         }
     }
 

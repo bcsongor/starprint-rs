@@ -74,6 +74,10 @@ impl Problem {
     pub fn detail(&self) -> &str {
         &self.detail
     }
+
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
 }
 
 impl IntoResponse for Problem {
