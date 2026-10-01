@@ -15,7 +15,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 croner = "4"
 # The platform's configuration directory, for the default data directory.
-dirs = "6"
+dirs = "7"
 # The decoded picture a job or preview is built from.
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
