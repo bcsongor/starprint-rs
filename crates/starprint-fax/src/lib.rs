@@ -15,6 +15,6 @@ mod number;
 mod relay;
 
 pub use fax::Fax;
-pub use line::{Identity, IdentityKey, Line, LineRecord, NAME_LIMIT, base64_bytes, now};
+pub use line::{FaxKey, Identity, IdentityKey, Line, LineRecord, NAME_LIMIT, base64_bytes, now};
 pub use number::Number;
 pub use relay::{Action, Collect, Held, HeldFaxes, RelayInfo, check_relay_name};

@@ -2,6 +2,10 @@
 //! and signed by the sender's identity, so a relay sees two numbers, a
 //! time and a size, and can neither read nor alter what it carries.
 //!
+//! A line's key is random and replaced every so often (see
+//! [`FaxKey`]), so a fax can be opened only for as long as its recipient
+//! keeps the key it was sealed to.
+//!
 //! Sealing is HPKE's one-shot shape by hand: X-Wing gives a fresh shared
 //! secret per fax, HKDF-SHA256 turns it into a ChaCha20-Poly1305 key
 //! bound to both numbers, and since that key seals one message, a zero
@@ -11,10 +15,10 @@ use chacha20poly1305::aead::{Aead as _, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, KeyInit as _};
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest as _, Sha256};
 use x_wing::{Decapsulate as _, Encapsulate as _};
 
-use crate::line::{Identity, Line, base64_bytes, transcript};
+use crate::line::{FaxKey, Identity, Line, base64_bytes, transcript};
 use crate::number::Number;
 
 /// A sealed fax, as a relay holds it.
@@ -83,14 +87,19 @@ impl Fax {
         sender.number == self.from && sender.identity.verify(&self.signed(), &self.signature)
     }
 
-    /// The contents, if this fax is for `recipient` on `number` and
-    /// `sender` signed it.
-    pub fn open(
-        &self,
-        recipient: &Identity,
-        number: Number,
-        sender: &Line,
-    ) -> Result<Vec<u8>, String> {
+    /// What tells this fax from every other: a hash of its signature,
+    /// in hex. A relay cannot change it without breaking the signature,
+    /// so a recipient that remembers it knows a fax it has printed.
+    pub fn id(&self) -> String {
+        Sha256::digest(&self.signature)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    /// The contents, if this fax is for `number`, was sealed to `key`
+    /// and `sender` signed it.
+    pub fn open(&self, key: &FaxKey, number: Number, sender: &Line) -> Result<Vec<u8>, String> {
         if self.to != number {
             return Err(format!("the fax is for {}, not this line", self.to));
         }
@@ -99,7 +108,7 @@ impl Fax {
         }
         let encapsulated = x_wing::Ciphertext::try_from(self.encapsulated.as_slice())
             .map_err(|_| "the fax's encapsulated key is the wrong length")?;
-        let shared = recipient.fax_key().decapsulate(&encapsulated);
+        let shared = key.key().decapsulate(&encapsulated);
         cipher(&shared, self.from, self.to, &self.encapsulated)
             .decrypt(
                 &Default::default(),
@@ -146,8 +155,8 @@ mod tests {
 
     #[test]
     fn a_fax_opens_for_its_recipient_alone() {
-        let (anna, anna_record) = test_line("Anna");
-        let (ben, ben_record) = test_line("Ben");
+        let (anna, anna_key, anna_record) = test_line("Anna");
+        let (_, ben_key, ben_record) = test_line("Ben");
         let anna_line = anna_record.check().unwrap();
         let ben_line = ben_record.check().unwrap();
 
@@ -156,24 +165,34 @@ mod tests {
         let json = serde_json::to_string(&fax).unwrap();
         let fax: Fax = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            fax.open(&ben, ben_line.number, &anna_line).unwrap(),
+            fax.open(&ben_key, ben_line.number, &anna_line).unwrap(),
             b"Hello"
         );
 
         assert!(
-            fax.open(&anna, anna_line.number, &anna_line).is_err(),
+            fax.open(&anna_key, anna_line.number, &anna_line).is_err(),
             "not for Anna"
         );
         assert!(
-            fax.open(&ben, ben_line.number, &ben_line).is_err(),
+            fax.open(&ben_key, ben_line.number, &ben_line).is_err(),
             "not from Ben"
         );
+        assert!(
+            fax.open(&FaxKey::generate(), ben_line.number, &anna_line)
+                .is_err(),
+            "not with a key Ben has since replaced"
+        );
+
+        // Two faxes of the same words are still two faxes.
+        let again = Fax::seal(&anna, anna_line.number, &ben_line, b"Hello", 7);
+        assert_eq!(fax.id(), fax.clone().id());
+        assert_ne!(fax.id(), again.id());
     }
 
     #[test]
     fn a_relay_cannot_alter_a_fax() {
-        let (anna, anna_record) = test_line("Anna");
-        let (ben, ben_record) = test_line("Ben");
+        let (anna, _, anna_record) = test_line("Anna");
+        let (_, ben_key, ben_record) = test_line("Ben");
         let anna_line = anna_record.check().unwrap();
         let ben_line = ben_record.check().unwrap();
         let fax = Fax::seal(&anna, anna_line.number, &ben_line, b"Hello", 7);
@@ -184,7 +203,7 @@ mod tests {
         flipped.sealed[0] ^= 1;
         for altered in [later, flipped] {
             assert!(!altered.signed_by(&anna_line));
-            assert!(altered.open(&ben, ben_line.number, &anna_line).is_err());
+            assert!(altered.open(&ben_key, ben_line.number, &anna_line).is_err());
         }
     }
 }

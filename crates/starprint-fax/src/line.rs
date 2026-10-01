@@ -4,7 +4,10 @@
 //!
 //! Everything is hybrid, so a line holds as long as either half does:
 //! the identity signs with Ed25519 and ML-DSA-65, and faxes are sealed to
-//! an X-Wing key (X25519 and ML-KEM-768) that the identity signs.
+//! an X-Wing key (X25519 and ML-KEM-768) that the identity signs. That
+//! key is random and a line replaces it every so often, so whoever
+//! steals a line's secrets later opens only the faxes sealed to the keys
+//! it still keeps.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -25,13 +28,43 @@ const CONTEXT: &[u8] = b"starprint fax";
 /// on paper.
 pub const NAME_LIMIT: usize = 64;
 
-/// A line's secret: one seed, from which every key is derived, so the
-/// data directory keeps 32 bytes and nothing else.
+/// A line's identity: one seed, from which both signing keys are
+/// derived, so the data directory keeps 32 bytes for it.
 pub struct Identity {
     seed: [u8; 32],
     ed25519: ed25519_dalek::SigningKey,
     ml_dsa: ml_dsa::SigningKey<MlDsa65>,
-    fax: x_wing::DecapsulationKey,
+}
+
+/// The key faxes to a line are sealed to. Not derived from the
+/// identity's seed: a line makes a new one every so often and forgets
+/// the old ones, which is what stops a stolen secret opening old faxes.
+pub struct FaxKey {
+    seed: [u8; 32],
+    key: x_wing::DecapsulationKey,
+}
+
+impl FaxKey {
+    pub fn generate() -> Self {
+        let mut seed = [0; 32];
+        getrandom::fill(&mut seed).expect("the system has randomness");
+        Self::from_seed(seed)
+    }
+
+    pub fn from_seed(seed: [u8; 32]) -> Self {
+        Self {
+            seed,
+            key: x_wing::DecapsulationKey::from(seed),
+        }
+    }
+
+    pub fn seed(&self) -> [u8; 32] {
+        self.seed
+    }
+
+    pub(crate) fn key(&self) -> &x_wing::DecapsulationKey {
+        &self.key
+    }
 }
 
 impl Identity {
@@ -53,7 +86,6 @@ impl Identity {
             seed,
             ed25519: ed25519_dalek::SigningKey::from_bytes(&derive(b"starprint fax ed25519")),
             ml_dsa: ml_dsa::SigningKey::from_seed(&derive(b"starprint fax ml-dsa-65").into()),
-            fax: x_wing::DecapsulationKey::from(derive(b"starprint fax x-wing")),
         }
     }
 
@@ -80,22 +112,19 @@ impl Identity {
         signature
     }
 
-    pub fn fax_key(&self) -> &x_wing::DecapsulationKey {
-        &self.fax
-    }
-
     /// The number this line answers on: the address of its identity key.
     pub fn number(&self) -> Number {
         Number::of(&self.key().to_bytes())
     }
 
-    /// This line's record, signed at `updated`.
-    pub fn record(&self, name: &str, updated: u64) -> LineRecord {
+    /// This line's record, signed at `updated`, for faxes to be sealed
+    /// to `fax_key`.
+    pub fn record(&self, fax_key: &FaxKey, name: &str, updated: u64) -> LineRecord {
         use x_wing::Decapsulator as _;
         let mut record = LineRecord {
             number: self.number(),
             identity: self.key().to_bytes(),
-            fax_key: self.fax.encapsulation_key().to_bytes().to_vec(),
+            fax_key: fax_key.key.encapsulation_key().to_bytes().to_vec(),
             name: name.to_owned(),
             updated,
             signature: Vec::new(),
@@ -299,12 +328,12 @@ pub mod base64_bytes {
     }
 }
 
-/// A new line with its record.
+/// A new line with its fax key and its record.
 #[cfg(test)]
-pub(crate) fn test_line(name: &str) -> (Identity, LineRecord) {
-    let identity = Identity::generate();
-    let record = identity.record(name, 1);
-    (identity, record)
+pub(crate) fn test_line(name: &str) -> (Identity, FaxKey, LineRecord) {
+    let (identity, fax_key) = (Identity::generate(), FaxKey::generate());
+    let record = identity.record(&fax_key, name, 1);
+    (identity, fax_key, record)
 }
 
 #[cfg(test)]
@@ -336,7 +365,7 @@ mod tests {
 
     #[test]
     fn a_record_checks_itself() {
-        let (_, record) = test_line("Anna");
+        let (_, _, record) = test_line("Anna");
         let json = serde_json::to_string(&record).unwrap();
         let back: LineRecord = serde_json::from_str(&json).unwrap();
         let line = back.check().unwrap();
@@ -350,7 +379,7 @@ mod tests {
         // A relay swapping in its own identity can sign the record, but
         // the number is not that identity's address.
         let mallory = Identity::generate();
-        let mut forged = mallory.record("Anna", 2);
+        let mut forged = mallory.record(&FaxKey::generate(), "Anna", 2);
         forged.number = record.number;
         forged.signature = mallory.sign(&forged.signed());
         let error = forged.check().unwrap_err();

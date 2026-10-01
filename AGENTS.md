@@ -110,7 +110,12 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   connections by host and port.
   `faxing` is the server's side of fax: `fax.json` in the data
   directory, activating the line, sending, what a fax carries, and the loop that polls relays
-  and prints through the queue like the scheduler. A received fax
+  and prints through the queue like the scheduler. The loop also
+  replaces the line's fax key every week and forgets old ones after 38
+  days, a week and the relay's 30-day hold, which is the line's forward
+  secrecy; the two periods must stay in step with the relay's hold. A
+  fax's id is remembered for as long once it prints, so a fax handed
+  over twice prints once. A received fax
   prints under the workflows crate's `FaxHeader`, through
   `Printer::fax`, so the API still builds no bytes of its own. Its tests send
   through a real `starprint-relay`, a dev-dependency only, so no relay
@@ -121,7 +126,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 - `crates/starprint-fax/`: the fax protocol, which does no I/O. A
   number is the Bech32m address of an identity key (`number`), a line
   record is signed by Ed25519 and ML-DSA-65 (`line`), a fax is sealed to
-  an X-Wing key under ChaCha20-Poly1305 (`fax`), and `relay` holds the
+  a random X-Wing key the line replaces now and then, under
+  ChaCha20-Poly1305 (`fax`), and `relay` holds the
   requests a line makes of a relay. A fax's contents are bytes here; the
   API decides they are a job.
 - `apps/starprint-relay/`: the public server faxes travel through, a

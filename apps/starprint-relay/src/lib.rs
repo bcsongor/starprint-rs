@@ -452,7 +452,7 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Method, header};
     use serde_json::Value;
-    use starprint_fax::Identity;
+    use starprint_fax::{FaxKey, Identity};
     use tower::ServiceExt as _;
 
     async fn call(
@@ -496,7 +496,7 @@ mod tests {
     /// A new line with its record.
     fn test_line(name: &str) -> (Identity, LineRecord) {
         let identity = Identity::generate();
-        let record = identity.record(name, 1);
+        let record = identity.record(&FaxKey::generate(), name, 1);
         (identity, record)
     }
 
@@ -666,7 +666,7 @@ mod tests {
         )
         .await;
 
-        let renamed = anna.record("Anna B", 2);
+        let renamed = anna.record(&FaxKey::generate(), "Anna B", 2);
         let (status, _) = call(
             &router,
             Method::PUT,

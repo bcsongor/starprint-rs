@@ -6,8 +6,13 @@
 //! Every fax prints, under a header saying who sent it and when: there
 //! is no approving strangers yet. A number is the address of its line's
 //! identity key, so a relay cannot hand out another key under it.
+//!
+//! The key faxes are sealed to is replaced every week and forgotten
+//! once no fax sealed to it can still be waiting, so secrets stolen
+//! later open only the last few weeks. The line also remembers the faxes
+//! it has printed for as long, so one handed over twice prints once.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,8 +21,8 @@ use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use starprint_fax::{
-    Collect, Fax, Held, HeldFaxes, Identity, Line, LineRecord, NAME_LIMIT, Number, RelayInfo,
-    base64_bytes, check_relay_name, now,
+    Collect, Fax, FaxKey, Held, HeldFaxes, Identity, Line, LineRecord, NAME_LIMIT, Number,
+    RelayInfo, base64_bytes, check_relay_name, now,
 };
 use starprint_workflows::{FaxHeader, Job};
 
@@ -29,6 +34,15 @@ use crate::problem::Problem;
 
 /// How often the relays are polled.
 const POLL_EVERY: Duration = Duration::from_secs(10);
+const DAY: u64 = 24 * 60 * 60;
+/// How long a fax key is the one the record carries.
+const ROTATE_AFTER: u64 = 7 * DAY;
+/// How long a relay holds a fax nobody polls for.
+const RELAY_HOLD: u64 = 30 * DAY;
+/// How long a fax key and the memory of a printed fax are kept: until
+/// the last fax sealed to the key has left its relay, and a day over for
+/// clocks that disagree.
+const KEEP: u64 = ROTATE_AFTER + RELAY_HOLD + DAY;
 
 /// What a fax carries, sealed: a job as `/jobs` takes it, and the
 /// picture a picture job needs, as JSON. The recipient prints it with its
@@ -83,12 +97,105 @@ pub struct LineSecret {
     pub seed: Vec<u8>,
     /// When the record last changed, so relays keep the newest.
     pub updated: u64,
+    /// The keys faxes are sealed to, oldest first. The last is the one
+    /// the record carries; the rest open faxes still on their way.
+    #[serde(default)]
+    pub fax_keys: Vec<StoredKey>,
+    /// The faxes printed, by [`Fax::id`], and when.
+    #[serde(default)]
+    pub printed: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StoredKey {
+    /// Unix seconds.
+    pub created: u64,
+    #[serde(with = "base64_bytes")]
+    pub seed: Vec<u8>,
+}
+
+impl StoredKey {
+    fn new(created: u64) -> Self {
+        Self {
+            created,
+            seed: FaxKey::generate().seed().to_vec(),
+        }
+    }
+
+    fn key(&self) -> FaxKey {
+        FaxKey::from_seed(self.seed.as_slice().try_into().expect("a 32-byte seed"))
+    }
 }
 
 impl LineSecret {
+    fn new(identity: &Identity, now: u64) -> Self {
+        Self {
+            number: identity.number(),
+            seed: identity.seed().to_vec(),
+            updated: now,
+            fax_keys: vec![StoredKey::new(now)],
+            printed: BTreeMap::new(),
+        }
+    }
+
     fn identity(&self) -> Identity {
         Identity::from_seed(self.seed.as_slice().try_into().expect("a 32-byte seed"))
     }
+
+    /// Whether the newest fax key is due to be replaced, or missing.
+    fn is_stale(&self, now: u64) -> bool {
+        self.fax_keys
+            .last()
+            .is_none_or(|key| now.saturating_sub(key.created) >= ROTATE_AFTER)
+    }
+
+    /// Makes a new fax key if the newest is due, and forgets the keys
+    /// and printed faxes kept long enough. The record changes with the
+    /// key, so it is dated again.
+    fn rotate(&mut self, now: u64) {
+        if self.is_stale(now) {
+            self.fax_keys.push(StoredKey::new(now));
+            self.updated = now.max(self.updated + 1);
+        }
+        let newest = self.fax_keys.len() - 1;
+        let mut index = 0;
+        self.fax_keys.retain(|key| {
+            let keep = index == newest || now.saturating_sub(key.created) < KEEP;
+            index += 1;
+            keep
+        });
+        self.printed
+            .retain(|_, printed| now.saturating_sub(*printed) < KEEP);
+    }
+
+    /// The record's fax key. There is one once [`Self::rotate`] has run.
+    fn fax_key(&self) -> Result<FaxKey, String> {
+        self.fax_keys
+            .last()
+            .map(StoredKey::key)
+            .ok_or_else(|| "the line has no fax key yet".to_owned())
+    }
+}
+
+/// The settings, once the line's fax key is fresh: rotating it writes
+/// `fax.json`, so that happens only when it is due.
+fn settings(printers: &Printers) -> Result<FaxSettings, String> {
+    let now = now();
+    let settings = printers.data.fax();
+    if !settings
+        .line
+        .as_ref()
+        .is_some_and(|line| line.is_stale(now))
+    {
+        return Ok(settings);
+    }
+    printers.data.change_fax(|settings| {
+        if let Some(line) = &mut settings.line {
+            line.rotate(now);
+        }
+        Ok(settings.clone())
+    })
 }
 
 /// A relay as the server knows it: the name it gave, where it answers.
@@ -221,15 +328,11 @@ pub fn activate(printers: &Printers, replace: bool) -> Result<(), Problem> {
             "The fax line is already active.",
         ));
     }
-    let identity = Identity::generate();
+    let line = LineSecret::new(&Identity::generate(), now());
     printers
         .data
         .change_fax(|settings| {
-            settings.line = Some(LineSecret {
-                number: identity.number(),
-                seed: identity.seed().to_vec(),
-                updated: now(),
-            });
+            settings.line = Some(line);
             Ok(())
         })
         .map_err(Problem::not_saved)
@@ -410,7 +513,7 @@ pub async fn send(
     request: SendRequest,
     image: Option<Bytes>,
 ) -> Result<Sent, Problem> {
-    let settings = printers.data.fax();
+    let settings = settings(printers).map_err(Problem::not_saved)?;
     let Some(secret) = settings.line.clone() else {
         return Err(Problem::new(
             StatusCode::CONFLICT,
@@ -438,6 +541,7 @@ pub async fn send(
     }
 
     let identity = secret.identity();
+    let fax_key = secret.fax_key().map_err(Problem::not_saved)?;
     let contents = serde_json::to_vec(&Contents {
         job: request.job,
         image: image.map(|bytes| bytes.to_vec()),
@@ -457,7 +561,7 @@ pub async fn send(
         let line = checked(record, to).map_err(|e| Problem::bad_gateway(format!("{e}.")))?;
         // The relay holds faxes only from lines it has, so publish ours
         // there first. It is cheap for a relay that already has it.
-        let own = identity.record(&settings.name, secret.updated);
+        let own = identity.record(&fax_key, &settings.name, secret.updated);
         put_line(client, &relay.url, &own)
             .await
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
@@ -522,7 +626,13 @@ pub async fn serve(printers: Arc<Printers>) {
 /// One round of every relay: publish the line if need be, print what
 /// is waiting and confirm what printed.
 pub async fn poll(printers: &Printers, published: &mut HashMap<String, u64>) {
-    let settings = printers.data.fax();
+    let settings = match settings(printers) {
+        Ok(settings) => settings,
+        Err(e) => {
+            eprintln!("starprint-api: the fax key could not be replaced: {e}");
+            return;
+        }
+    };
     let Some(secret) = settings.line.clone() else {
         return;
     };
@@ -551,7 +661,7 @@ async fn poll_relay(
 ) -> Result<(), String> {
     let client = &printers.fax.client;
     if published.get(&relay.url) != Some(&secret.updated) {
-        let record = identity.record(&settings.name, secret.updated);
+        let record = identity.record(&secret.fax_key()?, &settings.name, secret.updated);
         put_line(client, &relay.url, &record).await?;
         published.insert(relay.url.clone(), secret.updated);
     }
@@ -570,7 +680,7 @@ async fn poll_relay(
     let held: HeldFaxes = read(response).await?;
     let mut done = Vec::new();
     for Held { id, fax } in held.faxes {
-        match receive(printers, settings, relay, identity, secret.number, &fax).await {
+        match receive(printers, settings, relay, secret, &fax).await {
             Ok(()) => done.push(id),
             Err(Receive::Refused(problem)) => {
                 eprintln!("starprint-api: fax from {} refused: {problem}", fax.from);
@@ -606,18 +716,34 @@ async fn receive(
     printers: &Printers,
     settings: &FaxSettings,
     relay: &RelayEntry,
-    identity: &Identity,
-    number: Number,
+    secret: &LineSecret,
     fax: &Fax,
 ) -> Result<(), Receive> {
+    // Read afresh, since this round may have printed it already.
+    let id = fax.id();
+    let printed = |settings: &FaxSettings| {
+        settings
+            .line
+            .as_ref()
+            .is_some_and(|line| line.printed.contains_key(&id))
+    };
+    if printed(&printers.data.fax()) {
+        return Err(Receive::Refused("it has already printed".to_owned()));
+    }
     let client = &printers.fax.client;
     let record = get_line(client, &relay.url, fax.from)
         .await
         .map_err(Receive::Later)?
         .ok_or_else(|| Receive::Refused(format!("the relay no longer has {}", fax.from)))?;
     let sender = checked(record, fax.from).map_err(Receive::Refused)?;
-    let contents = fax
-        .open(identity, number, &sender)
+    // Newest first: all but a fax that waited is sealed to that one.
+    let contents = secret
+        .fax_keys
+        .iter()
+        .rev()
+        .map(|key| fax.open(&key.key(), secret.number, &sender))
+        .reduce(|opened, next| opened.or(next))
+        .unwrap_or_else(|| Err("the line has no fax key".to_owned()))
         .map_err(Receive::Refused)?;
     let contents: Contents = serde_json::from_slice(&contents)
         .map_err(|e| Receive::Refused(format!("the fax's contents are not a job: {e}")))?;
@@ -643,6 +769,17 @@ async fn receive(
     printers::send(&profile.printer, payload, &printers.queue)
         .await
         .map_err(|p| Receive::Later(p.detail().to_owned()))?;
+    // It printed whether or not this is saved, so a failure is only
+    // logged: the worst it costs is a second copy.
+    let remembered = printers.data.change_fax(|settings| {
+        if let Some(line) = &mut settings.line {
+            line.printed.insert(id, now());
+        }
+        Ok(())
+    });
+    if let Err(e) = remembered {
+        eprintln!("starprint-api: a printed fax could not be remembered: {e}");
+    }
     Ok(())
 }
 
@@ -820,6 +957,30 @@ mod tests {
         )
         .unwrap();
 
+        // Ben replaces his fax key while the fax waits; the one it was
+        // sealed to is kept, so it still opens.
+        ben.data
+            .change_fax(|settings| {
+                let line = settings.line.as_mut().unwrap();
+                line.rotate(now() + ROTATE_AFTER);
+                Ok(())
+            })
+            .unwrap();
+        let ben_line = ben.data.fax().line.unwrap();
+        assert_eq!(ben_line.fax_keys.len(), 2);
+        let held: HeldFaxes = ben
+            .fax
+            .client
+            .post(line_url(&relay, ben_number, "/poll"))
+            .json(&Collect::poll(&ben_line.identity(), ben_number))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let waiting = held.faxes[0].fax.clone();
+
         let received = tokio::spawn(async move {
             let (mut socket, _) = printer.accept().await.unwrap();
             let mut bytes = Vec::new();
@@ -839,6 +1000,16 @@ mod tests {
 
         // Confirmed, so nothing prints twice.
         poll(&ben, &mut published).await;
+
+        // Nor does a relay handing the same fax over again: the printer
+        // is no longer listening, and nothing tries to reach it.
+        let settings = ben.data.fax();
+        assert_eq!(settings.line.as_ref().unwrap().printed.len(), 1);
+        let again = receive(&ben, &settings, &settings.relays[0], &ben_line, &waiting).await;
+        assert!(
+            matches!(&again, Err(Receive::Refused(why)) if why.contains("already printed")),
+            "printed once"
+        );
     }
 
     #[tokio::test]
@@ -883,6 +1054,29 @@ mod tests {
         assert_eq!(view(&anna).relays[0].online, Some(true), "it just answered");
         assert!(remove_relay(&anna, "LONRELAY01").unwrap());
         assert!(!remove_relay(&anna, "LONRELAY01").unwrap());
+    }
+
+    #[test]
+    fn a_fax_key_is_replaced_weekly_and_forgotten_once_nothing_needs_it() {
+        let mut line = LineSecret::new(&Identity::generate(), 0);
+        line.printed.insert("an old fax".to_owned(), 0);
+        let first = line.fax_keys[0].seed.clone();
+        line.rotate(ROTATE_AFTER - 1);
+        assert_eq!((line.fax_keys.len(), line.updated), (1, 0), "not yet due");
+
+        line.rotate(ROTATE_AFTER);
+        assert_eq!(line.fax_keys.len(), 2, "a new one, the old one kept");
+        assert_eq!(line.fax_keys[0].seed, first);
+        assert_eq!(line.updated, ROTATE_AFTER, "the record is dated again");
+        assert_eq!(line.printed.len(), 1);
+
+        // A fax sealed to the first key can wait at a relay for as long
+        // as the relay holds it, so the key outlives its week by that.
+        line.rotate(KEEP);
+        let seeds: Vec<_> = line.fax_keys.iter().map(|key| &key.seed).collect();
+        assert_eq!(seeds.len(), 2, "one more made, the first forgotten");
+        assert!(!seeds.contains(&&first));
+        assert!(line.printed.is_empty(), "and so is what printed then");
     }
 
     #[test]

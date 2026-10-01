@@ -338,7 +338,10 @@ case, and the star is optional.
 **Encryption.** Every key is hybrid, classical and post-quantum. The
 identity signs with Ed25519 and ML-DSA-65, and faxes are sealed to an
 X-Wing key (X25519 and ML-KEM-768) that it signs, under
-ChaCha20-Poly1305. A relay sees two numbers, a time and a size.
+ChaCha20-Poly1305. A relay sees two numbers, a time and a size. The
+X-Wing key is random and the server replaces it every week, keeping an
+old one for 38 days, until no fax sealed to it can still be waiting at a
+relay. Secrets stolen later open only the faxes of those weeks.
 
 **Receiving.** The server polls each relay every ten seconds and prints
 what is waiting on the fax printer with that printer's own settings,
@@ -348,7 +351,10 @@ thermal and red on impact, then the sender's number in bold and their
 name: the name the sender is filed under in the fax book, or else
 whatever the sender set. The number is checked. A fax that cannot print yet, because
 the printer is unreachable or there is none, waits at the relay and is
-tried again. Every fax prints: there is no approving strangers yet.
+tried again. Every fax prints: there is no approving strangers yet. A
+fax prints once: the server remembers what it has printed for 38 days,
+so a relay handing one over again, or a confirmation that was lost,
+does not print it twice.
 
 ### Fax line
 
@@ -477,7 +483,7 @@ saying what went wrong.
 | `printers.json` | The profiles, as an object keyed by name, each in the shape [`PUT`](#put-v1printersname) takes |
 | `schedules.json` | The schedules, as an object keyed by id, each in the shape [`POST`](#post-v1schedules) takes |
 | `token` | The token |
-| `fax.json` | The fax line's secret seed, number and settings, its relays and the fax book |
+| `fax.json` | The fax line's secret seed, number, fax keys and settings, its relays, the fax book and the faxes printed lately |
 | `lock` | Held while a server has the directory open. A second server on the same directory fails to start |
 
 Each file is read once at startup and rewritten whole whenever the API

@@ -133,8 +133,8 @@ mod tests {
 
     #[test]
     fn only_the_line_collects_and_only_as_it_asked() {
-        let (anna, anna_record) = test_line("Anna");
-        let (ben, _) = test_line("Ben");
+        let (anna, _, anna_record) = test_line("Anna");
+        let (ben, _, _) = test_line("Ben");
         let line = anna_record.check().unwrap();
 
         let poll = Collect::poll(&anna, line.number);
