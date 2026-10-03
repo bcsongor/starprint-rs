@@ -57,7 +57,10 @@ token is what admits a request.
 ## The phone page
 
 `GET /` is a page for printing from a phone's browser: a task card, or
-a picture from the camera roll, to any profile. It is served without
+a picture from the camera roll, to any profile. Once the
+[fax line](#fax) is active and has a relay, it faxes them too, and
+keeps the fax book: contacts, recent numbers to file, and the line's
+own number to copy or show as a QR code. It is served without
 the token, asks for it once and keeps it in the browser. A link with the
 token in the fragment, `/#token=<token>`, fills it in; the desktop app's
 API button shows one as a QR code. The page keeps the token in the

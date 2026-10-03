@@ -353,10 +353,10 @@ with no validation. It is for programs that build their own command
 streams. Do not use it. If a job seems to need it, say what you were
 trying to do instead.
 
-`GET /` is a page for people, not agents: a phone's browser prints a
-task card or a picture from it, and `GET /icon.png` is its icon. If the
-user wants to print from a phone, point them at the server's URL on the
-LAN, or the QR code under the desktop app's API button, which carries
-the token. Add the page to the home screen after connecting, so the
-shortcut keeps the token. A shortcut that asks for it again was saved
-before; replace it.
+`GET /` is a page for people, not agents: a phone's browser prints or
+faxes a task card or a picture from it and keeps the fax book, and
+`GET /icon.png` is its icon. If the user wants to print from a phone,
+point them at the server's URL on the LAN, or the QR code under the
+desktop app's API button, which carries the token. Add the page to the
+home screen after connecting, so the shortcut keeps the token. A
+shortcut that asks for it again was saved before; replace it.

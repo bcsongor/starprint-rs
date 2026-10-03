@@ -4,6 +4,9 @@
  * changing one character moves every run and two numbers that differ
  * look different at a glance. This is for the eye only; the
  * checksum and the key check are what make a number safe.
+ *
+ * The phone page, `apps/starprint-api/src/phone.html`, has no build
+ * step and carries a copy of this rule. Change both together.
  */
 
 /** Everything after `star1`, which every number starts with. */
