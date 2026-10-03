@@ -705,16 +705,21 @@
   let adding = false;
   const addReady = () => !adding && $("contact-name").value.trim() !== "" && isFaxNumber($("contact-number").value);
 
+  let codeGeneration = 0;
+
   /**
    * The line's number as a QR code for another phone's camera, drawn
    * while its fold is open. It is the server's preview of the code as
    * the chosen printer would print it, so the page encodes nothing
-   * itself, and another printer means drawing it again.
+   * itself, and another printer means drawing it again. A reply
+   * overtaken by a newer request is dropped.
    */
   async function drawCode() {
     if (!$("mine").open) return;
+    const mine = ++codeGeneration;
     try {
       const preview = await api("POST", printerPath("preview"), JSON.stringify({ job: { kind: "qr", data: line.number } }));
+      if (mine !== codeGeneration) return;
       const img = new Image();
       img.src = preview.image;
       img.alt = "Your number as a QR code";
@@ -724,7 +729,7 @@
       $("code").hidden = false;
       $("code-error").textContent = "";
     } catch (error) {
-      $("code-error").textContent = error.message;
+      if (mine === codeGeneration) $("code-error").textContent = error.message;
     }
   }
 
