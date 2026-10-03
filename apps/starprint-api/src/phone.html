@@ -514,11 +514,14 @@
     return contact?.number ?? (isFaxNumber(to) ? compact(to) : null);
   }
 
+  /** Whether a fax line is active and has a relay, which is when the page offers faxing. */
+  const sends = (fax) => Boolean(fax?.number && fax.relays.length > 0);
+
   let printing = false;
   const filled = () => tab === "picture" ? file !== null : $("text").value.trim() !== "";
   const ready = () => !printing && online() && filled();
   // A fax needs no printer here: the other side prints it.
-  const faxReady = () => !printing && line?.number && line.relays.length > 0 && filled() && recipient() !== null;
+  const faxReady = () => !printing && sends(line) && filled() && recipient() !== null;
   function enable() {
     $("print-button").disabled = !ready();
     $("fax-button").disabled = !faxReady();
@@ -735,10 +738,11 @@
 
   /** Offers faxing once the line can send: the fax book, and the line's own number to hand over. */
   function drawFax(previous) {
-    const usable = Boolean(line?.number && line.relays.length > 0);
-    $("fax").hidden = !usable;
-    if (!usable) return;
-    if (JSON.stringify(line.contacts) !== JSON.stringify(previous?.contacts)) {
+    $("fax").hidden = !sends(line);
+    if (!sends(line)) return;
+    // A line that could not send was never drawn, so nothing of it is on the page to keep.
+    const drawn = sends(previous) ? previous : null;
+    if (JSON.stringify(line.contacts) !== JSON.stringify(drawn?.contacts)) {
       $("contacts").replaceChildren(...line.contacts.map((c) => new Option(c.name)));
     }
     $("nobody").hidden = line.contacts.length > 0;
@@ -761,7 +765,7 @@
         $("contact-name").focus();
       },
     ));
-    if (line.number !== previous?.number) {
+    if (line.number !== drawn?.number) {
       $("own").replaceChildren(faxNumber(line.number));
       $("code").hidden = true;
       drawCode();
