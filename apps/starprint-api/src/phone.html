@@ -407,6 +407,7 @@
     }
     select.value = first.value;
     schedulePreview();
+    drawCode();
   }
 
   /** The job the form describes, with `fields`, as JSON, or as a form when it has a picture to carry. */
@@ -705,11 +706,13 @@
   const addReady = () => !adding && $("contact-name").value.trim() !== "" && isFaxNumber($("contact-number").value);
 
   /**
-   * The line's number as a QR code for another phone's camera. It is
-   * the server's preview of the code as the chosen printer would print
-   * it, so the page encodes nothing itself.
+   * The line's number as a QR code for another phone's camera, drawn
+   * while its fold is open. It is the server's preview of the code as
+   * the chosen printer would print it, so the page encodes nothing
+   * itself, and another printer means drawing it again.
    */
   async function drawCode() {
+    if (!$("mine").open) return;
     try {
       const preview = await api("POST", printerPath("preview"), JSON.stringify({ job: { kind: "qr", data: line.number } }));
       const img = new Image();
@@ -756,7 +759,7 @@
     if (line.number !== previous?.number) {
       $("own").replaceChildren(faxNumber(line.number));
       $("code").hidden = true;
-      if ($("mine").open) drawCode();
+      drawCode();
     }
     showRecipient();
   }
@@ -858,6 +861,7 @@
   $("printer").addEventListener("change", () => {
     localStorage.setItem("printer", $("printer").value);
     schedulePreview();
+    drawCode();
   });
   for (const button of document.querySelectorAll("[role=tab]")) {
     button.addEventListener("click", () => {
@@ -893,7 +897,7 @@
     adding = false;
     $("add-button").disabled = !addReady();
   });
-  $("mine").addEventListener("toggle", () => { if ($("mine").open) drawCode(); });
+  $("mine").addEventListener("toggle", drawCode);
   $("copy").addEventListener("click", copy);
   $("choose").addEventListener("click", () => $("file").click());
   $("file").addEventListener("change", (event) => {
