@@ -661,7 +661,8 @@ fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
     });
     match size {
         Some((width, height))
-            if height / TALLEST > width || u64::from(width) * u64::from(height) > PIXELS_LIMIT =>
+            if height > width.saturating_mul(TALLEST)
+                || u64::from(width) * u64::from(height) > PIXELS_LIMIT =>
         {
             Err(format!(
                 "A faxed picture can have up to {} megapixels and be up to {TALLEST} times as tall as it is wide.",
@@ -1226,6 +1227,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "kind": "picture" })).unwrap();
         assert!(fits(&picture, Some(&png(10, 10 * TALLEST))).is_ok());
         assert!(fits(&picture, Some(&png(1, 1000))).is_err(), "a strip");
+        assert!(fits(&picture, Some(&png(1, TALLEST + 1))).is_err());
         assert!(
             fits(&picture, Some(&png(8000, 8000))).is_err(),
             "too many pixels"
