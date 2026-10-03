@@ -9,7 +9,8 @@
 //! a restart loses nothing. A fax is deleted once its line confirms it,
 //! or after the hold, and every fax taken and delivered is logged: who
 //! to whom and how big, never what it says. Each client address
-//! may leave only so many faxes and new lines (see `limit`).
+//! may leave only so many faxes and new lines, and poll only so often
+//! (see `limit`).
 //!
 //! What a relay and a server say to each other is `starprint-fax`'s;
 //! this is only the keeping.
@@ -52,6 +53,10 @@ const FAXES: (u32, u32) = (10, 30);
 /// Lines a client address may publish: each is a new identity to fax
 /// from, so they are held to fewer.
 const NEW_LINES: (u32, u32) = (5, 10);
+/// Polls a client address may make. A poll answers with everything held
+/// for its line, so it is the costly request. A line polls every ten
+/// seconds, which makes this five lines' worth behind one address.
+const POLLS: (u32, u32) = (30, 1800);
 /// Lines a relay holds in all. Each stays in memory and in the file for
 /// good, so this is what stops new identities filling them.
 const LINES: usize = 10_000;
@@ -67,6 +72,7 @@ struct Relay {
     store: Store,
     faxes: Limit,
     new_lines: Limit,
+    polls: Limit,
 }
 
 /// Where a request's client address comes from.
@@ -171,6 +177,7 @@ pub fn router(name: String, clients: Clients, db: &std::path::Path) -> Result<Ro
         store,
         faxes: Limit::new(FAXES.0, FAXES.1),
         new_lines: Limit::new(NEW_LINES.0, NEW_LINES.1),
+        polls: Limit::new(POLLS.0, POLLS.1),
     });
     Ok(Router::new()
         .route("/v1/relay", get(info))
@@ -337,6 +344,7 @@ async fn poll(
     request: Request,
 ) -> Result<Json<HeldFaxes>, Problem> {
     let number = number(&text)?;
+    take(&relay.polls, relay.client(&request), "polls")?;
     let collect: Collect = json(request, JSON_LIMIT).await?;
     check(&collect, Action::Poll, &relay.name, &relay.line(number)?)?;
     let faxes = stored(
@@ -681,6 +689,28 @@ mod tests {
             publish("192.0.2.2").await.status(),
             StatusCode::NO_CONTENT,
             "the last address is the proxy's word for the client"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_address_polls_only_so_often() {
+        let router = test_router("LONRELAY01");
+        let (_, record) = test_line();
+        let poll = || {
+            let request = axum::http::Request::builder()
+                .method(Method::POST)
+                .uri(path(record.number, "/poll"))
+                .header("x-forwarded-for", "192.0.2.1")
+                .body(Body::from("{}"))
+                .unwrap();
+            router.clone().oneshot(request)
+        };
+        for _ in 0..POLLS.0 {
+            assert_eq!(poll().await.unwrap().status(), StatusCode::BAD_REQUEST);
+        }
+        assert_eq!(
+            poll().await.unwrap().status(),
+            StatusCode::TOO_MANY_REQUESTS
         );
     }
 

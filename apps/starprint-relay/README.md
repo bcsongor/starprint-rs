@@ -31,10 +31,11 @@ confirm them, with a request that names this relay.
 Every fax arrives and prints, so the relay limits each client address
 instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
 lines, then 10 an hour, since each is a new identity to fax from.
-Polls, confirms and a line republishing itself are not limited. Past a
-limit the relay answers `429` with `Retry-After`. A poll answers with
-everything held for its line, so limit connections and slow readers at
-the proxy.
+A poll answers with everything held for its line, so polls are limited
+too: a burst of 30, then 1,800 an hour, which is five lines polling
+every ten seconds. Confirms and a line republishing itself are not
+limited. Past a limit the relay answers `429` with `Retry-After`. Limit
+connections and slow readers at the proxy.
 
 Everything is in the `--db` file, so a restart loses nothing. A fax
 is deleted as soon as its line confirms it printed, and a fax nobody

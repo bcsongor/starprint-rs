@@ -142,9 +142,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   in `main.rs`. It keeps a fax only until its line confirms it
   printed, or 30 days. It holds only so many lines, and so many bytes
   for one line and for all of them. Since every fax prints, `limit`
-  holds each client address to so many faxes and new lines an hour, the
-  address coming from `X-Forwarded-For` only with `--behind-proxy`. It
-  logs who faxed whom, never what, and knows nothing of printers.
+  holds each client address to so many faxes, new lines and polls an
+  hour, the address coming from `X-Forwarded-For` only with
+  `--behind-proxy`. It logs who faxed whom, never what, and knows
+  nothing of printers.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
 - `skills/starprint-print/`: the skill users install into their own
