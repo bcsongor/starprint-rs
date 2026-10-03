@@ -711,15 +711,21 @@
   let codeGeneration = 0;
 
   /**
-   * The line's number as a QR code for another phone's camera, drawn
-   * while its fold is open. It is the server's preview of the code as
-   * the chosen printer would print it, so the page encodes nothing
-   * itself, and another printer means drawing it again. A reply
-   * overtaken by a newer request is dropped.
+   * The line's number as a QR code for another phone's camera, shown
+   * only while its fold is open and drawn afresh each time it opens. It
+   * is the server's preview of the code as the chosen printer would
+   * print it, so the page encodes nothing itself, and another printer
+   * means drawing it again. A reply overtaken by a newer call is
+   * dropped, and a failed one takes the old code off the page, since
+   * that code is an earlier printer's or an earlier number's.
    */
   async function drawCode() {
-    if (!$("mine").open) return;
+    // Counted before the fold is looked at, so closing it drops a reply still on its way.
     const mine = ++codeGeneration;
+    if (!$("mine").open) {
+      $("code").hidden = true;
+      return;
+    }
     try {
       const preview = await api("POST", printerPath("preview"), JSON.stringify({ job: { kind: "qr", data: line.number } }));
       if (mine !== codeGeneration) return;
@@ -732,7 +738,9 @@
       $("code").hidden = false;
       $("code-error").textContent = "";
     } catch (error) {
-      if (mine === codeGeneration) $("code-error").textContent = error.message;
+      if (mine !== codeGeneration) return;
+      $("code").hidden = true;
+      $("code-error").textContent = error.message;
     }
   }
 
