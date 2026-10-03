@@ -52,8 +52,8 @@ const FAXES: (u32, u32) = (10, 30);
 /// Lines a client address may publish: each is a new identity to fax
 /// from, so they are held to fewer.
 const NEW_LINES: (u32, u32) = (5, 10);
-/// Lines a relay holds in all. Every one is kept in memory and none is
-/// ever dropped, so this is what stops new identities filling both.
+/// Lines a relay holds in all. Each stays in memory and in the file for
+/// good, so this is what stops new identities filling them.
 const LINES: usize = 10_000;
 /// A fax nobody polls for is deleted after thirty days.
 const HOLD_SECONDS: u64 = 30 * 24 * 60 * 60;

@@ -341,11 +341,12 @@ case, and the star is optional.
 identity signs with Ed25519 and ML-DSA-65, and faxes are sealed to an
 X-Wing key (X25519 and ML-KEM-768) that it signs, under
 ChaCha20-Poly1305. A relay sees two numbers, a time and a size. The
-X-Wing key is random and the server replaces it every week, keeping an
-old one for 31 days after that, until no fax sealed to it can still be
-waiting at a relay, and dropping it at the next weekly replacement.
-Secrets stolen later open only the faxes of those weeks. The requests a server signs to collect its faxes name the relay
-they are for, so one relay cannot use them at another.
+X-Wing key is random and the server replaces it every week. An old one
+is kept for 31 days after that, until no fax sealed to it can still be
+waiting at a relay, and dropped at the next weekly replacement. Secrets
+stolen later open only the faxes of those weeks. The requests a server
+signs to collect its faxes name the relay they are for, so one relay
+cannot use them at another.
 
 **Receiving.** The server polls each relay every ten seconds and prints
 what is waiting on the fax printer with that printer's own settings,
@@ -354,15 +355,17 @@ with `FAX` and when it was sent, on this server's clock, inverse on
 thermal and red on impact, then the sender's number in bold and the
 name it is filed under in the fax book, if it is. A line names nobody,
 so no sender can choose what their fax prints under. The number is
-checked. A fax that cannot print yet, because
-the printer is unreachable or there is none, waits at the relay and is
-tried again. Every fax prints: there is no approving strangers yet. A
-fax prints once: the server remembers what it has printed for as long
-as it keeps the key that opens it, so a relay handing one over again,
-or a confirmation that was lost, does not print it twice. A fax takes
-only so much paper: a job of up to 4,000 characters as JSON, with up to
-100 line breaks in its strings, and a picture of up to 50 megapixels
-and four times as tall as it is wide. More is refused when it is sent,
+checked. A fax that cannot print yet, because the printer is
+unreachable or there is none, waits at the relay and is tried again.
+Every fax prints: there is no approving strangers yet. A fax prints
+once: the server remembers what it has printed for as long as it keeps
+the key that opens it, so a relay handing one over again, or a
+confirmation that was lost, does not print it twice.
+
+**Limits.** A fax prints unasked, so it may take only so much paper.
+Its job is at most 4,000 characters as JSON, with at most 100 line
+breaks in its strings. Its picture is at most 50 megapixels, and at
+most four times as tall as it is wide. More is refused when it is sent,
 and dropped if it arrives anyway.
 
 ### Fax line
@@ -457,13 +460,14 @@ in turn and leaves the fax at the first that has it.
 
 `200` with `{ "to", "name", "relay" }`: the number, the name it is
 filed under in the fax book, absent if it is not, and the relay that
-took the fax. The fax
-prints when the recipient next polls. `400` if `to` starts like a
-number but its checksum does not hold or the job is
-[too long for a fax](#fax), `409` before the line is
-activated or a relay is added, `404` if `to` is neither a number nor a
-name in the fax book or no relay has the number, `502` if a relay refused or
-did not answer, or answered with a key that is not the number's.
+took the fax. The fax prints when the recipient next polls.
+
+`400` if `to` starts like a number but its checksum does not hold, or
+the job is [too large for a fax](#fax). `409` before the line is
+activated or a relay is added. `404` if `to` is neither a number nor a
+name in the fax book, or no relay has the number. `502` if a relay
+refused or did not answer, or answered with a key that is not the
+number's.
 
 ## Errors
 

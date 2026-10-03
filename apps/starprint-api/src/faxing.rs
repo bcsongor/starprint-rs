@@ -12,9 +12,9 @@
 //! later open only the last few weeks. The line also remembers the faxes
 //! it has printed for as long, so one handed over twice prints once.
 //!
-//! A relay is not trusted, and neither is a sender: a relay's answer is
-//! read only up to a size, a request for a line's faxes names the relay
-//! it is for, and a fax may take only so much paper.
+//! Neither a relay nor a sender is trusted. A relay's answer is read up
+//! to a limit, a request for a line's faxes names the relay it is for,
+//! and a fax may take only so much paper.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -47,16 +47,17 @@ const RELAY_HOLD: u64 = 30 * DAY;
 /// last fax sealed to it has left its relay, and a day over for clocks
 /// that disagree.
 const KEEP: u64 = RELAY_HOLD + DAY;
-/// The most a relay's answer is read: a line's full allowance at a
-/// relay, 64 MiB, as base64 in JSON, and room to spare.
+/// How much of a relay's answer is read. A line's full allowance at a
+/// relay is 64 MiB, which is about 86 MiB as base64 in JSON.
 const ANSWER_LIMIT: usize = 128 << 20;
-/// A fax prints unasked, so it may take only so much paper and memory:
-/// a job of this many characters and line breaks, as the JSON it
-/// travels as, and a picture of this many pixels, no taller than this
-/// many times its width.
+/// A fax prints unasked, so its job may be only so long: this many
+/// characters, as the JSON it travels as.
 const JOB_LIMIT: usize = 4_000;
+/// The line breaks a faxed job may have, since each feeds paper.
 const LINES_LIMIT: usize = 100;
-const PIXELS_LIMIT: u64 = 50_000_000;
+/// The megapixels a faxed picture may have, since it is decoded whole.
+const MEGAPIXELS: u64 = 50;
+/// How many times its width a faxed picture may be tall.
 const TALLEST: u32 = 4;
 /// Long enough for a person and their printer, short enough for a line
 /// on paper.
@@ -189,16 +190,15 @@ impl LineSecret {
             self.fax_keys.push(StoredKey::new(now));
             self.updated = now.max(self.updated + 1);
         }
-        // Faxes are sealed to a key until the next one replaces it,
-        // which is later than a week on a server that was switched off,
-        // so a key's time runs from then and not from when it was made.
-        let replaced: Vec<u64> = self.fax_keys[1..].iter().map(|key| key.created).collect();
-        let mut replaced = replaced.into_iter();
-        self.fax_keys.retain(|_| {
-            replaced
-                .next()
-                .is_none_or(|at| now.saturating_sub(at) < KEEP)
-        });
+        // Senders seal to a key until the next one replaces it, which a
+        // server that was switched off does late. So a key's time runs
+        // from its replacement, not from when it was made. The keys are
+        // oldest first, so those past their time lead.
+        let expired = self.fax_keys[1..]
+            .iter()
+            .take_while(|next| now.saturating_sub(next.created) >= KEEP)
+            .count();
+        self.fax_keys.drain(..expired);
         // A printed fax is remembered while a key that opens it is kept.
         let oldest = self.fax_keys[0].created;
         self.printed.retain(|_, printed| *printed >= oldest);
@@ -243,15 +243,15 @@ pub struct RelayEntry {
 
 impl FaxSettings {
     /// Puts `number` first among the recent ones.
-    fn met(&mut self, number: Number, at: u64) {
+    fn add_recent(&mut self, number: Number, at: u64) {
         self.recent.retain(|r| r.number != number);
         self.recent.insert(0, Recent { number, at });
         self.recent.truncate(RECENT);
     }
 
-    /// Where faxes print, if there is anywhere: the first profile when
-    /// none is chosen, or when the chosen one was renamed or deleted,
-    /// since faxes waiting for it would wait unseen.
+    /// Where faxes print, if there is anywhere. The first profile stands
+    /// in when none is chosen, and when the chosen one was renamed or
+    /// deleted, since a fax waiting for it would wait unseen.
     fn printer(&self, data: &Data) -> Option<Profile> {
         self.printer
             .as_ref()
@@ -618,7 +618,7 @@ pub async fn send(
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
         // It went whether or not this is saved, so a failure is only logged.
         if let Err(e) = printers.data.change_fax(|settings| {
-            settings.met(to, now());
+            settings.add_recent(to, now());
             Ok(())
         }) {
             eprintln!("starprint-api: a faxed number could not be remembered: {e}");
@@ -659,18 +659,17 @@ fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
             .into_dimensions()
             .ok()
     });
-    match size {
-        Some((width, height))
-            if height > width.saturating_mul(TALLEST)
-                || u64::from(width) * u64::from(height) > PIXELS_LIMIT =>
-        {
-            Err(format!(
-                "A faxed picture can have up to {} megapixels and be up to {TALLEST} times as tall as it is wide.",
-                PIXELS_LIMIT / 1_000_000
-            ))
-        }
-        _ => Ok(()),
+    let Some((width, height)) = size else {
+        return Ok(());
+    };
+    if height > width.saturating_mul(TALLEST)
+        || u64::from(width) * u64::from(height) > MEGAPIXELS * 1_000_000
+    {
+        return Err(format!(
+            "A faxed picture can have up to {MEGAPIXELS} megapixels and be up to {TALLEST} times as tall as it is wide."
+        ));
     }
+    Ok(())
 }
 
 fn request_for(job: Job) -> JobRequest {
@@ -865,7 +864,7 @@ async fn receive(
         if let Some(line) = &mut settings.line {
             line.printed.insert(id, now);
         }
-        settings.met(sender.number, now);
+        settings.add_recent(sender.number, now);
         Ok(())
     });
     if let Err(e) = remembered {
@@ -1243,9 +1242,9 @@ mod tests {
         let mut settings = FaxSettings::default();
         let numbers: Vec<_> = (0..=RECENT as u8).map(|i| Number::of(&[i])).collect();
         for (at, number) in numbers.iter().enumerate() {
-            settings.met(*number, at as u64);
+            settings.add_recent(*number, at as u64);
         }
-        settings.met(numbers[5], 99);
+        settings.add_recent(numbers[5], 99);
         let kept: Vec<_> = settings.recent.iter().map(|r| r.number).collect();
         assert_eq!(kept.len(), RECENT);
         assert_eq!(kept[0], numbers[5], "moved to the front");

@@ -303,7 +303,7 @@
     schedulePreview();
   }
 
-  /** The job the form describes, beside `fields`, as JSON or, with the picture beside it, as a form. */
+  /** The job the form describes, with `fields`, as JSON, or as a form when it has a picture to carry. */
   function body(fields = {}) {
     const job = tab === "picture" ? { kind: "picture" } : {
       kind: "task-card",
@@ -409,7 +409,7 @@
   }
 
   /**
-   * Posts what the form holds to `path`, beside `fields`, and clears it
+   * Posts what the form holds to `path`, with `fields`, and clears it
    * unless it was edited meanwhile. The button reads `busy` while it
    * goes, `done` once it has, then `rest`.
    */

@@ -99,9 +99,9 @@ impl Store {
         Ok(true)
     }
 
-    /// The faxes waiting for `number`, oldest first, once every line's
-    /// faxes that arrived before `since` are deleted: a relay that only
-    /// hid them would keep them for as long as nobody faxed.
+    /// Deletes every line's faxes that arrived before `since`, then
+    /// answers with those waiting for `number`, oldest first. Hiding the
+    /// old ones instead would keep them until someone next faxed.
     pub fn waiting_for(&self, number: Number, since: u64) -> rusqlite::Result<Vec<Held>> {
         let db = self.db.lock().unwrap();
         expire(&db, since)?;

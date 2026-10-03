@@ -184,9 +184,9 @@ impl IdentityKey {
 
 /// What a relay stores and hands out for a number. It checks itself:
 /// the number against the identity, the rest against the identity's
-/// signature. Of two records for a number, the one updated
-/// last wins. It names nobody: a line is called whatever the fax book
-/// that holds it says.
+/// signature. Of two records for a number, the one updated last wins.
+/// It names nobody: a line is called whatever the fax book that holds
+/// it says.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LineRecord {

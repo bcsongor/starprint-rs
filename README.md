@@ -88,14 +88,15 @@ including running the server on its own.
 Send any job to someone else's receipt printer by their number, like
 `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. Open the phone button in the header,
 activate your line and add a relay by its address; it tells you its
-name, like `LONRELAY01`. To hand your number to someone, the QR button beside
-it puts it in the QR code tab to print. Then press **Fax** beside **Print**,
-paste a number or pick someone from your fax book, and send. A fax prints under
-the name you gave its sender in your fax book, or under their number alone; the
-fax book lists recent numbers so you can add them. Faxes are sealed end to end
-with post-quantum keys, so the relay cannot read them, and every fax sent to
-you prints on your fax printer while the app runs, headed with who sent it and
-when.
+name, like `LONRELAY01`. Then press **Fax** beside **Print**, paste a number
+or pick someone from your fax book, and send. To give someone your number,
+press the QR button beside it and print the card.
+
+Every fax sent to you prints on your fax printer while the app runs. Its header
+gives the time, the sender's number and, if they are in your fax book, the name
+you gave them. The fax book also lists recent numbers, so you can add one
+afterwards. Faxes are sealed end to end with post-quantum keys, so the relay
+cannot read them.
 
 A relay is a small public server anyone can run:
 `cargo run --release -p starprint-relay -- --name LONRELAY01`,

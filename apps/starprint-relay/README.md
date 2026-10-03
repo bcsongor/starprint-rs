@@ -22,11 +22,11 @@ starprint-relay --name <NAME> [--listen <addr>] [--db <file>] [--behind-proxy]
 | `--db <file>` | `relay.db` | SQLite file for lines and faxes, created if missing |
 | `--behind-proxy` | Off | Take each client's address from the last `X-Forwarded-For` entry, the one the TLS proxy adds. Only behind a proxy: without one, anyone could claim any address |
 
-It stores up to 10,000 line records and holds sealed faxes, up to 100
-or 64 MiB a line, 8 GiB for every line together, and for 30 days. It
-takes no token: records check themselves, faxes are signed by lines it
-holds, and only a line's identity can poll for its faxes or confirm
-them, with a request that names this relay.
+It stores up to 10,000 line records. It holds sealed faxes for 30 days:
+up to 100 of them or 64 MiB for one line, and 8 GiB for all lines
+together. It takes no token: records check themselves, faxes are signed
+by lines it holds, and only a line's identity can poll for its faxes or
+confirm them, with a request that names this relay.
 
 Every fax arrives and prints, so the relay limits each client address
 instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
@@ -50,9 +50,9 @@ recipient and size:
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | `/v1/relay` | `{ "name", "version" }` |
-| `GET` | `/v1/lines/{number}` | The line record for a number, written with dots: `star1en2su3z68yscvky0n3j3l2qwny4dkq7s` |
-| `PUT` | `/v1/lines/{number}` | Store a line record. `409` if the number belongs to another identity here or a newer record is held |
-| `POST` | `/v1/lines/{number}/faxes` | Hold a sealed fax for the line. `202` with its `id` |
+| `GET` | `/v1/lines/{number}` | The line record for a number, written without its star: `star1en2su3z68yscvky0n3j3l2qwny4dkq7s` |
+| `PUT` | `/v1/lines/{number}` | Store a line record. `400` if it does not check, `409` if a newer one is held, `507` if the relay holds as many lines as it can |
+| `POST` | `/v1/lines/{number}/faxes` | Hold a sealed fax for the line. `202` with its `id`, `507` if too much is waiting |
 | `POST` | `/v1/lines/{number}/poll` | The faxes held for the line, for a request signed by it |
 | `POST` | `/v1/lines/{number}/confirm` | Delete faxes that printed, by `id`, for a request signed by the line |
 

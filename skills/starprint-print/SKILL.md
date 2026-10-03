@@ -246,9 +246,9 @@ printing: the JSON above in the `job` part and the file in `image`.
 There is no `cut`, `density` or `speed`. A fax takes a job of up to
 4,000 characters of JSON with 100 line breaks, and a picture of up to
 50 megapixels and four times as tall as it is wide; more is a `400`.
-The fax prints when the other
-side next checks its relay, usually within ten seconds, but only while
-their server is running; until then it waits.
+The fax prints when the other side next checks its relay, usually
+within ten seconds, but only while their server is running; until then
+it waits.
 
 Faxing needs the line set up. `GET /v1/fax` shows it:
 
