@@ -3,7 +3,9 @@ resolver = "3"
 members = [
   "crates/starprint",
   "crates/starprint-workflows",
+  "crates/starprint-fax",
   "apps/starprint-api",
+  "apps/starprint-relay",
   "apps/starprint-gui/src-tauri",
 ]
 # Root `cargo test`, `cargo run --example …` and friends act on the library

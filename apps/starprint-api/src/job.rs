@@ -5,7 +5,7 @@ use axum::body::Bytes;
 use axum::http::StatusCode;
 use image::DynamicImage;
 use serde::Deserialize;
-use starprint_workflows::{Head, Job, Preview, Printer, Speed, check_density};
+use starprint_workflows::{FaxHeader, Head, Job, Preview, Printer, Speed, check_density};
 
 use crate::problem::Problem;
 
@@ -35,6 +35,22 @@ impl JobRequest {
         self.build(profile, image, |printer, job, image| {
             printer
                 .document(job, image)
+                .map(|document| Bytes::from(document.into_bytes()))
+        })
+        .await
+    }
+
+    /// [`document`](Self::document) for a fax that arrived, under
+    /// `header`.
+    pub async fn fax(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+        header: FaxHeader,
+    ) -> Result<Bytes, Problem> {
+        self.build(profile, image, move |printer, job, image| {
+            printer
+                .fax(&header, job, image)
                 .map(|document| Bytes::from(document.into_bytes()))
         })
         .await

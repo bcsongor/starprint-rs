@@ -18,10 +18,13 @@ croner = "4"
 dirs = "6"
 # The decoded picture a job or preview is built from.
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Talking to fax relays.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 # `preserve_order` keeps GET /v1/printers in the order the file lists.
 serde_json = { version = "1", features = ["preserve_order"] }
 starprint = { path = "../../crates/starprint", features = ["image"] }
+starprint-fax = { path = "../../crates/starprint-fax" }
 starprint-workflows = { path = "../../crates/starprint-workflows" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal", "time", "macros"] }
 # Tokens and schedule ids.
@@ -33,5 +36,7 @@ uuid = { version = "1", features = ["v4"] }
 # by hand.
 # A data directory that is thrown away after the test.
 tempfile = "3"
+# A real relay for the fax tests to send through.
+starprint-relay = { path = "../starprint-relay" }
 tokio = { version = "1", features = ["io-util", "macros", "time", "test-util"] }
 tower = { version = "0.5", features = ["util"] }

@@ -16,6 +16,9 @@ pub trait TextStyle: Sized {
     fn set_tall(self, on: bool) -> Self;
     /// Red on impact; thermal has no second colour, so inverse.
     fn set_accent(self, on: bool) -> Self;
+    /// Whether the accent inks the cell around a character, as inverse
+    /// does, so that a line of it is a bar with edges of its own.
+    const ACCENT_FILLS: bool;
 }
 
 impl TextStyle for Builder<StarLine> {
@@ -34,6 +37,8 @@ impl TextStyle for Builder<StarLine> {
     fn set_accent(self, on: bool) -> Self {
         self.invert(on)
     }
+
+    const ACCENT_FILLS: bool = true;
 }
 
 impl TextStyle for Builder<Impact> {
@@ -53,6 +58,8 @@ impl TextStyle for Builder<Impact> {
     fn set_accent(self, on: bool) -> Self {
         self.color(if on { Color::Red } else { Color::Black })
     }
+
+    const ACCENT_FILLS: bool = false;
 }
 
 /// Keeps the line breaks and the spaces the user typed, so text can be

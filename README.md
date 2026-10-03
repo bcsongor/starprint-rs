@@ -77,11 +77,30 @@ every request needs, and can put the server on your LAN at an address and port
 you choose. It can also point the app at another machine's Starprint server by
 URL and token, so a laptop prints through a box that is always on: profiles,
 schedules and previews are then that server's. With the server on the LAN,
-the button also shows a QR code: scan it with a phone to print a task card or
-a picture from there. See the
+the button also shows a QR code: scan it with a phone to print or fax a task
+card or a picture from there. See the
 [API reference](apps/starprint-api/API.md) for every route
 and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
 including running the server on its own.
+
+## Fax
+
+Send any job to someone else's receipt printer by their number, like
+`*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. Open the phone button in the header,
+activate your line and add a relay by its address; it tells you its
+name, like `LONRELAY01`. Then press **Fax** beside **Print**, paste a number
+or pick someone from your fax book, and send. To give someone your number,
+press the QR button beside it and print the card.
+
+Every fax sent to you prints on your fax printer while the app runs. Its header
+gives the time, the sender's number and, if they are in your fax book, the name
+you gave them. The fax book also lists recent numbers, so you can add one
+afterwards. Faxes are sealed end to end with post-quantum keys, so the relay
+cannot read them.
+
+A relay is a small public server anyone can run:
+`cargo run --release -p starprint-relay -- --name LONRELAY01`,
+behind a TLS proxy. See [its README](apps/starprint-relay/README.md).
 
 ## Rust library
 

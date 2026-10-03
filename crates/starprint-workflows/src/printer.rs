@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use starprint::graphics::DeviceProfile;
 use starprint::{Builder, Color, Document, PrintMode, PrintSpeed, StarLine};
 
-use crate::{Job, Picture, picture, test_page};
+use crate::{FaxHeader, Job, Picture, picture, test_page};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -195,6 +195,26 @@ impl Printer {
     /// The bytes `job` prints on this printer. A [`Job::Picture`] needs
     /// `image`; the other kinds ignore it.
     pub fn document(&self, job: &Job, image: Option<&DynamicImage>) -> Result<Document, String> {
+        self.build(job, image, None)
+    }
+
+    /// [`document`](Self::document) for a fax that arrived: the same
+    /// job under `header`, in one document.
+    pub fn fax(
+        &self,
+        header: &FaxHeader,
+        job: &Job,
+        image: Option<&DynamicImage>,
+    ) -> Result<Document, String> {
+        self.build(job, image, Some(header))
+    }
+
+    fn build(
+        &self,
+        job: &Job,
+        image: Option<&DynamicImage>,
+        header: Option<&FaxHeader>,
+    ) -> Result<Document, String> {
         match job {
             Job::TaskCard(card) if card.text.trim().is_empty() => {
                 return Err("The task text is empty.".to_owned());
@@ -229,6 +249,10 @@ impl Printer {
                 } else {
                     head.print_density(density).print_speed(speed.into())
                 };
+                let head = match header {
+                    Some(header) => header.print(head, paper),
+                    None => head,
+                };
                 let doc = match job {
                     Job::TaskCard(card) => card.document(head, paper, cut),
                     Job::Text(text) => text.document(head, paper, cut),
@@ -253,6 +277,10 @@ impl Printer {
                 // width and every one of them ignores it.
                 let paper = Paper::Mm80;
                 let head = starprint::impact();
+                let head = match header {
+                    Some(header) => header.print(head, paper),
+                    None => head,
+                };
                 match job {
                     Job::TaskCard(card) => Ok(card.document(head, paper, cut)),
                     Job::Text(text) => Ok(text.document(head, paper, cut)),

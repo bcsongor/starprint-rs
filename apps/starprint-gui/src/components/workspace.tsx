@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
-import { CalendarClockIcon, PrinterIcon } from "lucide-react";
+import { CalendarClockIcon, PhoneIcon, PrinterIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ApiButton } from "@/components/api-button";
 import { CardPreview } from "@/components/card-preview";
+import { FaxButton } from "@/components/fax-button";
+import { FaxNumber } from "@/components/fax-number";
+import { FaxDrawer } from "@/components/fax-drawer";
 import { LinearBar } from "@/components/linear-bar";
 import { NoteForm } from "@/components/note-form";
 import { NotePreview } from "@/components/note-preview";
@@ -26,6 +29,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAutoPrint } from "@/hooks/use-auto-print";
+import { useFax } from "@/hooks/use-fax";
 import { usePreview } from "@/hooks/use-preview";
 import { useServer } from "@/hooks/use-server";
 import {
@@ -96,6 +100,8 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const [pictureFile, setPictureFile] = useState<File | null>(null);
   const [printing, setPrinting] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const { fax, refresh: refreshFax } = useFax(api);
+  const [faxDrawer, setFaxDrawer] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   /** Runs a change against the server and reports what went wrong. */
@@ -185,6 +191,29 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
     await send(job, job.kind === "picture" ? pictureFile : null, NAMES[workflow]);
   };
 
+  /** Faxes the job in the form; rejects, after saying why, if it did
+   * not go. */
+  const sendFax = async (to: string) => {
+    const what = NAMES[workflow];
+    try {
+      const sent = await api.sendFax(
+        to,
+        job,
+        job.kind === "picture" ? pictureFile : null,
+      );
+      toast.success(`Faxed ${what}${sent.name ? ` to ${sent.name}` : ""}`, {
+        description: (
+          <>
+            <FaxNumber number={sent.to} /> via {sent.relay}.
+          </>
+        ),
+      });
+    } catch (error) {
+      toast.error(`Could not fax ${what}`, { description: String(error) });
+      throw error;
+    }
+  };
+
   useAutoPrint(settings.linear, (card) =>
     send({ kind: "task-card", ...card }, null, card.reference ?? "task card"),
   );
@@ -264,8 +293,19 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
       <header className="dark grid grid-cols-[var(--col)_minmax(0,1fr)] items-end border-b bg-background py-3 text-foreground">
         {/* The API and the schedules serve whichever profile is named,
             so they sit in the picker's column, at the form's right edge
-            like the cut switch below. */}
+            like the cut switch below. The fax line has a printer of its
+            own, so it sits apart, before the picker. */}
         <div className="flex items-end gap-2 px-4">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Fax"
+            title="Fax"
+            disabled={!fax}
+            onClick={() => setFaxDrawer(true)}
+          >
+            <PhoneIcon />
+          </Button>
           <ProfileToolbar
             profiles={profiles}
             profile={profile}
@@ -381,6 +421,29 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
                 <CalendarClockIcon />
                 Schedule
               </Button>
+              <FaxButton
+                fax={fax}
+                ready={ready}
+                onSend={sendFax}
+                onSetUp={() => setFaxDrawer(true)}
+                onSaveContact={async (number, name) => {
+                  try {
+                    await api.putContact(number, name);
+                    await refreshFax();
+                  } catch (error) {
+                    toast.error("Could not save the contact", {
+                      description: String(error),
+                    });
+                    throw error;
+                  }
+                }}
+                onRemoveContact={(contact) =>
+                  attempt("Could not remove the contact", async () => {
+                    await api.deleteContact(contact.number);
+                    await refreshFax();
+                  })
+                }
+              />
               {!profile && (
                 <span className="text-sm text-destructive">No printer.</span>
               )}
@@ -474,6 +537,55 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
             settings.useRemote
               ? `the clock at ${server.url}`
               : "this computer's clock"
+          }
+        />
+      )}
+
+      {fax && (
+        <FaxDrawer
+          open={faxDrawer}
+          onOpenChange={setFaxDrawer}
+          fax={fax}
+          profiles={profiles}
+          onActivate={() =>
+            attempt("Could not activate the line", async () => {
+              await api.activateFax();
+              await refreshFax();
+            })
+          }
+          onReplace={() =>
+            attempt("Could not get a new number", async () => {
+              await api.replaceFaxLine();
+              await refreshFax();
+            })
+          }
+          onShowCode={(number) => {
+            loadJob({ kind: "qr", ...DEFAULT_QR, data: number, caption: number });
+            setFaxDrawer(false);
+          }}
+          onSettings={(changes) =>
+            attempt("Could not save the fax settings", async () => {
+              await api.putFax(changes);
+              await refreshFax();
+            })
+          }
+          onAddRelay={async (url) => {
+            try {
+              const relay = await api.addRelay(url);
+              toast.success(`Added ${relay.name}`, { description: relay.url });
+              await refreshFax();
+            } catch (error) {
+              toast.error("Could not add the relay", {
+                description: String(error),
+              });
+              throw error;
+            }
+          }}
+          onRemoveRelay={(relay) =>
+            attempt("Could not remove the relay", async () => {
+              await api.removeRelay(relay.name);
+              await refreshFax();
+            })
           }
         />
       )}

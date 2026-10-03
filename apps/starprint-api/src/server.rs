@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 
 use crate::app;
 use crate::data::Data;
+use crate::faxing;
 use crate::printers::{PrintQueue, Printers};
 use crate::schedule;
 
@@ -17,9 +18,9 @@ use crate::schedule;
 pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9110);
 
 /// A server on a task of the current runtime, running the schedules in
-/// its data for as long as it serves. Dropping it stops it without
-/// waiting; [`Server::shutdown`] waits for requests in flight, not for
-/// scheduled jobs.
+/// its data and polling its fax relays for as long as it serves.
+/// Dropping it stops it without waiting; [`Server::shutdown`] waits for
+/// requests in flight, not for scheduled jobs or faxes.
 pub struct Server {
     addr: SocketAddr,
     stop: oneshot::Sender<()>,
@@ -51,16 +52,19 @@ impl Server {
                 })
                 .into_future();
             tokio::pin!(serve);
-            // Stop scheduling and cancel queued scheduled jobs before
-            // waiting for HTTP requests to drain. A blocking write
-            // already in progress keeps its queue guard until it ends.
+            // Stop scheduling and polling for faxes, and cancel queued
+            // scheduled jobs and faxes, before waiting for HTTP requests
+            // to drain. A blocking write already in progress keeps its
+            // queue guard until it ends.
             {
-                let scheduler = schedule::serve(printers);
-                tokio::pin!(scheduler);
+                let scheduler = schedule::serve(Arc::clone(&printers));
+                let fax = faxing::serve(printers);
+                tokio::pin!(scheduler, fax);
                 tokio::select! {
                     result = &mut serve => return result,
                     _ = stopped => {},
                     () = &mut scheduler => {},
+                    () = &mut fax => {},
                 }
             }
             let _ = drain.send(());

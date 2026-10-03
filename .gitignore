@@ -2,3 +2,5 @@
 /tmp
 # Star forbids redistributing its manuals; keep them here, out of the repository.
 manuals/*.pdf
+# The relay's database, when run from the checkout.
+/relay.db*

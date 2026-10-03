@@ -1,6 +1,6 @@
 ---
 name: starprint-print
-description: Print task cards, text, note slips, QR codes, pictures and test pages on a Star receipt printer through the local starprint-api server, and manage its printer profiles and schedules. Use when the user asks to print something, to print on a schedule, or mentions a receipt printer, task card, note slip, QR code or test page.
+description: Print task cards, text, note slips, QR codes, pictures and test pages on a Star receipt printer through the local starprint-api server, fax them to someone else's printer by number, and manage its printer profiles, schedules and fax line. Use when the user asks to print or fax something, to print on a schedule, or mentions a receipt printer, task card, note slip, QR code, test page or fax number.
 ---
 
 # Printing with starprint
@@ -220,6 +220,72 @@ A schedule prints without asking anyone, every time it fires. Confirm
 the expression with the user before creating one, and read back what
 exists before changing or deleting anything.
 
+## Faxing
+
+Any job can be faxed to someone else's printer by their number, which
+looks like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`, or by the name
+they are filed under in the fax book. The fax is sealed end to end and
+prints on their printer with their own settings.
+
+```bash
+curl -s -X POST http://127.0.0.1:9110/v1/fax/send \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"to":"*star1en2su3z68yscvky0n3j3l2qwny4dkq7s","job":{"kind":"text","text":"Lunch at one?"}}'
+```
+
+```json
+{ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "name": "Csongor", "relay": "LONRELAY01" }
+```
+
+When the user names someone, send `"to": "Anna"`; the server looks the
+name up in the fax book. `name` is who the number is filed as there,
+and is absent for a number that is not; read it back to the user, since
+it is how they know the number was right. A picture goes as a form, as for
+printing: the JSON above in the `job` part and the file in `image`.
+There is no `cut`, `density` or `speed`. A fax takes a job of up to
+4,000 characters of JSON with 100 line breaks, and a picture of up to
+50 megapixels and four times as tall as it is wide; more is a `400`.
+The fax prints when the other side next checks its relay, usually
+within ten seconds, but only while their server is running; until then
+it waits.
+
+Faxing needs the line set up. `GET /v1/fax` shows it:
+
+```json
+{ "number": "*star15089lwj8gn70m8gepwymguzl5qkangla", "printer": null, "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }], "contacts": [{ "name": "Csongor", "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s" }], "recent": [] }
+```
+
+`contacts` is the fax book. `PUT /v1/fax/contacts/{number}`, with the
+number written without its star, files it under `{"name":"..."}`, and
+`DELETE` takes it out. `recent` lists the numbers lately faxed or
+printed from that are not in it, newest first. Offer to save a number
+the user faxed for the first time, and ask what to call it.
+
+A `409` on sending means `number` is still `null` or there are no
+`relays`. `POST /v1/fax/line` activates the line and answers with its
+number. `PUT /v1/fax/line` gets an active line a new number, and
+anyone with the old one can no longer reach it, so only do that when
+the user asks. `POST /v1/fax/relays` with `{"url":"https://..."}` adds a
+relay, which answers with its name, and `DELETE /v1/fax/relays/{name}`
+removes one, a `404` if there is none of that name. `PUT /v1/fax` with
+`{"printer":null}` sets which profile faxes print on (`null` is the
+first). Ask before doing any of these: the user chooses their relay.
+
+A fax is printing on someone else's paper. Confirm the number and what
+is being sent before sending, send it once, and never fax anyone the
+user did not name. A `404` means no one in the fax book has that name,
+or no relay the server knows has that number; check it with the user
+rather than guessing any part of it. A
+`400` means the number's checksum does not hold, so a character is
+mistyped. A `502` saying the record's key is not the number's means a
+relay is answering for someone else: tell the user and do not work
+around it.
+
+Every fax that arrives prints on this server's fax printer, under a
+header with the sender's name, number and when it was sent. There is no
+approving senders yet.
+
 ## Managing printers
 
 A profile is created or replaced by name with `PUT`:
@@ -249,7 +315,8 @@ The server keeps its profiles, schedules and token in one directory:
 `starprint` under the platform's configuration directory, or wherever
 `--data` points. `printers.json` holds the profiles by name and
 `schedules.json` the schedules by id, each entry in the shape the API
-takes it; `token` holds the token. Each file is read once at startup
+takes it; `token` holds the token, and `fax.json` the fax line, whose
+secret seed must never be shown or copied anywhere. Each file is read once at startup
 and rewritten whole after a change over the API, so a hand edit means
 a restart and is best done while the server is stopped. One server per
 directory: a second one on the same directory fails to start.
@@ -263,11 +330,12 @@ a sentence worth reading back to the user.
 | --- | --- |
 | `400` | Bad JSON, an invalid option, a profile or schedule that will not do, or a job that could not be built. A misspelt field inside `job` is ignored rather than refused, so check names against this skill |
 | `401` | No token, or not this server's; ask the user for it |
-| `404` | No printer by that name or no schedule by that id; list them again |
+| `404` | No printer by that name, no schedule by that id, or no relay has that fax number; list them again, or check the number with the user |
+| `409` | Faxing before the fax line is activated or has a relay |
 | `413` | Too big: 1 MiB of JSON, 16 MiB for a form |
 | `415` | Wrong content type |
 | `500` | A change could not be written to the data directory; nothing changed |
-| `502` | The printer could not be reached |
+| `502` | The printer could not be reached, or for a fax, a relay refused or did not answer |
 
 A success returns `{"bytesSent": 284}`. That is a completed socket
 write and nothing else. The server cannot tell whether the printer

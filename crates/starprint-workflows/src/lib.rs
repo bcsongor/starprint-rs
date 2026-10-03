@@ -10,6 +10,7 @@
 
 mod printer;
 
+pub mod fax_header;
 pub mod note;
 pub mod picture;
 pub mod preview;
@@ -21,6 +22,7 @@ pub mod text;
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Cut, Document, Protocol};
 
+pub use fax_header::FaxHeader;
 pub use note::Note;
 pub use picture::Picture;
 pub use preview::{Png, Preview};

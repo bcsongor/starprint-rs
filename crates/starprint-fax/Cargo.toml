@@ -1,0 +1,28 @@
+[package]
+name = "starprint-fax"
+version = "1.1.0"
+description = "The starprint fax protocol: numbers that are key addresses, signed line records and sealed faxes"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+# Keys, signatures and sealed faxes travel inside JSON.
+base64 = "0.22"
+# Numbers are written as Bech32m addresses, `*star1…`.
+bech32 = "0.12"
+# Signed by Ed25519 and ML-DSA-65, sealed to an X-Wing key (X25519 and
+# ML-KEM-768) under ChaCha20-Poly1305. See `fax`.
+chacha20poly1305 = "0.11"
+ed25519-dalek = "3"
+getrandom = "0.4"
+hkdf = "0.13"
+ml-dsa = "0.1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.11"
+x-wing = { version = "0.1", features = ["getrandom"] }
+
+[dev-dependencies]
+serde_json = "1"

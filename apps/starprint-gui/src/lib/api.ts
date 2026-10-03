@@ -253,9 +253,57 @@ export interface Server {
   token: string;
 }
 
+/** A relay as the server knows it, by the name it gave. */
+export interface FaxRelay {
+  name: string;
+  url: string;
+  /** Null until the server has polled it. */
+  online: boolean | null;
+  /** Why the last poll failed. */
+  problem?: string;
+}
+
+/** A number in the fax book, under the name given here. */
+export interface FaxContact {
+  name: string;
+  number: string;
+}
+
+/** A number this line faxed or printed a fax from lately. */
+export interface FaxRecent {
+  number: string;
+  /** Unix seconds. */
+  at: number;
+}
+
+/** The server's fax line, as `GET /v1/fax` gives it. */
+export interface FaxLine {
+  /** Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`; null until the line is activated. */
+  number: string | null;
+  /** The profile faxes print on; null for the first one. */
+  printer: string | null;
+  relays: FaxRelay[];
+  /** The fax book, by name. */
+  contacts: FaxContact[];
+  /** Those not in the fax book, newest first. */
+  recent: FaxRecent[];
+}
+
+export interface Sent {
+  to: string;
+  /** The recipient's name in the fax book, if they are in it. */
+  name?: string;
+  relay: string;
+}
+
 /** A job, as JSON or, with an image beside it, as a form. */
 function jobBody(job: Job, image: File | null): RequestInit {
-  const request = JSON.stringify({ job });
+  return requestBody({ job }, image);
+}
+
+/** A request that carries a job, with its picture as a form part. */
+function requestBody(value: object, image: File | null): RequestInit {
+  const request = JSON.stringify(value);
   if (!image) {
     return {
       body: request,
@@ -289,6 +337,9 @@ export function createClient({ url, token }: Server) {
   const json = <T>(method: string, path: string, init?: RequestInit) =>
     send(method, path, init).then((response) => response.json() as Promise<T>);
   const printer = (name: string) => `/v1/printers/${encodeURIComponent(name)}`;
+  /** A number in a path goes without its star. */
+  const contact = (number: string) =>
+    `/v1/fax/contacts/${encodeURIComponent(number.trim().replace(/^\*/, ""))}`;
 
   return {
     printers: () =>
@@ -310,6 +361,24 @@ export function createClient({ url, token }: Server) {
     replaceSchedule: (id: string, spec: ScheduleSpec) =>
       json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
+    fax: () => json<FaxLine>("GET", "/v1/fax"),
+    putFax: (settings: { printer: string | null }) =>
+      json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
+    activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
+    replaceFaxLine: () => json<FaxLine>("PUT", "/v1/fax/line"),
+    addRelay: (url: string) =>
+      json<{ name: string; url: string }>(
+        "POST",
+        "/v1/fax/relays",
+        jsonBody({ url }),
+      ),
+    removeRelay: (name: string) =>
+      send("DELETE", `/v1/fax/relays/${encodeURIComponent(name)}`),
+    putContact: (number: string, name: string) =>
+      json<FaxContact>("PUT", contact(number), jsonBody({ name })),
+    deleteContact: (number: string) => send("DELETE", contact(number)),
+    sendFax: (to: string, job: Job, image: File | null) =>
+      json<Sent>("POST", "/v1/fax/send", requestBody({ to, job }, image)),
   };
 }
 
