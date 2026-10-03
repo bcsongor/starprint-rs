@@ -54,7 +54,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   and nothing else changes, since every request goes through the one
   client in `src/lib/api.ts`. `use-server` starts over when the client
   changes and reports whether the server answered, shown by the
-  button's dot, and its `version` from the printer list, which the
+  button's dot, which is left out on loopback, where the app is only
+  talking to itself, and its `version` from the printer list, which the
   button compares with the app's own since the two are released
   together. The embedded server keeps running either way, and the app
   still needs it to start. The schedules drawer says whose clock the
@@ -71,9 +72,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   Linear's GraphQL endpoint every 10 seconds, and a task card for each
   newly assigned open issue, posted to the server like any other job.
   Fax is the server's too: the phone button opens a drawer to activate
-  the line, name it, choose its printer, keep the fax book and add
-  relays, and **Fax** beside **Print** sends the job in the form to a
-  number or a name in the fax book. Every number on screen is drawn by
+  the line, choose its printer and add relays, and to load the number
+  into the QR form as a card to print, and **Fax** beside **Print**
+  sends the job in the form to a number or a name in the fax book,
+  which is kept in the same popover with the recent numbers it lacks.
+  Every number on screen is drawn by
   `FaxNumber`: chunks of uneven length, each its own colour with a gap
   before it, cut by a hash of the whole number
   (`src/lib/fax-number.ts`), so a one-character change moves every
@@ -102,8 +105,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   probe lives here too, behind `/status` and exported as `reachable`,
   so it takes the printer's turn like a job. `src/phone.html` is the
   phone page, served at `/` without the token: one file, no framework
-  and no build step, so the command line serves it too. It prints task
-  cards and pictures through the routes and keeps the token in the URL
+  and no build step, so the command line serves it too. It prints and
+  faxes task cards and pictures through the routes, offering the fax
+  book's names but showing no numbers, and keeps the token in the URL
   fragment, since an iOS home-screen shortcut has storage of its own.
   It draws the server's `Preview` as it comes, like the desktop app.
   `printers::PrintQueue`, exported at the crate root, serialises
@@ -111,11 +115,14 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `faxing` is the server's side of fax: `fax.json` in the data
   directory, activating the line, sending, what a fax carries, and the loop that polls relays
   and prints through the queue like the scheduler. The loop also
-  replaces the line's fax key every week and forgets old ones after 38
-  days, a week and the relay's 30-day hold, which is the line's forward
-  secrecy; the two periods must stay in step with the relay's hold. A
-  fax's id is remembered for as long once it prints, so a fax handed
-  over twice prints once. A received fax
+  replaces the line's fax key every week and forgets an old one 31 days
+  after the next replaced it, the relay's 30-day hold and a day, which
+  is the line's forward secrecy; the period must stay in step with the
+  relay's hold. A fax's id is remembered for as long as a key that opens
+  it, so a fax handed over twice prints once. Neither a relay nor a
+  sender is trusted: a relay's answer is read only up to a size, a
+  request for the line's faxes names the relay it is for, and a fax may
+  take only so much paper. A received fax
   prints under the workflows crate's `FaxHeader`, through
   `Printer::fax`, so the API still builds no bytes of its own. Its tests send
   through a real `starprint-relay`, a dev-dependency only, so no relay
@@ -133,7 +140,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
 - `apps/starprint-relay/`: the public server faxes travel through, a
   router in `lib.rs`, its SQLite file in `store.rs` and a command line
   in `main.rs`. It keeps a fax only until its line confirms it
-  printed, or 30 days. Since every fax prints, `limit` holds each client address
+  printed, or 30 days, and only so many bytes for one line and for all
+  of them. Since every fax prints, `limit` holds each client address
   to so many faxes and new lines an hour, the address coming from
   `X-Forwarded-For` only with `--behind-proxy`. It logs who faxed whom, never what, and knows nothing of
   printers.

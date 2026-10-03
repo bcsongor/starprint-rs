@@ -201,23 +201,12 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
         job,
         job.kind === "picture" ? pictureFile : null,
       );
-      toast.success(`Faxed ${what} to ${sent.name || sent.to}`, {
+      toast.success(`Faxed ${what}${sent.name ? ` to ${sent.name}` : ""}`, {
         description: (
           <>
             <FaxNumber number={sent.to} /> via {sent.relay}.
           </>
         ),
-        // A number typed out once is worth keeping.
-        action: sent.contact
-          ? undefined
-          : {
-              label: "Save",
-              onClick: () =>
-                void attempt("Could not save the contact", async () => {
-                  await api.putContact(sent.to, sent.name || "New contact");
-                  await refreshFax();
-                }),
-            },
       });
     } catch (error) {
       toast.error(`Could not fax ${what}`, { description: String(error) });
@@ -304,8 +293,19 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
       <header className="dark grid grid-cols-[var(--col)_minmax(0,1fr)] items-end border-b bg-background py-3 text-foreground">
         {/* The API and the schedules serve whichever profile is named,
             so they sit in the picker's column, at the form's right edge
-            like the cut switch below. */}
+            like the cut switch below. The fax line has a printer of its
+            own, so it sits apart, before the picker. */}
         <div className="flex items-end gap-2 px-4">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Fax"
+            title="Fax"
+            disabled={!fax}
+            onClick={() => setFaxDrawer(true)}
+          >
+            <PhoneIcon />
+          </Button>
           <ProfileToolbar
             profiles={profiles}
             profile={profile}
@@ -322,16 +322,6 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
             settings={settings}
             onSettings={onSettings}
           />
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Fax"
-            title="Fax"
-            disabled={!fax}
-            onClick={() => setFaxDrawer(true)}
-          >
-            <PhoneIcon />
-          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -436,6 +426,23 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
                 ready={ready}
                 onSend={sendFax}
                 onSetUp={() => setFaxDrawer(true)}
+                onSaveContact={async (number, name) => {
+                  try {
+                    await api.putContact(number, name);
+                    await refreshFax();
+                  } catch (error) {
+                    toast.error("Could not save the contact", {
+                      description: String(error),
+                    });
+                    throw error;
+                  }
+                }}
+                onRemoveContact={(contact) =>
+                  attempt("Could not remove the contact", async () => {
+                    await api.deleteContact(contact.number);
+                    await refreshFax();
+                  })
+                }
               />
               {!profile && (
                 <span className="text-sm text-destructive">No printer.</span>
@@ -552,6 +559,10 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               await refreshFax();
             })
           }
+          onShowCode={(number) => {
+            loadJob({ kind: "qr", ...DEFAULT_QR, data: number, caption: number });
+            setFaxDrawer(false);
+          }}
           onSettings={(changes) =>
             attempt("Could not save the fax settings", async () => {
               await api.putFax(changes);
@@ -573,23 +584,6 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
           onRemoveRelay={(relay) =>
             attempt("Could not remove the relay", async () => {
               await api.removeRelay(relay.name);
-              await refreshFax();
-            })
-          }
-          onSaveContact={async (number, name) => {
-            try {
-              await api.putContact(number, name);
-              await refreshFax();
-            } catch (error) {
-              toast.error("Could not save the contact", {
-                description: String(error),
-              });
-              throw error;
-            }
-          }}
-          onRemoveContact={(contact) =>
-            attempt("Could not remove the contact", async () => {
-              await api.deleteContact(contact.number);
               await refreshFax();
             })
           }

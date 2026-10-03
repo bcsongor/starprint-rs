@@ -9,10 +9,10 @@ use crate::Paper;
 use crate::task_card::format_date;
 use crate::text::TextStyle;
 
-/// Who sent a fax and when. The number was checked and prints bold; the
-/// name is the sender's own and unchecked, so it prints plain.
+/// Who sent a fax and when. The number was checked and prints bold.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaxHeader {
+    /// What the recipient's fax book calls the sender, or empty.
     pub name: String,
     /// As written, like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`.
     pub number: String,
@@ -26,8 +26,9 @@ pub struct Layout {
     /// `FAX` and the time, padded to the full width.
     pub bar: String,
     pub number: String,
-    /// Padded on the left to end at the right edge: beside the number
-    /// when there is room, and on a line of its own under it when not.
+    /// Beside the number when there is room, padded on the left to end
+    /// at the right edge. On a line of its own under the number when
+    /// not, starting where the number does.
     pub name: String,
     pub name_below: bool,
 }
@@ -43,8 +44,15 @@ impl FaxHeader {
             format_date(self.sent.date()),
             self.sent.format("%H:%M")
         );
-        // A space each end, so inverse text does not touch the edge.
-        let bar = format!(" FAX{sent:>width$} ", width = columns.saturating_sub(5));
+        // An inverse bar has edges, which its text keeps a space from.
+        // Red text has none, and lines up with the number under it.
+        let pad = if <Builder<P> as TextStyle>::ACCENT_FILLS {
+            " "
+        } else {
+            ""
+        };
+        let width = columns.saturating_sub(3 + 2 * pad.len());
+        let bar = format!("{pad}FAX{sent:>width$}{pad}");
 
         // A control character in a name would move the head.
         let name: String = self
@@ -60,7 +68,11 @@ impl FaxHeader {
         Layout {
             bar,
             number: self.number.clone(),
-            name: format!("{name:>width$}"),
+            name: if name_below {
+                name
+            } else {
+                format!("{name:>width$}")
+            },
             name_below,
         }
     }
@@ -123,8 +135,10 @@ mod tests {
                     && from.ends_with(" Anna")
             );
         }
+        // Red text has no bar to stand clear of, so it reaches both edges.
         let impact = header("Anna").layout::<Impact>(Paper::Mm80);
         assert_eq!(impact.bar.chars().count(), 42);
+        assert!(impact.bar.starts_with("FAX  ") && impact.bar.ends_with("  27 SEP 2026 14:32"));
     }
 
     #[test]
@@ -137,7 +151,7 @@ mod tests {
         // A number leaves a 42-column impact line no room for a name.
         let layout = header("Anna").layout::<Impact>(Paper::Mm80);
         assert!(layout.name_below);
-        assert!(layout.name.ends_with(" Anna"));
+        assert_eq!(layout.name, "Anna");
         let bytes = header("Anna")
             .print(starprint::impact(), Paper::Mm80)
             .build();

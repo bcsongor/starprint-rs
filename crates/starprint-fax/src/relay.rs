@@ -51,6 +51,8 @@ impl Action {
 
 /// A request to see or clear the faxes held for a line, signed by the
 /// line's identity so only its owner can. `ids` is empty for a poll.
+/// The signature names the relay asked, so one relay cannot pass a
+/// request on to another and collect or clear what that one holds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Collect {
@@ -63,30 +65,39 @@ pub struct Collect {
 }
 
 impl Collect {
-    /// A poll for the faxes held for `number`.
-    pub fn poll(identity: &Identity, number: Number) -> Self {
-        Self::new(Action::Poll, identity, number, Vec::new())
+    /// A poll of the relay called `relay` for the faxes held for
+    /// `number`.
+    pub fn poll(identity: &Identity, relay: &str, number: Number) -> Self {
+        Self::new(Action::Poll, identity, relay, number, Vec::new())
     }
 
-    /// Clears `ids`, once their faxes have printed.
-    pub fn confirm(identity: &Identity, number: Number, ids: Vec<String>) -> Self {
-        Self::new(Action::Confirm, identity, number, ids)
+    /// Clears `ids` at the relay called `relay`, once their faxes have
+    /// printed.
+    pub fn confirm(identity: &Identity, relay: &str, number: Number, ids: Vec<String>) -> Self {
+        Self::new(Action::Confirm, identity, relay, number, ids)
     }
 
-    fn new(action: Action, identity: &Identity, number: Number, ids: Vec<String>) -> Self {
+    fn new(
+        action: Action,
+        identity: &Identity,
+        relay: &str,
+        number: Number,
+        ids: Vec<String>,
+    ) -> Self {
         let at = now();
         Self {
-            signature: identity.sign(&Self::signed(action, number, at, &ids)),
+            signature: identity.sign(&Self::signed(action, relay, number, at, &ids)),
             at,
             ids,
         }
     }
 
-    fn signed(action: Action, number: Number, at: u64, ids: &[String]) -> Vec<u8> {
+    fn signed(action: Action, relay: &str, number: Number, at: u64, ids: &[String]) -> Vec<u8> {
         let ids = ids.join(",");
         transcript(
             &format!("starprint fax {} v1", action.label()),
             &[
+                relay.as_bytes(),
                 &number.to_string().into_bytes(),
                 &at.to_be_bytes(),
                 ids.as_bytes(),
@@ -94,11 +105,12 @@ impl Collect {
         )
     }
 
-    /// Whether `line` signed this as an `action` on its own number. The
-    /// relay checks `at` against its clock itself.
-    pub fn signed_by(&self, action: Action, line: &Line) -> bool {
+    /// Whether `line` signed this as an `action` on its own number at
+    /// the relay called `relay`. The relay checks `at` against its clock
+    /// itself.
+    pub fn signed_by(&self, action: Action, relay: &str, line: &Line) -> bool {
         line.identity.verify(
-            &Self::signed(action, line.number, self.at, &self.ids),
+            &Self::signed(action, relay, line.number, self.at, &self.ids),
             &self.signature,
         )
     }
@@ -133,18 +145,28 @@ mod tests {
 
     #[test]
     fn only_the_line_collects_and_only_as_it_asked() {
-        let (anna, _, anna_record) = test_line("Anna");
-        let (ben, _, _) = test_line("Ben");
+        let (anna, _, anna_record) = test_line();
+        let (ben, _, _) = test_line();
         let line = anna_record.check().unwrap();
 
-        let poll = Collect::poll(&anna, line.number);
-        assert!(poll.signed_by(Action::Poll, &line));
-        assert!(!poll.signed_by(Action::Confirm, &line), "not a confirm");
-        assert!(!Collect::poll(&ben, line.number).signed_by(Action::Poll, &line));
+        let poll = Collect::poll(&anna, "LON", line.number);
+        assert!(poll.signed_by(Action::Poll, "LON", &line));
+        assert!(
+            !poll.signed_by(Action::Confirm, "LON", &line),
+            "not a confirm"
+        );
+        assert!(
+            !poll.signed_by(Action::Poll, "NYC", &line),
+            "not for that relay"
+        );
+        assert!(!Collect::poll(&ben, "LON", line.number).signed_by(Action::Poll, "LON", &line));
 
-        let mut confirm = Collect::confirm(&anna, line.number, vec!["a".to_owned()]);
-        assert!(confirm.signed_by(Action::Confirm, &line));
+        let mut confirm = Collect::confirm(&anna, "LON", line.number, vec!["a".to_owned()]);
+        assert!(confirm.signed_by(Action::Confirm, "LON", &line));
         confirm.ids.push("b".to_owned());
-        assert!(!confirm.signed_by(Action::Confirm, &line), "ids are signed");
+        assert!(
+            !confirm.signed_by(Action::Confirm, "LON", &line),
+            "ids are signed"
+        );
     }
 }

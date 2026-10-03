@@ -32,11 +32,12 @@ pub struct Store {
     db: Mutex<Connection>,
 }
 
-/// How much is waiting for a line.
+/// How much is waiting for a line, and for every line together.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Waiting {
     pub faxes: usize,
     pub bytes: usize,
+    pub stored: u64,
 }
 
 impl Store {
@@ -158,12 +159,15 @@ fn expire(db: &Connection, since: u64) -> rusqlite::Result<usize> {
 
 fn waiting(db: &Connection, number: Number) -> rusqlite::Result<Waiting> {
     db.query_row(
-        "SELECT count(*), coalesce(sum(size), 0) FROM faxes WHERE recipient = ?1",
+        "SELECT count(*), coalesce(sum(size), 0),
+                (SELECT coalesce(sum(size), 0) FROM faxes)
+         FROM faxes WHERE recipient = ?1",
         params![number.to_string()],
         |row| {
             Ok(Waiting {
                 faxes: row.get(0)?,
                 bytes: row.get(1)?,
+                stored: row.get(2)?,
             })
         },
     )

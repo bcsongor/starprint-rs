@@ -43,6 +43,10 @@ const FAX_LIMIT: usize = 32 << 20;
 /// What a relay holds for one line before it turns faxes away.
 const HELD_FAXES: usize = 100;
 const HELD_BYTES: usize = 64 << 20;
+/// What a relay holds for every line together, so that new lines, each
+/// with an allowance of its own, cannot fill the disk. The file is about
+/// a third larger, since faxes are kept as base64.
+const STORED_BYTES: u64 = 8 << 30;
 /// Faxes a client address may leave: a burst, then so many an hour.
 const FAXES: (u32, u32) = (10, 30);
 /// Lines a client address may publish: each is a new identity to fax
@@ -292,12 +296,16 @@ async fn hold_fax(
         size,
         now,
         now.saturating_sub(HOLD_SECONDS),
-        |waiting| waiting.faxes >= HELD_FAXES || waiting.bytes + size > HELD_BYTES,
+        |waiting| {
+            waiting.faxes >= HELD_FAXES
+                || waiting.bytes + size > HELD_BYTES
+                || waiting.stored + size as u64 > STORED_BYTES
+        },
     ))?;
     if !taken {
         return Err(Problem::new(
             StatusCode::INSUFFICIENT_STORAGE,
-            format!("{number} has too many faxes waiting; try again once it has polled."),
+            format!("Too many faxes are waiting for {number} or on this relay; try again later."),
         ));
     }
     log(format!(
@@ -321,7 +329,7 @@ async fn poll(
 ) -> Result<Json<HeldFaxes>, Problem> {
     let number = number(&text)?;
     let collect: Collect = json(request, JSON_LIMIT).await?;
-    check(&collect, Action::Poll, &relay.line(number)?)?;
+    check(&collect, Action::Poll, &relay.name, &relay.line(number)?)?;
     let faxes = stored(
         relay
             .store
@@ -337,7 +345,7 @@ async fn confirm(
 ) -> Result<StatusCode, Problem> {
     let number = number(&text)?;
     let collect: Collect = json(request, JSON_LIMIT).await?;
-    check(&collect, Action::Confirm, &relay.line(number)?)?;
+    check(&collect, Action::Confirm, &relay.name, &relay.line(number)?)?;
     for (id, sender) in stored(relay.store.deliver(number, &collect.ids))? {
         log(format!(
             "fax {} from {sender} delivered to {number}",
@@ -347,17 +355,18 @@ async fn confirm(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Checks `collect` for `line`: its clock, then its signature.
-fn check(collect: &Collect, action: Action, line: &Line) -> Result<(), Problem> {
+/// Checks `collect` for `line`: its clock, then its signature, which
+/// must name this relay.
+fn check(collect: &Collect, action: Action, relay: &str, line: &Line) -> Result<(), Problem> {
     if now().abs_diff(collect.at) > CLOCK_SKEW {
         return Err(Problem::bad_request(
             "`at` is more than five minutes from the relay's clock.",
         ));
     }
-    if !collect.signed_by(action, line) {
+    if !collect.signed_by(action, relay, line) {
         return Err(Problem::new(
             StatusCode::UNAUTHORIZED,
-            format!("The request is not signed by {}.", line.number),
+            format!("The request is not signed by {} for {relay}.", line.number),
         ));
     }
     Ok(())
@@ -494,9 +503,9 @@ mod tests {
     }
 
     /// A new line with its record.
-    fn test_line(name: &str) -> (Identity, LineRecord) {
+    fn test_line() -> (Identity, LineRecord) {
         let identity = Identity::generate();
-        let record = identity.record(&FaxKey::generate(), name, 1);
+        let record = identity.record(&FaxKey::generate(), 1);
         (identity, record)
     }
 
@@ -518,8 +527,8 @@ mod tests {
     #[tokio::test]
     async fn a_fax_waits_for_its_line_to_poll_and_confirm() {
         let router = test_router("LONRELAY01");
-        let (anna, anna_record) = test_line("Anna");
-        let (ben, ben_record) = test_line("Ben");
+        let (anna, anna_record) = test_line();
+        let (ben, ben_record) = test_line();
         let (a, b) = (anna_record.number, ben_record.number);
         let ben_line = ben_record.check().unwrap();
         let fax = Fax::seal(&anna, a, &ben_line, b"Hello Ben", now());
@@ -546,7 +555,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&anna, b)),
+            json(&Collect::poll(&anna, "LONRELAY01", b)),
         )
         .await;
         assert_eq!(
@@ -554,11 +563,23 @@ mod tests {
             StatusCode::UNAUTHORIZED,
             "only Ben polls Ben's line"
         );
+        let (status, _) = call(
+            &router,
+            Method::POST,
+            &path(b, "/poll"),
+            json(&Collect::poll(&ben, "NYCRELAY01", b)),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "a poll of another relay is not one of this relay"
+        );
         let (_, body) = call(
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&ben, b)),
+            json(&Collect::poll(&ben, "LONRELAY01", b)),
         )
         .await;
         let held: HeldFaxes = serde_json::from_value(body).unwrap();
@@ -570,7 +591,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/confirm"),
-            json(&Collect::confirm(&ben, b, ids)),
+            json(&Collect::confirm(&ben, "LONRELAY01", b, ids)),
         )
         .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
@@ -578,7 +599,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&ben, b)),
+            json(&Collect::poll(&ben, "LONRELAY01", b)),
         )
         .await;
         assert_eq!(body["faxes"], serde_json::json!([]));
@@ -588,8 +609,8 @@ mod tests {
     async fn a_restart_loses_nothing_and_a_delivered_fax_is_deleted() {
         let file = tempfile::NamedTempFile::new().unwrap();
         let open = || router("LONRELAY01".to_owned(), Clients::Direct, file.path()).unwrap();
-        let (anna, anna_record) = test_line("Anna");
-        let (ben, ben_record) = test_line("Ben");
+        let (anna, anna_record) = test_line();
+        let (ben, ben_record) = test_line();
         let (a, b) = (anna_record.number, ben_record.number);
         let ben_line = ben_record.check().unwrap();
 
@@ -607,12 +628,12 @@ mod tests {
             serde_json::from_value::<LineRecord>(body).unwrap(),
             ben_record
         );
-        let poll = || json(&Collect::poll(&ben, b));
+        let poll = || json(&Collect::poll(&ben, "LONRELAY01", b));
         let (_, body) = call(&after, Method::POST, &path(b, "/poll"), poll()).await;
         let held: HeldFaxes = serde_json::from_value(body).unwrap();
         assert_eq!(held.faxes.len(), 1, "still waiting");
         let ids = vec![held.faxes[0].id.clone()];
-        let confirm = json(&Collect::confirm(&ben, b, ids));
+        let confirm = json(&Collect::confirm(&ben, "LONRELAY01", b, ids));
         call(&after, Method::POST, &path(b, "/confirm"), confirm).await;
         let (_, body) = call(&after, Method::POST, &path(b, "/poll"), poll()).await;
         assert_eq!(body["faxes"], serde_json::json!([]), "confirmed");
@@ -630,7 +651,7 @@ mod tests {
         let publish = |from: &'static str| {
             let router = router.clone();
             async move {
-                let (_, record) = test_line("Anna");
+                let (_, record) = test_line();
                 let request = axum::http::Request::builder()
                     .method(Method::PUT)
                     .uri(path(record.number, ""))
@@ -657,7 +678,7 @@ mod tests {
     #[tokio::test]
     async fn a_newer_record_replaces_an_older_one() {
         let router = test_router("LONRELAY01");
-        let (anna, record) = test_line("Anna");
+        let (anna, record) = test_line();
         call(
             &router,
             Method::PUT,
@@ -666,14 +687,8 @@ mod tests {
         )
         .await;
 
-        let renamed = anna.record(&FaxKey::generate(), "Anna B", 2);
-        let (status, _) = call(
-            &router,
-            Method::PUT,
-            &path(record.number, ""),
-            json(&renamed),
-        )
-        .await;
+        let newer = anna.record(&FaxKey::generate(), 2);
+        let (status, _) = call(&router, Method::PUT, &path(record.number, ""), json(&newer)).await;
         assert_eq!(
             status,
             StatusCode::NO_CONTENT,
@@ -688,8 +703,8 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CONFLICT, "an older one does not");
 
-        let mut tampered = renamed.clone();
-        tampered.name = "Mallory".to_owned();
+        let mut tampered = newer.clone();
+        tampered.updated = 3;
         let (status, _) = call(
             &router,
             Method::PUT,

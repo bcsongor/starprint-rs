@@ -269,25 +269,30 @@ export interface FaxContact {
   number: string;
 }
 
+/** A number this line faxed or printed a fax from lately. */
+export interface FaxRecent {
+  number: string;
+  /** Unix seconds. */
+  at: number;
+}
+
 /** The server's fax line, as `GET /v1/fax` gives it. */
 export interface FaxLine {
   /** Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`; null until the line is activated. */
   number: string | null;
-  /** Who answers, shown to whoever faxes this line. */
-  name: string;
   /** The profile faxes print on; null for the first one. */
   printer: string | null;
   relays: FaxRelay[];
   /** The fax book, by name. */
   contacts: FaxContact[];
+  /** Those not in the fax book, newest first. */
+  recent: FaxRecent[];
 }
 
 export interface Sent {
   to: string;
-  /** The recipient's name in the fax book, or as its line gives it. */
-  name: string;
-  /** Whether `to` is in the fax book. */
-  contact: boolean;
+  /** The recipient's name in the fax book, if they are in it. */
+  name?: string;
   relay: string;
 }
 
@@ -357,7 +362,7 @@ export function createClient({ url, token }: Server) {
       json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
     fax: () => json<FaxLine>("GET", "/v1/fax"),
-    putFax: (settings: { name: string; printer: string | null }) =>
+    putFax: (settings: { printer: string | null }) =>
       json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
     activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
     replaceFaxLine: () => json<FaxLine>("PUT", "/v1/fax/line"),

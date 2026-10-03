@@ -235,38 +235,40 @@ curl -s -X POST http://127.0.0.1:9110/v1/fax/send \
 ```
 
 ```json
-{ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "name": "Csongor, TSP700", "contact": false, "relay": "LONRELAY01" }
+{ "to": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s", "name": "Csongor", "relay": "LONRELAY01" }
 ```
 
 When the user names someone, send `"to": "Anna"`; the server looks the
 name up in the fax book. `name` is who the number is filed as there,
-or who its line says it is when `contact` is `false`; read it back to
-the user, since it is how they know the number was right. A picture goes as a form, as for
+and is absent for a number that is not; read it back to the user, since
+it is how they know the number was right. A picture goes as a form, as for
 printing: the JSON above in the `job` part and the file in `image`.
-There is no `cut`, `density` or `speed`. The fax prints when the other
+There is no `cut`, `density` or `speed`. A fax takes text of up to
+4,000 characters on 100 lines, and a picture up to four times as tall
+as it is wide; a longer one is a `400`. The fax prints when the other
 side next checks its relay, usually within ten seconds, but only while
 their server is running; until then it waits.
 
 Faxing needs the line set up. `GET /v1/fax` shows it:
 
 ```json
-{ "number": "*star15089lwj8gn70m8gepwymguzl5qkangla", "name": "Anna", "printer": null, "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }], "contacts": [{ "name": "Csongor", "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s" }] }
+{ "number": "*star15089lwj8gn70m8gepwymguzl5qkangla", "printer": null, "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }], "contacts": [{ "name": "Csongor", "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s" }], "recent": [] }
 ```
 
 `contacts` is the fax book. `PUT /v1/fax/contacts/{number}`, with the
 number written without its star, files it under `{"name":"..."}`, and
-`DELETE` takes it out. Offer to save a number the user faxed for the
-first time, and ask what to call it.
+`DELETE` takes it out. `recent` lists the numbers lately faxed or
+printed from that are not in it, newest first. Offer to save a number
+the user faxed for the first time, and ask what to call it.
 
 A `409` on sending means `number` is still `null` or there are no
 `relays`. `POST /v1/fax/line` activates the line and answers with its
 number. `PUT /v1/fax/line` gets an active line a new number, and
 anyone with the old one can no longer reach it, so only do that when
 the user asks. `POST /v1/fax/relays` with `{"url":"https://..."}` adds a
-relay, which answers with its name. `PUT /v1/fax` with `{"name":
-"...","printer":null}` sets who answers and which profile faxes print
-on (`null` is the first). Ask before doing any of these: the user
-chooses their relay and their name.
+relay, which answers with its name. `PUT /v1/fax` with
+`{"printer":null}` sets which profile faxes print on (`null` is the
+first). Ask before doing any of these: the user chooses their relay.
 
 A fax is printing on someone else's paper. Confirm the number and what
 is being sent before sending, send it once, and never fax anyone the

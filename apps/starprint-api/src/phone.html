@@ -244,6 +244,15 @@
     </form>
 
     <button type="submit" form="card" id="print-button" class="primary">Print</button>
+    <form id="fax" hidden>
+      <div class="pair">
+        <label>Fax to
+          <input id="to" list="contacts" placeholder="A name, or *star1…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        </label>
+        <button type="submit" id="fax-button">Fax</button>
+      </div>
+      <datalist id="contacts"></datalist>
+    </form>
     <p id="print-error" class="error" role="alert"></p>
 
     <div class="pane"><div id="sheet" class="sheet"></div></div>
@@ -287,29 +296,27 @@
     // Only a move to another printer changes what the preview shows.
     const first = [...select.options].find((option) => !option.disabled);
     if (online() || !first) {
-      $("print-button").disabled = !ready();
+      enable();
       return;
     }
     select.value = first.value;
     schedulePreview();
   }
 
-  /** The job the form describes, as JSON or, with the picture beside it, as a form. */
-  function body() {
-    if (tab === "picture") {
-      const form = new FormData();
-      form.append("job", JSON.stringify({ job: { kind: "picture" } }));
-      form.append("image", file);
-      return form;
-    }
-    return JSON.stringify({
-      job: {
-        kind: "task-card",
-        text: $("text").value,
-        priority: $("priority").checked,
-        due: $("due").value || null,
-      },
-    });
+  /** The job the form describes, beside `fields`, as JSON or, with the picture beside it, as a form. */
+  function body(fields = {}) {
+    const job = tab === "picture" ? { kind: "picture" } : {
+      kind: "task-card",
+      text: $("text").value,
+      priority: $("priority").checked,
+      due: $("due").value || null,
+    };
+    const json = JSON.stringify({ ...fields, job });
+    if (tab !== "picture") return json;
+    const form = new FormData();
+    form.append("job", json);
+    form.append("image", file);
+    return form;
   }
 
   /** Due today, in the phone's time zone, and high priority: the card printed most. */
@@ -321,7 +328,14 @@
   }
 
   let printing = false;
-  const ready = () => !printing && online() && (tab === "picture" ? file !== null : $("text").value.trim() !== "");
+  const filled = () => tab === "picture" ? file !== null : $("text").value.trim() !== "";
+  const ready = () => !printing && online() && filled();
+  // A fax needs no printer here: the other side prints it.
+  const faxReady = () => !printing && filled() && $("to").value.trim() !== "";
+  function enable() {
+    $("print-button").disabled = !ready();
+    $("fax-button").disabled = !faxReady();
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -376,7 +390,7 @@
   let generation = 0;
   function schedulePreview() {
     generation++;
-    $("print-button").disabled = !ready();
+    enable();
     clearTimeout(pending);
     pending = setTimeout(preview, 250);
   }
@@ -394,22 +408,25 @@
     }
   }
 
-  /** Prints what the form holds, and clears it unless it was edited meanwhile. */
-  async function print() {
-    const button = $("print-button");
+  /**
+   * Posts what the form holds to `path`, beside `fields`, and clears it
+   * unless it was edited meanwhile. The button reads `busy` while it
+   * goes, `done` once it has, then `rest`.
+   */
+  async function submit(button, path, fields, [busy, done, rest]) {
     printing = true;
-    button.disabled = true;
-    button.textContent = "Printing…";
+    $("print-button").disabled = $("fax-button").disabled = true;
+    button.textContent = busy;
     clearTimeout(pending);
     generation++;
-    const path = printerPath("jobs");
+    const sentPrinter = $("printer").value;
     const sentTab = tab;
-    const sentBody = body();
+    const sentBody = body(fields);
     const sent = tab === "picture" ? file : sentBody;
     try {
       await api("POST", path, sentBody);
       $("print-error").textContent = "";
-      const unchanged = printerPath("jobs") === path && tab === sentTab && (tab === "picture" ? file === sent : body() === sent);
+      const unchanged = $("printer").value === sentPrinter && tab === sentTab && (tab === "picture" ? file === sent : body(fields) === sent);
       if (unchanged) {
         if (tab === "picture") {
           file = null;
@@ -419,15 +436,26 @@
         }
         schedulePreview();
       }
-      button.textContent = "Printed";
+      button.textContent = done;
       await new Promise((resolve) => setTimeout(resolve, 1500));
     } catch (error) {
       $("print-error").textContent = error.message;
     } finally {
       printing = false;
-      button.textContent = "Print";
-      button.disabled = !ready();
+      button.textContent = rest;
+      enable();
     }
+  }
+
+  const print = () => submit($("print-button"), printerPath("jobs"), {}, ["Printing…", "Printed", "Print"]);
+  const fax = () => submit($("fax-button"), "/v1/fax/send", { to: $("to").value.trim() }, ["Sending…", "Faxed", "Fax"]);
+
+  /** Offers faxing once the line can send, with the fax book's names. */
+  async function loadFax() {
+    const line = await api("GET", "/v1/fax").catch(() => null);
+    const usable = Boolean(line?.number && line.relays.length > 0);
+    $("fax").hidden = !usable;
+    if (usable) $("contacts").replaceChildren(...line.contacts.map((c) => new Option(c.name)));
   }
 
   function showConnect(message) {
@@ -466,6 +494,7 @@
     $("print").hidden = false;
     schedulePreview();
     probe();
+    loadFax();
   }
 
   $("connect").addEventListener("submit", (event) => {
@@ -503,6 +532,11 @@
   $("card").addEventListener("submit", (event) => {
     event.preventDefault();
     print();
+  });
+  $("to").addEventListener("input", enable);
+  $("fax").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (faxReady()) fax();
   });
   $("choose").addEventListener("click", () => $("file").click());
   $("file").addEventListener("change", (event) => {

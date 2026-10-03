@@ -29,7 +29,7 @@ use the API from an agent, see the
 | `PUT` | [`/v1/schedules/{id}`](#put-v1schedulesid) | Replace a schedule |
 | `DELETE` | [`/v1/schedules/{id}`](#delete-v1schedulesid) | Remove a schedule |
 | `GET` | [`/v1/fax`](#get-v1fax) | The fax line, its settings and its relays |
-| `PUT` | [`/v1/fax`](#put-v1fax) | Set who answers and where faxes print |
+| `PUT` | [`/v1/fax`](#put-v1fax) | Set where faxes print |
 | `POST` | [`/v1/fax/line`](#post-v1faxline) | Activate the line |
 | `PUT` | [`/v1/fax/line`](#put-v1faxline) | Get the line a new number |
 | `POST` | [`/v1/fax/relays`](#post-v1faxrelays) | Add a relay by its address |
@@ -340,54 +340,60 @@ identity signs with Ed25519 and ML-DSA-65, and faxes are sealed to an
 X-Wing key (X25519 and ML-KEM-768) that it signs, under
 ChaCha20-Poly1305. A relay sees two numbers, a time and a size. The
 X-Wing key is random and the server replaces it every week, keeping an
-old one for 38 days, until no fax sealed to it can still be waiting at a
-relay. Secrets stolen later open only the faxes of those weeks.
+old one for 31 days after that, until no fax sealed to it can still be
+waiting at a relay. Secrets stolen later open only the faxes of those
+weeks. The requests a server signs to collect its faxes name the relay
+they are for, so one relay cannot use them at another.
 
 **Receiving.** The server polls each relay every ten seconds and prints
 what is waiting on the fax printer with that printer's own settings,
 then tells the relay it printed. Each fax prints under a header: a bar
 with `FAX` and when it was sent, on this server's clock, inverse on
-thermal and red on impact, then the sender's number in bold and their
-name: the name the sender is filed under in the fax book, or else
-whatever the sender set. The number is checked. A fax that cannot print yet, because
+thermal and red on impact, then the sender's number in bold and the
+name it is filed under in the fax book, if it is. A line names nobody,
+so no sender can choose what their fax prints under. The number is
+checked. A fax that cannot print yet, because
 the printer is unreachable or there is none, waits at the relay and is
 tried again. Every fax prints: there is no approving strangers yet. A
-fax prints once: the server remembers what it has printed for 38 days,
-so a relay handing one over again, or a confirmation that was lost,
-does not print it twice.
+fax prints once: the server remembers what it has printed for as long
+as it keeps the key that opens it, so a relay handing one over again,
+or a confirmation that was lost, does not print it twice. A fax takes
+only so much paper: text of up to 4,000 characters on 100 lines, and a
+picture up to four times as tall as it is wide. A longer one is refused
+when it is sent, and dropped if it arrives anyway.
 
 ### Fax line
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `number` | string or `null` | Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. `null` until the line is activated |
-| `name` | string | Who answers, shown to whoever faxes the line. Up to 64 characters; `""` sends the number alone |
 | `printer` | string or `null` | The profile faxes print on. `null` is the first profile |
 | `relays` | array | `name`, `url`, `online` (`null` until polled) and, when the last poll failed, `problem`. A relay counts as online as soon as it is added, since adding it asks it for its name |
 | `contacts` | array | The fax book: `name` and `number`, in order of name |
+| `recent` | array | The last numbers faxed or printed from that are not in the fax book, newest first: `number` and `at`, in Unix seconds. The server keeps ten, and no faxes |
 
 ### `GET /v1/fax`
 
 ```json
 {
   "number": "*star1en2su3z68yscvky0n3j3l2qwny4dkq7s",
-  "name": "Csongor, TSP700",
   "printer": "tsp800ii",
   "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }],
-  "contacts": [{ "name": "Anna", "number": "*star15089lwj8gn70m8gepwymguzl5qkangla" }]
+  "contacts": [{ "name": "Anna", "number": "*star15089lwj8gn70m8gepwymguzl5qkangla" }],
+  "recent": [{ "number": "*star1y0stjmvgr0el9qnxd0uy8c2ge52hd4p2", "at": 1790995440 }]
 }
 ```
 
 ### `PUT /v1/fax`
 
-Body: `name` and `printer`, both required.
+Body: `printer`, required.
 
 ```json
-{ "name": "Csongor, TSP700", "printer": null }
+{ "printer": null }
 ```
 
-`200` with the [line](#fax-line). `400` for a name that is too long or
-a printer that does not exist.
+`200` with the [line](#fax-line). `400` for a printer that does not
+exist.
 
 ### `POST /v1/fax/line`
 
@@ -446,11 +452,12 @@ The server builds the job on its own fax printer first, so a job that
 cannot print is refused here. It then looks the number up on each relay
 in turn and leaves the fax at the first that has it.
 
-`200` with `{ "to", "name", "contact", "relay" }`: the number, the name
-it is filed under in the fax book or else the name its line gives,
-whether it is in the fax book, and the relay that took the fax. The fax
+`200` with `{ "to", "name", "relay" }`: the number, the name it is
+filed under in the fax book, absent if it is not, and the relay that
+took the fax. The fax
 prints when the recipient next polls. `400` if `to` starts like a
-number but its checksum does not hold, `409` before the line is
+number but its checksum does not hold or the job is
+[too long for a fax](#fax), `409` before the line is
 activated or a relay is added, `404` if `to` is neither a number nor a
 name in the fax book or no relay has the number, `502` if a relay refused or
 did not answer, or answered with a key that is not the number's.

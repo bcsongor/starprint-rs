@@ -92,6 +92,12 @@ export function ApiButton({
   // for the address the server actually bound.
   const onLan = new URL(embedded.url).hostname !== LOOPBACK;
 
+  // On loopback the app is talking to itself, which always answers, so
+  // a dot there would say nothing. It shows once there is something to
+  // report: this server is open to the LAN, or the app prints through
+  // another machine's, which may not answer.
+  const dotted = useRemote || onLan;
+
   const older =
     app !== null &&
     version !== null &&
@@ -109,10 +115,12 @@ export function ApiButton({
           />
         }
       >
-        <ConnectionDot
-          status={reachable}
-          label={statusLabel(server.url, reachable)}
-        />
+        {dotted && (
+          <ConnectionDot
+            status={reachable}
+            label={statusLabel(server.url, reachable)}
+          />
+        )}
         API
       </PopoverTrigger>
       <PopoverContent

@@ -23,15 +23,18 @@ starprint-relay --name <NAME> [--listen <addr>] [--db <file>] [--behind-proxy]
 | `--behind-proxy` | Off | Take each client's address from the last `X-Forwarded-For` entry, the one the TLS proxy adds. Only behind a proxy: without one, anyone could claim any address |
 
 It stores line records and holds sealed faxes, up to 100 or 64 MiB a
-line and for 30 days. It takes no token: records check themselves,
-faxes are signed by lines it holds, and only a line's identity can poll
-for its faxes or confirm them.
+line, 8 GiB for every line together, and for 30 days. It takes no
+token: records check themselves, faxes are signed by lines it holds,
+and only a line's identity can poll for its faxes or confirm them, with
+a request that names this relay.
 
 Every fax arrives and prints, so the relay limits each client address
 instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
 lines, then 10 an hour, since each is a new identity to fax from.
 Polls, confirms and a line republishing itself are not limited. Past a
-limit the relay answers `429` with `Retry-After`.
+limit the relay answers `429` with `Retry-After`. A poll answers with
+everything held for its line, so limit connections and slow readers at
+the proxy.
 
 Everything is in the `--db` file, so a restart loses nothing. A fax
 is deleted as soon as its line confirms it printed, and a fax nobody

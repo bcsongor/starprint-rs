@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { CopyIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { CopyIcon, QrCodeIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { CommitInput } from "@/components/commit-input";
 import { ConnectionDot } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
@@ -19,14 +18,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { FaxNumber } from "@/components/fax-number";
-import {
-  byName,
-  type FaxContact,
-  type FaxLine,
-  type FaxRelay,
-  type Profile,
-} from "@/lib/api";
-import { isFaxNumber } from "@/lib/fax-number";
+import { byName, type FaxLine, type FaxRelay, type Profile } from "@/lib/api";
 
 /** Stands for "no printer chosen", which prints on the first profile. No
  * profile's name has a slash in it. */
@@ -40,16 +32,15 @@ interface Props {
   onActivate: () => void;
   /** Mines a new number to replace the current one. */
   onReplace: () => void;
-  onSettings: (settings: { name: string; printer: string | null }) => void;
+  /** Puts the number in the QR code form, to print for someone to scan. */
+  onShowCode: (number: string) => void;
+  onSettings: (settings: { printer: string | null }) => void;
   /** Resolves once the relay has answered with its name. */
   onAddRelay: (url: string) => Promise<void>;
   onRemoveRelay: (relay: FaxRelay) => void;
-  /** Resolves once the contact is saved, and rejects if it was not. */
-  onSaveContact: (number: string, name: string) => Promise<void>;
-  onRemoveContact: (contact: FaxContact) => void;
 }
 
-/** The server's fax line: its number, who answers and its relays. */
+/** The server's fax line: its number, where faxes print and its relays. */
 export function FaxDrawer({
   open,
   onOpenChange,
@@ -57,11 +48,10 @@ export function FaxDrawer({
   profiles,
   onActivate,
   onReplace,
+  onShowCode,
   onSettings,
   onAddRelay,
   onRemoveRelay,
-  onSaveContact,
-  onRemoveContact,
 }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,15 +64,13 @@ export function FaxDrawer({
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-4 overflow-y-auto p-4">
-          <Line fax={fax} onActivate={onActivate} onReplace={onReplace} />
-          <Labelled label="Name" htmlFor="fax-name">
-            <CommitInput
-              id="fax-name"
-              placeholder="Shown to senders"
-              value={fax.name}
-              onCommit={(name) => onSettings({ name, printer: fax.printer })}
-            />
-          </Labelled>
+          <Line
+            fax={fax}
+            onActivate={onActivate}
+            onReplace={onReplace}
+            onShowCode={onShowCode}
+          />
+
           <Labelled label="Prints on" htmlFor="fax-printer">
             <OptionSelect
               id="fax-printer"
@@ -95,20 +83,12 @@ export function FaxDrawer({
                 })),
               ]}
               onChange={(printer) =>
-                onSettings({
-                  name: fax.name,
-                  printer: printer === FIRST ? null : printer,
-                })
+                onSettings({ printer: printer === FIRST ? null : printer })
               }
               align="start"
               labelClassName="w-40"
             />
           </Labelled>
-          <Contacts
-            contacts={fax.contacts}
-            onSave={onSaveContact}
-            onRemove={onRemoveContact}
-          />
           <Relays
             relays={fax.relays}
             onAdd={onAddRelay}
@@ -127,10 +107,12 @@ function Line({
   fax,
   onActivate,
   onReplace,
+  onShowCode,
 }: {
   fax: FaxLine;
   onActivate: () => void;
   onReplace: () => void;
+  onShowCode: (number: string) => void;
 }) {
   if (fax.number) {
     const number = fax.number;
@@ -142,26 +124,37 @@ function Line({
         toast.error("Could not copy", { description: String(error) });
       }
     };
+    // The actions sit beside the label, so the number has the full
+    // width and fits on one line.
     return (
-      <div className="flex items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <div className="text-xs tracking-wide text-muted-foreground uppercase">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center">
+          <div className="flex-1 text-xs tracking-wide text-muted-foreground uppercase">
             Your number
           </div>
-          <div className="text-sm break-all select-all">
-            <FaxNumber number={number} />
-          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Copy"
+            title="Copy"
+            onClick={copy}
+          >
+            <CopyIcon />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="QR code"
+            title="QR code"
+            onClick={() => onShowCode(number)}
+          >
+            <QrCodeIcon />
+          </Button>
+          <NewNumber onReplace={onReplace} />
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Copy"
-          title="Copy"
-          onClick={copy}
-        >
-          <CopyIcon />
-        </Button>
-        <NewNumber onReplace={onReplace} />
+        <div className="text-sm break-all select-all">
+          <FaxNumber number={number} />
+        </div>
       </div>
     );
   }
@@ -185,7 +178,7 @@ function NewNumber({ onReplace }: { onReplace: () => void }) {
         render={
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             aria-label="New number"
             title="New number"
           />
@@ -210,96 +203,6 @@ function NewNumber({ onReplace }: { onReplace: () => void }) {
         </Button>
       </PopoverContent>
     </Popover>
-  );
-}
-
-/** The fax book: the numbers this line faxes, under names given here. */
-function Contacts({
-  contacts,
-  onSave,
-  onRemove,
-}: {
-  contacts: FaxContact[];
-  onSave: (number: string, name: string) => Promise<void>;
-  onRemove: (contact: FaxContact) => void;
-}) {
-  const [name, setName] = useState("");
-  const [number, setNumber] = useState("");
-  const [saving, setSaving] = useState(false);
-  const complete = name.trim() !== "" && isFaxNumber(number);
-  const save = async () => {
-    if (!complete || saving) return;
-    setSaving(true);
-    try {
-      await onSave(number.trim(), name.trim());
-      setName("");
-      setNumber("");
-    } catch {
-      // Reported by the caller; what was typed stays to correct.
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="text-xs tracking-wide text-muted-foreground uppercase">
-        Fax book
-      </div>
-      {contacts.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No one yet. Faxes from someone here print under their name.
-        </p>
-      )}
-      <ul className="flex flex-col">
-        {contacts.map((contact) => (
-          <li key={contact.number} className="flex items-center gap-2 py-1">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm">{contact.name}</div>
-              <div className="truncate text-xs">
-                <FaxNumber number={contact.number} />
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={`Remove ${contact.name}`}
-              title="Remove"
-              onClick={() => onRemove(contact)}
-            >
-              <XIcon />
-            </Button>
-          </li>
-        ))}
-      </ul>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <Input
-          aria-label="Name"
-          placeholder="Name"
-          autoComplete="off"
-          className="w-28 shrink-0"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <Input
-          aria-label="Fax number"
-          placeholder="*star1…"
-          autoComplete="off"
-          spellCheck={false}
-          className="font-mono text-xs"
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-        />
-        <Button type="submit" variant="outline" disabled={!complete || saving}>
-          {saving ? "Saving…" : "Add"}
-        </Button>
-      </form>
-    </div>
   );
 }
 

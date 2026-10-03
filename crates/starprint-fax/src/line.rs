@@ -24,9 +24,6 @@ const ED25519_SIGNATURE: usize = 64;
 /// ML-DSA's context string, so a signature made here means nothing
 /// anywhere else.
 const CONTEXT: &[u8] = b"starprint fax";
-/// Long enough for a person and their printer, short enough for a line
-/// on paper.
-pub const NAME_LIMIT: usize = 64;
 
 /// A line's identity: one seed, from which both signing keys are
 /// derived, so the data directory keeps 32 bytes for it.
@@ -119,13 +116,12 @@ impl Identity {
 
     /// This line's record, signed at `updated`, for faxes to be sealed
     /// to `fax_key`.
-    pub fn record(&self, fax_key: &FaxKey, name: &str, updated: u64) -> LineRecord {
+    pub fn record(&self, fax_key: &FaxKey, updated: u64) -> LineRecord {
         use x_wing::Decapsulator as _;
         let mut record = LineRecord {
             number: self.number(),
             identity: self.key().to_bytes(),
             fax_key: fax_key.key.encapsulation_key().to_bytes().to_vec(),
-            name: name.to_owned(),
             updated,
             signature: Vec::new(),
         };
@@ -189,7 +185,8 @@ impl IdentityKey {
 /// What a relay stores and hands out for a number. It checks itself:
 /// the number against the identity, the rest against the identity's
 /// signature. Of two records for a number, the one updated
-/// last wins.
+/// last wins. It names nobody: a line is called whatever the fax book
+/// that holds it says.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LineRecord {
@@ -199,9 +196,6 @@ pub struct LineRecord {
     /// The X-Wing key faxes to this line are sealed to.
     #[serde(with = "base64_bytes")]
     pub fax_key: Vec<u8>,
-    /// Who answers, as its owner put it: shown before a first fax, but
-    /// not checked by anyone.
-    pub name: String,
     /// Unix seconds.
     pub updated: u64,
     #[serde(with = "base64_bytes")]
@@ -216,24 +210,20 @@ impl LineRecord {
                 &self.number.to_string().into_bytes(),
                 &self.identity,
                 &self.fax_key,
-                self.name.as_bytes(),
                 &self.updated.to_be_bytes(),
             ],
         )
     }
 
-    /// The keys, once the number, the name and the signature hold: the
-    /// number must be the address of the identity, so a relay cannot
-    /// hand out another key under it.
+    /// The keys, once the number and the signature hold: the number must
+    /// be the address of the identity, so a relay cannot hand out another
+    /// key under it.
     pub fn check(&self) -> Result<Line, String> {
         if self.number != Number::of(&self.identity) {
             return Err(format!(
                 "the record's key is not the one {} belongs to; it may not be who it says it is",
                 self.number
             ));
-        }
-        if self.name.chars().count() > NAME_LIMIT {
-            return Err(format!("the name is longer than {NAME_LIMIT} characters"));
         }
         let identity = IdentityKey::from_bytes(&self.identity)?;
         if !identity.verify(&self.signed(), &self.signature) {
@@ -245,7 +235,6 @@ impl LineRecord {
             number: self.number,
             identity,
             fax_key,
-            name: self.name.clone(),
         })
     }
 }
@@ -256,14 +245,12 @@ pub struct Line {
     pub number: Number,
     pub identity: IdentityKey,
     pub fax_key: x_wing::EncapsulationKey,
-    pub name: String,
 }
 
 impl std::fmt::Debug for Line {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Line")
             .field("number", &self.number)
-            .field("name", &self.name)
             .finish_non_exhaustive()
     }
 }
@@ -330,9 +317,9 @@ pub mod base64_bytes {
 
 /// A new line with its fax key and its record.
 #[cfg(test)]
-pub(crate) fn test_line(name: &str) -> (Identity, FaxKey, LineRecord) {
+pub(crate) fn test_line() -> (Identity, FaxKey, LineRecord) {
     let (identity, fax_key) = (Identity::generate(), FaxKey::generate());
-    let record = identity.record(&fax_key, name, 1);
+    let record = identity.record(&fax_key, 1);
     (identity, fax_key, record)
 }
 
@@ -365,21 +352,20 @@ mod tests {
 
     #[test]
     fn a_record_checks_itself() {
-        let (_, _, record) = test_line("Anna");
+        let (_, _, record) = test_line();
         let json = serde_json::to_string(&record).unwrap();
         let back: LineRecord = serde_json::from_str(&json).unwrap();
         let line = back.check().unwrap();
         assert_eq!(line.number, record.number);
-        assert_eq!(line.name, "Anna");
 
-        let mut renamed = record.clone();
-        renamed.name = "Mallory".to_owned();
-        assert!(renamed.check().is_err(), "signed");
+        let mut redated = record.clone();
+        redated.updated += 1;
+        assert!(redated.check().is_err(), "signed");
 
         // A relay swapping in its own identity can sign the record, but
         // the number is not that identity's address.
         let mallory = Identity::generate();
-        let mut forged = mallory.record(&FaxKey::generate(), "Anna", 2);
+        let mut forged = mallory.record(&FaxKey::generate(), 2);
         forged.number = record.number;
         forged.signature = mallory.sign(&forged.signed());
         let error = forged.check().unwrap_err();

@@ -155,8 +155,8 @@ mod tests {
 
     #[test]
     fn a_fax_opens_for_its_recipient_alone() {
-        let (anna, anna_key, anna_record) = test_line("Anna");
-        let (_, ben_key, ben_record) = test_line("Ben");
+        let (anna, anna_key, anna_record) = test_line();
+        let (_, ben_key, ben_record) = test_line();
         let anna_line = anna_record.check().unwrap();
         let ben_line = ben_record.check().unwrap();
 
@@ -191,8 +191,8 @@ mod tests {
 
     #[test]
     fn a_relay_cannot_alter_a_fax() {
-        let (anna, _, anna_record) = test_line("Anna");
-        let (_, ben_key, ben_record) = test_line("Ben");
+        let (anna, _, anna_record) = test_line();
+        let (_, ben_key, ben_record) = test_line();
         let anna_line = anna_record.check().unwrap();
         let ben_line = ben_record.check().unwrap();
         let fax = Fax::seal(&anna, anna_line.number, &ben_line, b"Hello", 7);

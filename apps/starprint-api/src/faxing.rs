@@ -11,6 +11,10 @@
 //! once no fax sealed to it can still be waiting, so secrets stolen
 //! later open only the last few weeks. The line also remembers the faxes
 //! it has printed for as long, so one handed over twice prints once.
+//!
+//! A relay is not trusted, and neither is a sender: a relay's answer is
+//! read only up to a size, a request for a line's faxes names the relay
+//! it is for, and a fax may take only so much paper.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -21,8 +25,8 @@ use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use starprint_fax::{
-    Collect, Fax, FaxKey, Held, HeldFaxes, Identity, Line, LineRecord, NAME_LIMIT, Number,
-    RelayInfo, base64_bytes, check_relay_name, now,
+    Collect, Fax, FaxKey, Held, HeldFaxes, Identity, Line, LineRecord, Number, RelayInfo,
+    base64_bytes, check_relay_name, now,
 };
 use starprint_workflows::{FaxHeader, Job};
 
@@ -39,10 +43,24 @@ const DAY: u64 = 24 * 60 * 60;
 const ROTATE_AFTER: u64 = 7 * DAY;
 /// How long a relay holds a fax nobody polls for.
 const RELAY_HOLD: u64 = 30 * DAY;
-/// How long a fax key and the memory of a printed fax are kept: until
-/// the last fax sealed to the key has left its relay, and a day over for
-/// clocks that disagree.
-const KEEP: u64 = ROTATE_AFTER + RELAY_HOLD + DAY;
+/// How long a fax key is kept once the next has replaced it: until the
+/// last fax sealed to it has left its relay, and a day over for clocks
+/// that disagree.
+const KEEP: u64 = RELAY_HOLD + DAY;
+/// The most a relay's answer is read: a line's full allowance at a
+/// relay, 64 MiB, as base64 in JSON, and room to spare.
+const ANSWER_LIMIT: usize = 128 << 20;
+/// A fax prints unasked, so it may take only so much paper: text of this
+/// many characters and lines, and a picture no taller than this many
+/// times its width.
+const TEXT_LIMIT: usize = 4_000;
+const LINES_LIMIT: usize = 100;
+const TALLEST: u32 = 4;
+/// Long enough for a person and their printer, short enough for a line
+/// on paper.
+const NAME_LIMIT: usize = 64;
+/// How many numbers [`FaxSettings::recent`] keeps.
+const RECENT: usize = 10;
 
 /// What a fax carries, sealed: a job as `/jobs` takes it, and the
 /// picture a picture job needs, as JSON. The recipient prints it with its
@@ -61,16 +79,14 @@ struct Contents {
     image: Option<Vec<u8>>,
 }
 
-/// `fax.json`: the line, the relays it uses and the fax book.
+/// `fax.json`: the line, the relays it uses, the fax book and who the
+/// line last dealt with.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FaxSettings {
     /// `None` until the line is activated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<LineSecret>,
-    /// Who answers, shown to whoever faxes this line.
-    #[serde(default)]
-    pub name: String,
     /// The profile faxes print on; the first profile when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<String>,
@@ -79,6 +95,19 @@ pub struct FaxSettings {
     /// The fax book, by name.
     #[serde(default)]
     pub contacts: Vec<Contact>,
+    /// The numbers last faxed or printed from, newest first, so one can
+    /// be filed after the fact. Only numbers: no fax is kept.
+    #[serde(default)]
+    pub recent: Vec<Recent>,
+}
+
+/// A number the line faxed or printed a fax from, and when it last did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Recent {
+    pub number: Number,
+    /// Unix seconds.
+    pub at: u64,
 }
 
 /// A number in the fax book, under the name its owner here gave it.
@@ -158,15 +187,19 @@ impl LineSecret {
             self.fax_keys.push(StoredKey::new(now));
             self.updated = now.max(self.updated + 1);
         }
-        let newest = self.fax_keys.len() - 1;
-        let mut index = 0;
-        self.fax_keys.retain(|key| {
-            let keep = index == newest || now.saturating_sub(key.created) < KEEP;
-            index += 1;
-            keep
+        // Faxes are sealed to a key until the next one replaces it,
+        // which is later than a week on a server that was switched off,
+        // so a key's time runs from then and not from when it was made.
+        let replaced: Vec<u64> = self.fax_keys[1..].iter().map(|key| key.created).collect();
+        let mut replaced = replaced.into_iter();
+        self.fax_keys.retain(|_| {
+            replaced
+                .next()
+                .is_none_or(|at| now.saturating_sub(at) < KEEP)
         });
-        self.printed
-            .retain(|_, printed| now.saturating_sub(*printed) < KEEP);
+        // A printed fax is remembered while a key that opens it is kept.
+        let oldest = self.fax_keys[0].created;
+        self.printed.retain(|_, printed| *printed >= oldest);
     }
 
     /// The record's fax key. There is one once [`Self::rotate`] has run.
@@ -207,6 +240,13 @@ pub struct RelayEntry {
 }
 
 impl FaxSettings {
+    /// Puts `number` first among the recent ones.
+    fn met(&mut self, number: Number, at: u64) {
+        self.recent.retain(|r| r.number != number);
+        self.recent.insert(0, Recent { number, at });
+        self.recent.truncate(RECENT);
+    }
+
     /// Where faxes print, if there is anywhere.
     fn printer(&self, data: &Data) -> Option<Profile> {
         match &self.printer {
@@ -241,10 +281,11 @@ impl Default for Faxing {
 #[serde(rename_all = "camelCase")]
 pub struct FaxView {
     number: Option<Number>,
-    name: String,
     printer: Option<String>,
     relays: Vec<RelayView>,
     contacts: Vec<Contact>,
+    /// Those not in the fax book.
+    recent: Vec<Recent>,
 }
 
 #[derive(Debug, Serialize)]
@@ -263,8 +304,12 @@ pub fn view(printers: &Printers) -> FaxView {
     let polled = printers.fax.polled.lock().unwrap();
     FaxView {
         number: settings.line.as_ref().map(|line| line.number),
-        name: settings.name,
         printer: settings.printer,
+        recent: settings
+            .recent
+            .into_iter()
+            .filter(|r| settings.contacts.iter().all(|c| c.number != r.number))
+            .collect(),
         contacts: settings.contacts,
         relays: settings
             .relays
@@ -282,21 +327,14 @@ pub fn view(printers: &Printers) -> FaxView {
     }
 }
 
-/// `PUT /v1/fax`: who answers and where faxes print.
+/// `PUT /v1/fax`: where faxes print.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingsRequest {
-    name: String,
     printer: Option<String>,
 }
 
 pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Problem> {
-    let name = request.name.trim().to_owned();
-    if name.chars().count() > NAME_LIMIT {
-        return Err(Problem::bad_request(format!(
-            "`name` is longer than {NAME_LIMIT} characters."
-        )));
-    }
     if let Some(printer) = &request.printer {
         printers.find(printer).map_err(|_| {
             Problem::bad_request(format!("No printer named `{printer}` to print faxes on."))
@@ -305,12 +343,6 @@ pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Pr
     printers
         .data
         .change_fax(|settings| {
-            if settings.name != name
-                && let Some(line) = &mut settings.line
-            {
-                line.updated = now().max(line.updated + 1);
-            }
-            settings.name = name;
             settings.printer = request.printer;
             Ok(())
         })
@@ -472,17 +504,19 @@ pub struct SendRequest {
 #[serde(rename_all = "camelCase")]
 pub struct Sent {
     to: Number,
-    /// The recipient's name in the fax book, or as its line gives it.
-    name: String,
-    /// Whether `to` is in the fax book.
-    contact: bool,
+    /// The recipient's name in the fax book, if they are in it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     relay: String,
 }
 
 impl FaxSettings {
-    /// The contact filed under `number`, if any.
-    fn contact(&self, number: Number) -> Option<&Contact> {
-        self.contacts.iter().find(|c| c.number == number)
+    /// The name `number` is filed under, if any.
+    fn name_of(&self, number: Number) -> Option<String> {
+        self.contacts
+            .iter()
+            .find(|c| c.number == number)
+            .map(|c| c.name.clone())
     }
 
     /// `to` as a number: one written out, or a name in the fax book. A
@@ -532,6 +566,7 @@ pub async fn send(
             "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
         ));
     }
+    fits(&request.job, image.as_deref()).map_err(Problem::bad_request)?;
     // Built once here so a job that cannot print is turned away now,
     // rather than failing on the other side where nobody sees it.
     if let Some(profile) = settings.printer(&printers.data) {
@@ -561,7 +596,7 @@ pub async fn send(
         let line = checked(record, to).map_err(|e| Problem::bad_gateway(format!("{e}.")))?;
         // The relay holds faxes only from lines it has, so publish ours
         // there first. It is cheap for a relay that already has it.
-        let own = identity.record(&fax_key, &settings.name, secret.updated);
+        let own = identity.record(&fax_key, secret.updated);
         put_line(client, &relay.url, &own)
             .await
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
@@ -569,11 +604,16 @@ pub async fn send(
         relay_ok(client.post(line_url(&relay.url, to, "/faxes")).json(&fax))
             .await
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
-        let contact = settings.contact(to);
+        // It went whether or not this is saved, so a failure is only logged.
+        if let Err(e) = printers.data.change_fax(|settings| {
+            settings.met(to, now());
+            Ok(())
+        }) {
+            eprintln!("starprint-api: a faxed number could not be remembered: {e}");
+        }
         return Ok(Sent {
             to,
-            name: contact.map_or(line.name, |c| c.name.clone()),
-            contact: contact.is_some(),
+            name: settings.name_of(to),
             relay: relay.name.clone(),
         });
     }
@@ -586,6 +626,36 @@ pub async fn send(
             problems.join("; ")
         ))
     })
+}
+
+/// Whether a job is short enough to fax. The other kinds of job have
+/// sizes of their own.
+fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
+    let text = match job {
+        Job::TaskCard(card) => &card.text,
+        Job::Text(text) => &text.text,
+        _ => "",
+    };
+    if text.chars().count() > TEXT_LIMIT || text.lines().count() > LINES_LIMIT {
+        return Err(format!(
+            "A fax takes up to {TEXT_LIMIT} characters on {LINES_LIMIT} lines."
+        ));
+    }
+    // Read from the header alone. One that cannot be read fails to
+    // decode later, with a message of its own.
+    let size = image.and_then(|bytes| {
+        image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .ok()?
+            .into_dimensions()
+            .ok()
+    });
+    match size {
+        Some((width, height)) if height / TALLEST > width => Err(format!(
+            "A faxed picture can be up to {TALLEST} times as tall as it is wide."
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn request_for(job: Job) -> JobRequest {
@@ -661,13 +731,13 @@ async fn poll_relay(
 ) -> Result<(), String> {
     let client = &printers.fax.client;
     if published.get(&relay.url) != Some(&secret.updated) {
-        let record = identity.record(&secret.fax_key()?, &settings.name, secret.updated);
+        let record = identity.record(&secret.fax_key()?, secret.updated);
         put_line(client, &relay.url, &record).await?;
         published.insert(relay.url.clone(), secret.updated);
     }
     let response = client
         .post(line_url(&relay.url, secret.number, "/poll"))
-        .json(&Collect::poll(identity, secret.number))
+        .json(&Collect::poll(identity, &relay.name, secret.number))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -698,7 +768,12 @@ async fn poll_relay(
         relay_ok(
             client
                 .post(line_url(&relay.url, secret.number, "/confirm"))
-                .json(&Collect::confirm(identity, secret.number, done)),
+                .json(&Collect::confirm(
+                    identity,
+                    &relay.name,
+                    secret.number,
+                    done,
+                )),
         )
         .await?;
     }
@@ -747,6 +822,7 @@ async fn receive(
         .map_err(Receive::Refused)?;
     let contents: Contents = serde_json::from_slice(&contents)
         .map_err(|e| Receive::Refused(format!("the fax's contents are not a job: {e}")))?;
+    fits(&contents.job, contents.image.as_deref()).map_err(Receive::Refused)?;
     let Some(profile) = settings.printer(&printers.data) else {
         return Err(Receive::Later(
             "there is no printer to print it on".to_owned(),
@@ -756,9 +832,7 @@ async fn receive(
         return Err(Receive::Later(format!("{} has no address", profile.name)));
     }
     let header = FaxHeader {
-        name: settings
-            .contact(sender.number)
-            .map_or_else(|| sender.name.clone(), |c| c.name.clone()),
+        name: settings.name_of(sender.number).unwrap_or_default(),
         number: sender.number.to_string(),
         sent: local(fax.sent),
     };
@@ -772,9 +846,11 @@ async fn receive(
     // It printed whether or not this is saved, so a failure is only
     // logged: the worst it costs is a second copy.
     let remembered = printers.data.change_fax(|settings| {
+        let now = now();
         if let Some(line) = &mut settings.line {
-            line.printed.insert(id, now());
+            line.printed.insert(id, now);
         }
+        settings.met(sender.number, now);
         Ok(())
     });
     if let Err(e) = remembered {
@@ -836,16 +912,29 @@ async fn read<T: DeserializeOwned>(response: reqwest::Response) -> Result<T, Str
     if !response.status().is_success() {
         return Err(refusal(response).await);
     }
-    response.json().await.map_err(|e| e.to_string())
+    serde_json::from_slice(&body(response).await?).map_err(|e| e.to_string())
+}
+
+/// A relay's answer, up to [`ANSWER_LIMIT`], so a relay cannot fill
+/// the server's memory.
+async fn body(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > ANSWER_LIMIT {
+            return Err("the relay's answer is too large".to_owned());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 /// A relay's problem detail, or its status when it sent none.
 async fn refusal(response: reqwest::Response) -> String {
     let status = response.status();
-    response
-        .json::<serde_json::Value>()
+    body(response)
         .await
         .ok()
+        .and_then(|body| serde_json::from_slice::<serde_json::Value>(&body).ok())
         .and_then(|body| body["detail"].as_str().map(str::to_owned))
         .unwrap_or_else(|| format!("the relay answered {status}"))
 }
@@ -890,15 +979,7 @@ mod tests {
         Printers::new(Arc::new(data), Arc::new(PrintQueue::default()))
     }
 
-    async fn active(printers: &Printers, name: &str, relay: &str) -> Number {
-        configure(
-            printers,
-            SettingsRequest {
-                name: name.to_owned(),
-                printer: None,
-            },
-        )
-        .unwrap();
+    async fn active(printers: &Printers, relay: &str) -> Number {
         activate(printers, false).unwrap();
         let entry = add_relay(
             printers,
@@ -927,8 +1008,8 @@ mod tests {
         let printer = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let anna = server(1);
         let ben = server(printer.local_addr().unwrap().port());
-        active(&anna, "Anna", &relay).await;
-        let ben_number = active(&ben, "Ben", &relay).await;
+        active(&anna, &relay).await;
+        let ben_number = active(&ben, &relay).await;
 
         let mut request = note();
         request.to = ben_number.to_string();
@@ -941,9 +1022,9 @@ mod tests {
         let mut request = note();
         request.to = ben_number.to_string();
         let sent = send(&anna, request, None).await.unwrap();
-        assert_eq!(sent.name, "Ben", "as his line gives it");
-        assert!(!sent.contact);
+        assert_eq!(sent.name, None, "not in her fax book");
         assert_eq!(sent.relay, "LONRELAY01");
+        assert_eq!(view(&anna).recent[0].number, ben_number, "to file later");
 
         // Ben files Anna under a name of his own, which her faxes print
         // under from now on.
@@ -972,7 +1053,11 @@ mod tests {
             .fax
             .client
             .post(line_url(&relay, ben_number, "/poll"))
-            .json(&Collect::poll(&ben_line.identity(), ben_number))
+            .json(&Collect::poll(
+                &ben_line.identity(),
+                "LONRELAY01",
+                ben_number,
+            ))
             .send()
             .await
             .unwrap()
@@ -990,13 +1075,15 @@ mod tests {
         poll(&ben, &mut published).await;
         let bytes = received.await.unwrap();
         let text = String::from_utf8_lossy(&bytes);
-        let header = text.find(" FAX ").expect("a header");
+        let header = text.find("FAX ").expect("a header");
         let from = text.find(&anna_number.to_string()).expect("the sender");
         let name = text.find("Mum").expect("the sender's name in the fax book");
         let fax = text.find("Hello Ben").expect("the fax");
         assert!(header < from && from < name && name < fax, "{text}");
         let view = view(&ben);
         assert_eq!(view.relays[0].online, Some(true));
+        assert_eq!(ben.data.fax().recent[0].number, anna_number);
+        assert!(view.recent.is_empty(), "filed already");
 
         // Confirmed, so nothing prints twice.
         poll(&ben, &mut published).await;
@@ -1072,11 +1159,73 @@ mod tests {
 
         // A fax sealed to the first key can wait at a relay for as long
         // as the relay holds it, so the key outlives its week by that.
-        line.rotate(KEEP);
+        line.rotate(ROTATE_AFTER + KEEP);
         let seeds: Vec<_> = line.fax_keys.iter().map(|key| &key.seed).collect();
         assert_eq!(seeds.len(), 2, "one more made, the first forgotten");
         assert!(!seeds.contains(&&first));
         assert!(line.printed.is_empty(), "and so is what printed then");
+    }
+
+    /// Relays went on handing out the only key for as long as the server
+    /// was off, so a fax sealed to it the day before still opens.
+    #[test]
+    fn a_fax_key_outlives_a_server_that_was_switched_off() {
+        let mut line = LineSecret::new(&Identity::generate(), 0);
+        line.printed.insert("an old fax".to_owned(), 0);
+        let first = line.fax_keys[0].seed.clone();
+        let back = 100 * DAY;
+        line.rotate(back);
+        assert_eq!(line.fax_keys.len(), 2);
+        assert_eq!(line.fax_keys[0].seed, first, "replaced only now");
+        assert_eq!(line.printed.len(), 1, "it would open again, so remembered");
+
+        line.rotate(back + KEEP);
+        assert!(line.fax_keys.iter().all(|key| key.seed != first));
+        assert!(line.printed.is_empty());
+    }
+
+    #[test]
+    fn a_fax_takes_only_so_much_paper() {
+        let text = |text: String| -> Job {
+            serde_json::from_value(serde_json::json!({ "kind": "text", "text": text })).unwrap()
+        };
+        assert!(fits(&text("x".repeat(TEXT_LIMIT)), None).is_ok());
+        assert!(fits(&text("x".repeat(TEXT_LIMIT + 1)), None).is_err());
+        assert!(fits(&text("x\n".repeat(LINES_LIMIT + 1)), None).is_err());
+
+        let png = |width, height| {
+            let mut bytes = Vec::new();
+            image::DynamicImage::new_luma8(width, height)
+                .write_to(
+                    &mut std::io::Cursor::new(&mut bytes),
+                    image::ImageFormat::Png,
+                )
+                .unwrap();
+            bytes
+        };
+        let picture: Job =
+            serde_json::from_value(serde_json::json!({ "kind": "picture" })).unwrap();
+        assert!(fits(&picture, Some(&png(10, 10 * TALLEST))).is_ok());
+        assert!(fits(&picture, Some(&png(1, 1000))).is_err(), "a strip");
+        assert!(
+            fits(&picture, Some(b"not an image")).is_ok(),
+            "for decode to refuse"
+        );
+    }
+
+    #[test]
+    fn recent_numbers_are_kept_once_and_only_so_many() {
+        let mut settings = FaxSettings::default();
+        let numbers: Vec<_> = (0..=RECENT as u8).map(|i| Number::of(&[i])).collect();
+        for (at, number) in numbers.iter().enumerate() {
+            settings.met(*number, at as u64);
+        }
+        settings.met(numbers[5], 99);
+        let kept: Vec<_> = settings.recent.iter().map(|r| r.number).collect();
+        assert_eq!(kept.len(), RECENT);
+        assert_eq!(kept[0], numbers[5], "moved to the front");
+        assert_eq!(kept.iter().filter(|n| **n == numbers[5]).count(), 1);
+        assert!(!kept.contains(&numbers[0]), "the oldest dropped");
     }
 
     #[test]

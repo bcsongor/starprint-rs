@@ -649,14 +649,13 @@ mod tests {
 
         let reply = call(
             Arc::clone(&printers),
-            put_json("/v1/fax", json!({ "name": "Desk", "printer": "sp743" })),
+            put_json("/v1/fax", json!({ "printer": "sp743" })),
         )
         .await;
-        assert_eq!(reply.json["name"], "Desk");
         assert_eq!(reply.json["printer"], "sp743");
         let reply = call(
             Arc::clone(&printers),
-            put_json("/v1/fax", json!({ "name": "Desk", "printer": "nope" })),
+            put_json("/v1/fax", json!({ "printer": "nope" })),
         )
         .await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST);
