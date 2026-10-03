@@ -163,15 +163,12 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   reference: every route, field and status, in tables. Anything the API
   gains goes in both, the reference for what it is and the skill for
   how an agent should use it.
-- `.macroscope/`: Macroscope's ignore list and the check-run agent that
-  carries the rules below. Macroscope reads nothing else. Codex reads
-  the Code Review Rules at the end of this file.
 
 ## Conventions
 
 - Every change is a pull request, squashed onto `main`. No direct
   pushes, force pushes or merge commits. Merging needs CI green and
-  every review thread resolved, Codex's and Macroscope's included.
+  every review thread resolved, Codex's included.
 - Before opening one, run `cargo test --all-targets`, clippy with
   `-D warnings` and `cargo fmt --all --check`, both with and without
   `--features image`, then the same for
