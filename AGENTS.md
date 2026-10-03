@@ -80,8 +80,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `FaxNumber`: chunks of uneven length, each its own colour with a gap
   before it, cut by a hash of the whole number
   (`src/lib/fax-number.ts`), so a one-character change moves every
-  chunk. It is for the eye only, and a phone page that
-  shows numbers must use the same rule.
+  chunk. It is for the eye only. The phone page shows numbers too and
+  has no build step, so it carries a copy of the rule; change one and
+  the other must follow.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs, and the home of everything that has to run
   unattended. A library with a thin command line on top, so the desktop
@@ -106,10 +107,19 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   so it takes the printer's turn like a job. `src/phone.html` is the
   phone page, served at `/` without the token: one file, no framework
   and no build step, so the command line serves it too. It prints and
-  faxes task cards and pictures through the routes, offering the fax
-  book's names but showing no numbers, and keeps the token in the URL
-  fragment, since an iOS home-screen shortcut has storage of its own.
-  It draws the server's `Preview` as it comes, like the desktop app.
+  faxes task cards and pictures through the routes, and keeps the token
+  in the URL fragment, since an iOS home-screen shortcut has storage of
+  its own. It draws the server's `Preview` as it comes, like the desktop
+  app. Once the line can send it keeps the fax book as well: contacts,
+  recent numbers and the line's own number, read again every ten
+  seconds. The number's QR code, for another phone's camera, is the
+  `Preview` of a `qr` job, so the page encodes nothing. Activating the
+  line, relays and the fax printer stay on the desktop. Printing is
+  what the page is for, so faxing sits below the preview and is drawn
+  lighter. A LAN address is plain HTTP, where a browser gives a page
+  no clipboard API and no camera. Copying falls back to a selection,
+  and a number comes off a printed card through the phone's own camera
+  app and a paste.
   `printers::PrintQueue`, exported at the crate root, serialises
   connections by host and port.
   `faxing` is the server's side of fax: `fax.json` in the data

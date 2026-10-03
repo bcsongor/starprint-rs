@@ -90,7 +90,8 @@ Send any job to someone else's receipt printer by their number, like
 activate your line and add a relay by its address; it tells you its
 name, like `LONRELAY01`. Then press **Fax** beside **Print**, paste a number
 or pick someone from your fax book, and send. To give someone your number,
-press the QR button beside it and print the card.
+press the QR button beside it and print the card. The phone page keeps the
+same fax book, and shows your number as a QR code to scan off its screen.
 
 Every fax sent to you prints on your fax printer while the app runs. Its header
 gives the time, the sender's number and, if they are in your fax book, the name

@@ -28,6 +28,10 @@
     --tabs: oklch(0.91 0 0);
     --tab: #fff;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23555' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    /* The desktop app's tints for a fax number's runs. */
+    --amber: oklch(0.666 0.179 58.318);
+    --teal: oklch(0.6 0.118 184.704);
+    --violet: oklch(0.541 0.281 293.009);
     --radius: 0.5rem;
     color-scheme: light;
   }
@@ -43,6 +47,9 @@
     --tabs: oklch(0.205 0 0);
     --tab: oklch(0.371 0 0);
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23aaa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    --amber: oklch(0.828 0.189 84.429);
+    --teal: oklch(0.777 0.152 181.912);
+    --violet: oklch(0.702 0.183 293.541);
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -74,16 +81,15 @@
   p { margin: 0; }
   form { display: flex; flex-direction: column; gap: 1.25rem; }
   section { display: flex; flex-direction: column; gap: 1.5rem; }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
+  label, h2 {
+    margin: 0;
     font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--muted-foreground);
   }
+  label, .field { display: flex; flex-direction: column; gap: 0.375rem; }
   .pair { display: flex; align-items: flex-end; gap: 1rem; }
   .pair > label:first-child { flex: 1; }
   label.row {
@@ -144,11 +150,22 @@
   .dark .sun, :root:not(.dark) .moon { display: none; }
   .primary {
     width: 100%;
-    min-height: 3rem;
     border-color: var(--primary);
     background: var(--primary);
     color: var(--primary-foreground);
   }
+  /* The page opens with nothing to print, so a disabled Print is muted rather than the primary colour dimmed. */
+  .primary:disabled { opacity: 1; border-color: transparent; background: var(--muted); color: var(--muted-foreground); }
+  .soft { border-color: transparent; background: var(--muted); }
+  /* The task prints as the card's headline, so its field is the largest on the page. */
+  #text { min-height: 3.25rem; font-size: 1.125rem; font-weight: 500; }
+  #text::placeholder { font-weight: 400; }
+  /* A field with its action at the end, inside the one border. */
+  .group { display: flex; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background); }
+  .group input { flex: 1; min-width: 0; border: 0; background: none; }
+  .group input:focus-visible { outline: none; }
+  .group:has(input:focus-visible) { outline: 2px solid var(--muted-foreground); outline-offset: 2px; }
+  .group button { border: 0; background: none; }
   .tabs {
     display: flex;
     padding: 0.25rem;
@@ -190,7 +207,51 @@
   .strip .lines { font-size: 2em; font-weight: 700; }
   .strip .empty { color: rgb(0 0 0 / 0.3); }
   .error { margin-top: -0.75rem; color: var(--destructive); font-size: 0.875rem; }
-  .error:empty { display: none; }
+  .error:empty, .echo:empty, ul:empty { display: none; }
+  .echo { margin-top: -0.75rem; }
+  /* Small enough for a whole number to fit one line of a phone. */
+  .number { font: 0.6875rem/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .number span { margin-left: 0.5ch; }
+  .amber { color: var(--amber); }
+  .teal { color: var(--teal); }
+  .violet { color: var(--violet); }
+  /* Faxing comes second, so its parts sit closer together and its folds are rows parted by a hairline, not boxes. */
+  #fax { gap: 0.75rem; margin-top: 0.5rem; }
+  #fax .error { margin-top: 0; }
+  details + details { border-top: 1px solid var(--border); }
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; width: 1rem; height: 1rem; background: var(--chevron) no-repeat center; }
+  [open] > summary::after { transform: rotate(180deg); }
+  .fold { display: flex; flex-direction: column; gap: 1rem; padding: 0.25rem 0 1rem; }
+  .fold form { gap: 0.75rem; }
+  .fold h2 { margin-bottom: -0.75rem; }
+  .hint { color: var(--muted-foreground); font-size: 0.875rem; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  /* A row's button sits over the end of its title, so the number below has the row's whole width. */
+  li { position: relative; }
+  li .ghost { position: absolute; top: 0; right: 0; min-width: 2.75rem; font-size: 1.25rem; }
+  .entry {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0 0 0.375rem;
+    border: 0;
+    background: none;
+    font-weight: 400;
+    text-align: left;
+  }
+  .title { padding-right: 2.75rem; line-height: 2.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #own { -webkit-user-select: all; user-select: all; }
+  .code { padding: 0.5rem; border-radius: var(--radius); background: #fff; }
+  .code img { display: block; width: 100%; max-width: 16rem; margin: 0 auto; }
 </style>
 </head>
 <body>
@@ -244,18 +305,61 @@
     </form>
 
     <button type="submit" form="card" id="print-button" class="primary">Print</button>
-    <form id="fax" hidden>
-      <div class="pair">
-        <label>Fax to
-          <input id="to" list="contacts" placeholder="A name, or *star1…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
-        </label>
-        <button type="submit" id="fax-button">Fax</button>
-      </div>
-      <datalist id="contacts"></datalist>
-    </form>
     <p id="print-error" class="error" role="alert"></p>
+    <p id="preview-error" class="error" role="alert"></p>
 
     <div class="pane"><div id="sheet" class="sheet"></div></div>
+
+    <!-- Faxing sits below the preview, since printing is what the page is for. -->
+    <section id="fax" hidden>
+      <form id="send">
+        <div class="field">
+          <label for="to">Fax to</label>
+          <span class="group">
+            <input id="to" list="contacts" placeholder="A name, or *star1…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
+            <button type="submit" id="fax-button">Fax</button>
+          </span>
+        </div>
+        <datalist id="contacts"></datalist>
+        <p id="to-number" class="echo"></p>
+      </form>
+      <p id="fax-error" class="error" role="alert"></p>
+
+      <div>
+        <details id="book">
+          <summary>Fax book</summary>
+          <div class="fold">
+            <p id="nobody" class="hint">No one yet. A fax prints under the name given here.</p>
+            <ul id="contact-list"></ul>
+            <h2 id="recent">Recent</h2>
+            <ul id="recent-list"></ul>
+            <form id="add">
+              <label>Name
+                <input id="contact-name" autocomplete="off">
+              </label>
+              <div class="field">
+                <label for="contact-number">Number</label>
+                <span class="group">
+                  <input id="contact-number" placeholder="*star1…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                  <button type="submit" id="add-button" disabled>Add</button>
+                </span>
+              </div>
+            </form>
+            <p id="book-error" class="error" role="alert"></p>
+          </div>
+        </details>
+        <details id="mine">
+          <summary>Your number</summary>
+          <div class="fold">
+            <p id="own"></p>
+            <div id="code" class="code" hidden></div>
+            <p id="code-error" class="error" role="alert"></p>
+            <button type="button" id="copy" class="soft">Copy</button>
+            <p id="copy-error" class="error" role="alert"></p>
+          </div>
+        </details>
+      </div>
+    </section>
   </section>
 </main>
 
@@ -268,8 +372,10 @@
   let printers = [];
   let tab = "card";
   let file = null;
+  /** The fax line as the server last gave it, or null until it can be read. */
+  let line = null;
 
-  /** The response's JSON, or the problem's `detail` thrown with its status. */
+  /** The response's JSON, if it has any, or the problem's `detail` thrown with its status. */
   async function api(method, path, body) {
     const headers = { Authorization: `Bearer ${token}` };
     if (typeof body === "string") headers["Content-Type"] = "application/json";
@@ -278,7 +384,7 @@
       const problem = await response.json().catch(() => ({}));
       throw Object.assign(new Error(problem.detail ?? response.statusText), { status: response.status });
     }
-    return response.json();
+    return response.status === 204 ? null : response.json();
   }
 
   const printerPath = (route) => `/v1/printers/${encodeURIComponent($("printer").value)}/${route}`;
@@ -327,14 +433,54 @@
     $("priority").checked = true;
   }
 
-  let printing = false;
-  const filled = () => tab === "picture" ? file !== null : $("text").value.trim() !== "";
-  const ready = () => !printing && online() && filled();
-  // A fax needs no printer here: the other side prints it.
-  const faxReady = () => !printing && filled() && $("to").value.trim() !== "";
-  function enable() {
-    $("print-button").disabled = !ready();
-    $("fax-button").disabled = !faxReady();
+  /**
+   * How a fax number is drawn: cut into runs of uneven length by a hash
+   * of the whole number, each run in its own colour. The rule is the
+   * desktop app's, in `src/lib/fax-number.ts`. The page has no build
+   * step, so this is a copy, and the two must cut every number alike.
+   */
+  const TINTS = ["plain", "amber", "teal", "violet"];
+
+  /** `text` without its spaces, which a number read off paper may have. */
+  const compact = (text) => text.replace(/\s/g, "");
+
+  /** Whether `text` has the shape of a fax number. The server checks its checksum. */
+  const isFaxNumber = (text) => /^\*?star1[02-9ac-hj-np-z]{32}$/i.test(compact(text));
+
+  /** Well-mixed 32-bit numbers seeded from `text`: FNV-1a, then MurmurHash3's finaliser at every step. */
+  function stream(text) {
+    let state = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) state = Math.imul(state ^ text.charCodeAt(i), 0x01000193);
+    return () => {
+      state = (state + 0x9e3779b9) | 0;
+      let h = state;
+      h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+      h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+      return (h ^ (h >>> 16)) >>> 0;
+    };
+  }
+
+  /** The 32 characters after `star1`, cut into runs of 2 to 7, or null for text that is not a number. */
+  function runs(number) {
+    if (!isFaxNumber(number)) return null;
+    const address = compact(number).replace(/^\*/, "").toLowerCase();
+    const body = address.slice(5);
+    const next = stream(address);
+    const cut = [];
+    let at = 0;
+    let previous = null;
+    while (at < 32) {
+      let length = Math.min(2 + (next() % 6), 32 - at);
+      // A lone character left over joins this run rather than stand alone.
+      if (32 - at - length === 1) length += 1;
+      // Neighbours never match, so every boundary shows.
+      const choices = TINTS.filter((tint) => tint !== previous);
+      const tint = choices[next() % choices.length];
+      cut.push({ text: body.slice(at, at + length), tint });
+      previous = tint;
+      at += length;
+    }
+    return cut;
   }
 
   function el(tag, className, text) {
@@ -342,6 +488,39 @@
     node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  /**
+   * A number as people read it: `*star1`, then its runs, each after a
+   * gap. The gaps are margins, so a number copied from here pastes
+   * whole, and it wraps only between runs. Text that is not a number is
+   * shown as it is.
+   */
+  function faxNumber(number) {
+    const node = el("span", "number");
+    const cut = runs(number);
+    if (!cut) node.textContent = number;
+    else node.append("*star1", ...cut.flatMap((run) => [document.createElement("wbr"), el("span", run.tint, run.text)]));
+    return node;
+  }
+
+  /** The number Fax to gives, by a name in the fax book or typed out, or null until it gives one. */
+  function recipient() {
+    const to = $("to").value.trim();
+    // The server folds ASCII only; names such as Ä and ä can belong to different people.
+    const fold = (name) => name.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    const contact = line?.contacts.find((c) => fold(c.name) === fold(to));
+    return contact?.number ?? (isFaxNumber(to) ? compact(to) : null);
+  }
+
+  let printing = false;
+  const filled = () => tab === "picture" ? file !== null : $("text").value.trim() !== "";
+  const ready = () => !printing && online() && filled();
+  // A fax needs no printer here: the other side prints it.
+  const faxReady = () => !printing && line?.number && line.relays.length > 0 && filled() && recipient() !== null;
+  function enable() {
+    $("print-button").disabled = !ready();
+    $("fax-button").disabled = !faxReady();
   }
 
   /** Lays the strip out at the layout's columns and scales it to the sheet. */
@@ -402,18 +581,19 @@
       const shown = await api("POST", printerPath("preview"), body());
       if (mine !== generation) return;
       draw(shown);
-      $("print-error").textContent = "";
+      $("preview-error").textContent = "";
     } catch (error) {
-      if (mine === generation) $("print-error").textContent = error.message;
+      if (mine === generation) $("preview-error").textContent = error.message;
     }
   }
 
   /**
    * Posts what the form holds to `path`, with `fields`, and clears it
    * unless it was edited meanwhile. The button reads `busy` while it
-   * goes, `done` once it has, then `rest`.
+   * goes, `done` once it has, then `rest`, and `problem` says what
+   * went wrong.
    */
-  async function submit(button, path, fields, [busy, done, rest]) {
+  async function submit(button, problem, path, fields, [busy, done, rest]) {
     printing = true;
     $("print-button").disabled = $("fax-button").disabled = true;
     button.textContent = busy;
@@ -425,7 +605,7 @@
     const sent = tab === "picture" ? file : sentBody;
     try {
       await api("POST", path, sentBody);
-      $("print-error").textContent = "";
+      problem.textContent = "";
       const unchanged = $("printer").value === sentPrinter && tab === sentTab && (tab === "picture" ? file === sent : body(fields) === sent);
       if (unchanged) {
         if (tab === "picture") {
@@ -439,7 +619,8 @@
       button.textContent = done;
       await new Promise((resolve) => setTimeout(resolve, 1500));
     } catch (error) {
-      $("print-error").textContent = error.message;
+      problem.textContent = error.message;
+      schedulePreview();
     } finally {
       printing = false;
       button.textContent = rest;
@@ -447,15 +628,175 @@
     }
   }
 
-  const print = () => submit($("print-button"), printerPath("jobs"), {}, ["Printing…", "Printed", "Print"]);
-  const fax = () => submit($("fax-button"), "/v1/fax/send", { to: $("to").value.trim() }, ["Sending…", "Faxed", "Fax"]);
+  const print = () => submit($("print-button"), $("print-error"), printerPath("jobs"), {}, ["Printing…", "Printed", "Print"]);
+  /** Sends by number, since the server matches a name its own way, then lists a number that is new under Recent. */
+  async function fax() {
+    await submit($("fax-button"), $("fax-error"), "/v1/fax/send", { to: recipient() }, ["Sending…", "Faxed", "Fax"]);
+    loadFax();
+  }
 
-  /** Offers faxing once the line can send, with the fax book's names. */
-  async function loadFax() {
-    const line = await api("GET", "/v1/fax").catch(() => null);
+  /** Shows the number Fax to gives, to check against the one meant. */
+  function showRecipient() {
+    const number = recipient();
+    $("to-number").replaceChildren(...(number ? [faxNumber(number)] : []));
+    enable();
+  }
+
+  /** Fills Fax to in and folds the book away, so the Fax button is back in view. */
+  function choose(to) {
+    $("to").value = to;
+    $("book").open = false;
+    showRecipient();
+    $("send").scrollIntoView({ block: "nearest" });
+  }
+
+  /** A row of the fax book: pressing `content` fills Fax to in with `to`, and the button over its end, a `glyph` read out as `label`, does `act`. */
+  function row(content, to, glyph, label, act) {
+    const entry = el("button", "entry");
+    entry.type = "button";
+    entry.append(...content);
+    entry.addEventListener("click", () => choose(to));
+    const button = el("button", "ghost", glyph);
+    button.type = "button";
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", act);
+    const item = document.createElement("li");
+    item.append(entry, button);
+    return item;
+  }
+
+  /** Keeps unchanged rows and their focus when a poll updates the fax book. */
+  function rows(id, items, make) {
+    const list = $(id);
+    const kept = new Map([...list.children].map((node) => [node.dataset.item, node]));
+    let next = list.firstElementChild;
+    for (const item of items) {
+      const key = JSON.stringify(item);
+      const node = kept.get(key) ?? make(item);
+      node.dataset.item = key;
+      kept.delete(key);
+      if (node !== next) list.insertBefore(node, next);
+      next = node.nextElementSibling;
+    }
+    for (const node of kept.values()) node.remove();
+  }
+
+  /** Unix seconds as a short local date and time, like `3 Oct, 01:44`. */
+  const when = (at) => new Date(at * 1000).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  const contactPath = (number) => `/v1/fax/contacts/${encodeURIComponent(compact(number).replace(/^\*/, ""))}`;
+
+  /** Changes the fax book and reads it again. Whether the change was made; what went wrong is shown. */
+  async function change(method, number, json) {
+    faxGeneration++;
+    try {
+      await api(method, contactPath(number), json);
+      $("book-error").textContent = "";
+      return true;
+    } catch (error) {
+      $("book-error").textContent = error.message;
+      return false;
+    } finally {
+      await loadFax();
+    }
+  }
+
+  let adding = false;
+  const addReady = () => !adding && $("contact-name").value.trim() !== "" && isFaxNumber($("contact-number").value);
+
+  /**
+   * The line's number as a QR code for another phone's camera. It is
+   * the server's preview of the code as the chosen printer would print
+   * it, so the page encodes nothing itself.
+   */
+  async function drawCode() {
+    try {
+      const preview = await api("POST", printerPath("preview"), JSON.stringify({ job: { kind: "qr", data: line.number } }));
+      const img = new Image();
+      img.src = preview.image;
+      img.alt = "Your number as a QR code";
+      // Shaped by the millimetres it prints at: an impact printer's dots are not square.
+      img.style.aspectRatio = `${preview.widthMm} / ${preview.heightMm}`;
+      $("code").replaceChildren(img);
+      $("code").hidden = false;
+      $("code-error").textContent = "";
+    } catch (error) {
+      $("code-error").textContent = error.message;
+    }
+  }
+
+  /** Offers faxing once the line can send: the fax book, and the line's own number to hand over. */
+  function drawFax(previous) {
     const usable = Boolean(line?.number && line.relays.length > 0);
     $("fax").hidden = !usable;
-    if (usable) $("contacts").replaceChildren(...line.contacts.map((c) => new Option(c.name)));
+    if (!usable) return;
+    if (JSON.stringify(line.contacts) !== JSON.stringify(previous?.contacts)) {
+      $("contacts").replaceChildren(...line.contacts.map((c) => new Option(c.name)));
+    }
+    $("nobody").hidden = line.contacts.length > 0;
+    rows("contact-list", line.contacts, (contact) => row(
+      [el("span", "title", contact.name), faxNumber(contact.number)],
+      contact.name,
+      "×",
+      `Remove ${contact.name}`,
+      () => { if (confirm(`Remove ${contact.name} from the fax book?`)) change("DELETE", contact.number); },
+    ));
+    $("recent").hidden = line.recent.length === 0;
+    rows("recent-list", line.recent, (recent) => row(
+      [el("span", "title hint", when(recent.at)), faxNumber(recent.number)],
+      recent.number,
+      "+",
+      "Add to the fax book",
+      () => {
+        $("contact-number").value = recent.number;
+        $("add-button").disabled = !addReady();
+        $("contact-name").focus();
+      },
+    ));
+    if (line.number !== previous?.number) {
+      $("own").replaceChildren(faxNumber(line.number));
+      $("code").hidden = true;
+      if ($("mine").open) drawCode();
+    }
+    showRecipient();
+  }
+
+  let faxGeneration = 0;
+
+  /** Keeps the last successful read, ignoring replies overtaken by a newer read or a contact change. */
+  async function loadFax() {
+    const mine = ++faxGeneration;
+    try {
+      const next = await api("GET", "/v1/fax");
+      if (mine !== faxGeneration || JSON.stringify(next) === JSON.stringify(line)) return;
+      const previous = line;
+      line = next;
+      drawFax(previous);
+    } catch {
+      // A failed poll must not close the book or discard a number being copied.
+    }
+  }
+
+  /** Copies the number, falling back to a selection if clipboard access is unavailable or refused. */
+  async function copy() {
+    let copied = false;
+    if (navigator.clipboard) {
+      try { await navigator.clipboard.writeText(line.number); copied = true; } catch {}
+    }
+    if (!copied) {
+      const selection = getSelection();
+      selection.selectAllChildren($("own"));
+      try { copied = document.execCommand("copy"); } catch {}
+      // Left selected if that fails, to copy by hand.
+      if (!copied) {
+        $("copy-error").textContent = "Select the number and copy it from the selection menu.";
+        return;
+      }
+      selection.removeAllRanges();
+    }
+    $("copy-error").textContent = "";
+    $("copy").textContent = "Copied";
+    setTimeout(() => { $("copy").textContent = "Copy"; }, 1500);
   }
 
   function showConnect(message) {
@@ -533,11 +874,27 @@
     event.preventDefault();
     print();
   });
-  $("to").addEventListener("input", enable);
-  $("fax").addEventListener("submit", (event) => {
+  $("to").addEventListener("input", showRecipient);
+  $("send").addEventListener("submit", (event) => {
     event.preventDefault();
     if (faxReady()) fax();
   });
+  $("add").addEventListener("input", () => { $("add-button").disabled = !addReady(); });
+  $("add").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!addReady()) return;
+    adding = true;
+    $("add-button").disabled = true;
+    const name = $("contact-name").value;
+    const number = $("contact-number").value;
+    const added = await change("PUT", number, JSON.stringify({ name: name.trim() }));
+    // What was typed stays to correct if it was not taken.
+    if (added && $("contact-name").value === name && $("contact-number").value === number) $("add").reset();
+    adding = false;
+    $("add-button").disabled = !addReady();
+  });
+  $("mine").addEventListener("toggle", () => { if ($("mine").open) drawCode(); });
+  $("copy").addEventListener("click", copy);
   $("choose").addEventListener("click", () => $("file").click());
   $("file").addEventListener("change", (event) => {
     file = event.target.files[0] ?? null;
@@ -546,8 +903,13 @@
     schedulePreview();
   });
   addEventListener("resize", fit);
-  // A printer switched on or off shows within the desktop app's interval.
-  setInterval(() => { if (!$("print").hidden) probe(); }, 10000);
+  // A printer switched on or off, a fax book changed elsewhere or a
+  // number a fax just came from shows within the desktop app's interval.
+  setInterval(() => {
+    if ($("print").hidden) return;
+    probe();
+    loadFax();
+  }, 10000);
 
   setTheme(document.documentElement.classList.contains("dark"));
   resetCard();
