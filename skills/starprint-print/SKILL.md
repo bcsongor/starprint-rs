@@ -243,9 +243,10 @@ name up in the fax book. `name` is who the number is filed as there,
 and is absent for a number that is not; read it back to the user, since
 it is how they know the number was right. A picture goes as a form, as for
 printing: the JSON above in the `job` part and the file in `image`.
-There is no `cut`, `density` or `speed`. A fax takes text of up to
-4,000 characters on 100 lines, and a picture up to four times as tall
-as it is wide; a longer one is a `400`. The fax prints when the other
+There is no `cut`, `density` or `speed`. A fax takes a job of up to
+4,000 characters of JSON with 100 line breaks, and a picture of up to
+50 megapixels and four times as tall as it is wide; more is a `400`.
+The fax prints when the other
 side next checks its relay, usually within ten seconds, but only while
 their server is running; until then it waits.
 
@@ -266,7 +267,8 @@ A `409` on sending means `number` is still `null` or there are no
 number. `PUT /v1/fax/line` gets an active line a new number, and
 anyone with the old one can no longer reach it, so only do that when
 the user asks. `POST /v1/fax/relays` with `{"url":"https://..."}` adds a
-relay, which answers with its name. `PUT /v1/fax` with
+relay, which answers with its name, and `DELETE /v1/fax/relays/{name}`
+removes one, a `404` if there is none of that name. `PUT /v1/fax` with
 `{"printer":null}` sets which profile faxes print on (`null` is the
 first). Ask before doing any of these: the user chooses their relay.
 

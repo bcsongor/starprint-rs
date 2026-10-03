@@ -99,17 +99,19 @@ impl Store {
         Ok(true)
     }
 
-    /// The faxes waiting for `number` that arrived after `since`, oldest
-    /// first.
+    /// The faxes waiting for `number`, oldest first, once every line's
+    /// faxes that arrived before `since` are deleted: a relay that only
+    /// hid them would keep them for as long as nobody faxed.
     pub fn waiting_for(&self, number: Number, since: u64) -> rusqlite::Result<Vec<Held>> {
         let db = self.db.lock().unwrap();
+        expire(&db, since)?;
         let mut query = db.prepare(
             "SELECT id, fax FROM faxes
-             WHERE recipient = ?1 AND arrived > ?2
+             WHERE recipient = ?1
              ORDER BY arrived, rowid",
         )?;
         query
-            .query_map(params![number.to_string(), since], |row| {
+            .query_map(params![number.to_string()], |row| {
                 Ok(Held {
                     id: row.get(0)?,
                     fax: json::<Fax>(row.get(1)?)?,

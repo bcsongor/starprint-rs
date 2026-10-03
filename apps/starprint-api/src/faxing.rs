@@ -50,11 +50,13 @@ const KEEP: u64 = RELAY_HOLD + DAY;
 /// The most a relay's answer is read: a line's full allowance at a
 /// relay, 64 MiB, as base64 in JSON, and room to spare.
 const ANSWER_LIMIT: usize = 128 << 20;
-/// A fax prints unasked, so it may take only so much paper: text of this
-/// many characters and lines, and a picture no taller than this many
-/// times its width.
-const TEXT_LIMIT: usize = 4_000;
+/// A fax prints unasked, so it may take only so much paper and memory:
+/// a job of this many characters and line breaks, as the JSON it
+/// travels as, and a picture of this many pixels, no taller than this
+/// many times its width.
+const JOB_LIMIT: usize = 4_000;
 const LINES_LIMIT: usize = 100;
+const PIXELS_LIMIT: u64 = 50_000_000;
 const TALLEST: u32 = 4;
 /// Long enough for a person and their printer, short enough for a line
 /// on paper.
@@ -247,12 +249,14 @@ impl FaxSettings {
         self.recent.truncate(RECENT);
     }
 
-    /// Where faxes print, if there is anywhere.
+    /// Where faxes print, if there is anywhere: the first profile when
+    /// none is chosen, or when the chosen one was renamed or deleted,
+    /// since faxes waiting for it would wait unseen.
     fn printer(&self, data: &Data) -> Option<Profile> {
-        match &self.printer {
-            Some(name) => data.profile(name),
-            None => data.profiles().into_iter().next(),
-        }
+        self.printer
+            .as_ref()
+            .and_then(|name| data.profile(name))
+            .or_else(|| data.profiles().into_iter().next())
     }
 }
 
@@ -593,7 +597,15 @@ pub async fn send(
                 continue;
             }
         };
-        let line = checked(record, to).map_err(|e| Problem::bad_gateway(format!("{e}.")))?;
+        // A relay answering with a record that does not check is no
+        // reason to give up on the others.
+        let line = match checked(record, to) {
+            Ok(line) => line,
+            Err(e) => {
+                problems.push(format!("{}: {e}", relay.name));
+                continue;
+            }
+        };
         // The relay holds faxes only from lines it has, so publish ours
         // there first. It is cheap for a relay that already has it.
         let own = identity.record(&fax_key, secret.updated);
@@ -628,17 +640,14 @@ pub async fn send(
     })
 }
 
-/// Whether a job is short enough to fax. The other kinds of job have
-/// sizes of their own.
+/// Whether a job is small enough to fax. Any string in a job may print,
+/// a caption or a reference as much as the text, so the job is measured
+/// whole.
 fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
-    let text = match job {
-        Job::TaskCard(card) => &card.text,
-        Job::Text(text) => &text.text,
-        _ => "",
-    };
-    if text.chars().count() > TEXT_LIMIT || text.lines().count() > LINES_LIMIT {
+    let json = serde_json::to_string(job).expect("a job serialises");
+    if json.chars().count() > JOB_LIMIT || json.matches("\\n").count() > LINES_LIMIT {
         return Err(format!(
-            "A fax takes up to {TEXT_LIMIT} characters on {LINES_LIMIT} lines."
+            "A fax takes a job of up to {JOB_LIMIT} characters and {LINES_LIMIT} line breaks."
         ));
     }
     // Read from the header alone. One that cannot be read fails to
@@ -651,9 +660,14 @@ fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
             .ok()
     });
     match size {
-        Some((width, height)) if height / TALLEST > width => Err(format!(
-            "A faxed picture can be up to {TALLEST} times as tall as it is wide."
-        )),
+        Some((width, height))
+            if height / TALLEST > width || u64::from(width) * u64::from(height) > PIXELS_LIMIT =>
+        {
+            Err(format!(
+                "A faxed picture can have up to {} megapixels and be up to {TALLEST} times as tall as it is wide.",
+                PIXELS_LIMIT / 1_000_000
+            ))
+        }
         _ => Ok(()),
     }
 }
@@ -1189,9 +1203,14 @@ mod tests {
         let text = |text: String| -> Job {
             serde_json::from_value(serde_json::json!({ "kind": "text", "text": text })).unwrap()
         };
-        assert!(fits(&text("x".repeat(TEXT_LIMIT)), None).is_ok());
-        assert!(fits(&text("x".repeat(TEXT_LIMIT + 1)), None).is_err());
+        assert!(fits(&text("x".repeat(JOB_LIMIT / 2)), None).is_ok());
+        assert!(fits(&text("x".repeat(JOB_LIMIT)), None).is_err());
         assert!(fits(&text("x\n".repeat(LINES_LIMIT + 1)), None).is_err());
+        let card: Job = serde_json::from_value(serde_json::json!({
+            "kind": "task-card", "text": "Hi", "reference": "x".repeat(JOB_LIMIT)
+        }))
+        .unwrap();
+        assert!(fits(&card, None).is_err(), "every string counts");
 
         let png = |width, height| {
             let mut bytes = Vec::new();
@@ -1207,6 +1226,10 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "kind": "picture" })).unwrap();
         assert!(fits(&picture, Some(&png(10, 10 * TALLEST))).is_ok());
         assert!(fits(&picture, Some(&png(1, 1000))).is_err(), "a strip");
+        assert!(
+            fits(&picture, Some(&png(8000, 8000))).is_err(),
+            "too many pixels"
+        );
         assert!(
             fits(&picture, Some(b"not an image")).is_ok(),
             "for decode to refuse"

@@ -327,7 +327,9 @@ reach, since printers sit behind home routers.
 
 **Numbers.** A line's number is the address of its identity key,
 written `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`: the first 16 bytes of
-SHA-256 over the key, in [Bech32m](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki)
+SHA-256 over `starprint fax number v1`, a zero byte and the key, its
+Ed25519 half and then its ML-DSA-65 half, in
+[Bech32m](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki)
 under the prefix `star`, the way Bitcoin and Cosmos write addresses.
 Its last six characters are a checksum, so a mistyped character is
 caught. Checking a number against a key takes one hash, so no relay has
@@ -341,8 +343,8 @@ X-Wing key (X25519 and ML-KEM-768) that it signs, under
 ChaCha20-Poly1305. A relay sees two numbers, a time and a size. The
 X-Wing key is random and the server replaces it every week, keeping an
 old one for 31 days after that, until no fax sealed to it can still be
-waiting at a relay. Secrets stolen later open only the faxes of those
-weeks. The requests a server signs to collect its faxes name the relay
+waiting at a relay, and dropping it at the next weekly replacement.
+Secrets stolen later open only the faxes of those weeks. The requests a server signs to collect its faxes name the relay
 they are for, so one relay cannot use them at another.
 
 **Receiving.** The server polls each relay every ten seconds and prints
@@ -358,16 +360,17 @@ tried again. Every fax prints: there is no approving strangers yet. A
 fax prints once: the server remembers what it has printed for as long
 as it keeps the key that opens it, so a relay handing one over again,
 or a confirmation that was lost, does not print it twice. A fax takes
-only so much paper: text of up to 4,000 characters on 100 lines, and a
-picture up to four times as tall as it is wide. A longer one is refused
-when it is sent, and dropped if it arrives anyway.
+only so much paper: a job of up to 4,000 characters as JSON, with up to
+100 line breaks in its strings, and a picture of up to 50 megapixels
+and four times as tall as it is wide. More is refused when it is sent,
+and dropped if it arrives anyway.
 
 ### Fax line
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `number` | string or `null` | Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`. `null` until the line is activated |
-| `printer` | string or `null` | The profile faxes print on. `null` is the first profile |
+| `printer` | string or `null` | The profile faxes print on. `null` is the first profile, where faxes also print if the one named is gone |
 | `relays` | array | `name`, `url`, `online` (`null` until polled) and, when the last poll failed, `problem`. A relay counts as online as soon as it is added, since adding it asks it for its name |
 | `contacts` | array | The fax book: `name` and `number`, in order of name |
 | `recent` | array | The last numbers faxed or printed from that are not in the fax book, newest first: `number` and `at`, in Unix seconds. The server keeps ten, and no faxes |

@@ -115,10 +115,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `faxing` is the server's side of fax: `fax.json` in the data
   directory, activating the line, sending, what a fax carries, and the loop that polls relays
   and prints through the queue like the scheduler. The loop also
-  replaces the line's fax key every week and forgets an old one 31 days
-  after the next replaced it, the relay's 30-day hold and a day, which
-  is the line's forward secrecy; the period must stay in step with the
-  relay's hold. A fax's id is remembered for as long as a key that opens
+  replaces the line's fax key every week and forgets an old one at the
+  first replacement 31 days after its own, the relay's 30-day hold and
+  a day, which is the line's forward secrecy; the period must stay in
+  step with the relay's hold. A fax's id is remembered for as long as a key that opens
   it, so a fax handed over twice prints once. Neither a relay nor a
   sender is trusted: a relay's answer is read only up to a size, a
   request for the line's faxes names the relay it is for, and a fax may

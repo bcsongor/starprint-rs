@@ -59,7 +59,8 @@ export function FaxButton({
     if (!complete || !ready || sending) return;
     setSending(true);
     try {
-      await onSend(to.trim());
+      // By number, since the server matches a name its own way.
+      await onSend(chosen?.number ?? to.trim());
       setOpen(false);
       setTo("");
     } catch {
