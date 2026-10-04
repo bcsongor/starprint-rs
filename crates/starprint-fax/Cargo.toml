@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 # Keys, signatures and sealed faxes travel inside JSON.
-base64 = "0.22"
+base64 = "0.23"
 # Numbers are written as Bech32m addresses, `*star1…`.
 bech32 = "0.12"
 # Signed by Ed25519 and ML-DSA-65, sealed to an X-Wing key (X25519 and
