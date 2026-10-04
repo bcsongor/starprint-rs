@@ -8,6 +8,7 @@
 //! rounded corners, which `ESC GS y` would not have done.
 
 use qrcodegen::{QrCode as Symbol, QrCodeEcc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
 use starprint::{Alignment, Builder, Document, Impact, Protocol, RasterQuality, StarLine};
@@ -17,8 +18,9 @@ use crate::{MM_PER_INCH, Paper, finish_graphic};
 
 /// Where the code sits across the paper. Mirrors
 /// [`starprint::Alignment`], which has no serde support of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Align {
     Left,
     #[default]
@@ -39,8 +41,9 @@ impl From<Align> for Alignment {
 /// How much of the symbol can be lost and still scan. Mirrors
 /// [`starprint::QrErrorCorrection`], which has no serde support of its
 /// own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Ecc {
     /// ~7%.
     L,
@@ -65,17 +68,22 @@ impl From<Ecc> for QrCodeEcc {
 }
 
 /// `data` is the only part a caller must supply.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[schemars(inline)]
 pub struct Qr {
+    /// What the code carries: a link, `tel:+44…`, or a Wi-Fi network as
+    /// `WIFI:T:WPA;S:<ssid>;P:<password>;;`.
     pub data: String,
     /// Printed above the symbol, so a slip on a desk says what it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caption: Option<String>,
+    /// How much of the symbol can be lost and still scan.
     #[serde(default)]
     pub error_correction: Ecc,
-    /// The symbol's width in millimetres, quiet zone excluded. Clamped,
-    /// and reduced further if the symbol will not fit the paper.
+    /// The symbol's width in millimetres, quiet zone excluded. Clamped
+    /// to 10 to 80, and reduced further if the symbol will not fit the
+    /// paper.
     #[serde(default = "default_size")]
     pub size: u8,
     /// Corner radius as a percentage of 1.5 modules, capped at half the
@@ -83,7 +91,8 @@ pub struct Qr {
     /// Larger blocks keep rounding up to 100. Defaults to zero: square corners.
     #[serde(default)]
     pub radius: u8,
-    /// Carries the caption with it.
+    /// Where the code sits across the paper. Carries the caption with
+    /// it.
     #[serde(default)]
     pub align: Align,
 }

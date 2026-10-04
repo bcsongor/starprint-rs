@@ -419,23 +419,33 @@ pub async fn add_relay(printers: &Printers, request: AddRelay) -> Result<RelayEn
     Ok(entry)
 }
 
-/// `false` when there was none of that name.
-pub fn remove_relay(printers: &Printers, name: &str) -> Result<bool, Problem> {
-    printers
+/// A `404` when there was none of that name.
+pub fn remove_relay(printers: &Printers, name: &str) -> Result<(), Problem> {
+    let removed = printers
         .data
         .change_fax(|settings| {
             let before = settings.relays.len();
             settings.relays.retain(|relay| relay.name != name);
             Ok(settings.relays.len() != before)
         })
-        .map_err(Problem::not_saved)
+        .map_err(Problem::not_saved)?;
+    if !removed {
+        return Err(Problem::not_found(format!("No relay named `{name}`.")));
+    }
+    Ok(())
+}
+
+/// A number as a client writes it, with or without its star.
+pub fn parse_number(text: &str) -> Result<Number, Problem> {
+    text.parse()
+        .map_err(|e: String| Problem::bad_request(format!("{e}.")))
 }
 
 /// `PUT /v1/fax/contacts/{number}`: the name to file a number under.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContactRequest {
-    name: String,
+    pub(crate) name: String,
 }
 
 /// Files `number` under a name in the fax book, replacing its old one.
@@ -482,16 +492,22 @@ pub fn put_contact(
     Ok(contact)
 }
 
-/// `false` when the number was not in the fax book.
-pub fn remove_contact(printers: &Printers, number: Number) -> Result<bool, Problem> {
-    printers
+/// A `404` when the number was not in the fax book.
+pub fn remove_contact(printers: &Printers, number: Number) -> Result<(), Problem> {
+    let removed = printers
         .data
         .change_fax(|settings| {
             let before = settings.contacts.len();
             settings.contacts.retain(|c| c.number != number);
             Ok(settings.contacts.len() != before)
         })
-        .map_err(Problem::not_saved)
+        .map_err(Problem::not_saved)?;
+    if !removed {
+        return Err(Problem::not_found(format!(
+            "{number} is not in the fax book."
+        )));
+    }
+    Ok(())
 }
 
 /// `POST /v1/fax/send`: a number, or a name in the fax book, and a job
@@ -1153,8 +1169,11 @@ mod tests {
         add_relay(&anna, AddRelay { url: relay }).await.unwrap();
         assert_eq!(anna.data.fax().relays.len(), 1, "one per name");
         assert_eq!(view(&anna).relays[0].online, Some(true), "it just answered");
-        assert!(remove_relay(&anna, "LONRELAY01").unwrap());
-        assert!(!remove_relay(&anna, "LONRELAY01").unwrap());
+        remove_relay(&anna, "LONRELAY01").unwrap();
+        assert_eq!(
+            remove_relay(&anna, "LONRELAY01").unwrap_err().status(),
+            StatusCode::NOT_FOUND
+        );
     }
 
     #[test]
@@ -1284,7 +1303,10 @@ mod tests {
             StatusCode::NOT_FOUND
         );
 
-        assert!(remove_contact(&anna, ben).unwrap());
-        assert!(!remove_contact(&anna, ben).unwrap());
+        remove_contact(&anna, ben).unwrap();
+        assert_eq!(
+            remove_contact(&anna, ben).unwrap_err().status(),
+            StatusCode::NOT_FOUND
+        );
     }
 }

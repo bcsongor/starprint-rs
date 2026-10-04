@@ -18,7 +18,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   and the six jobs: task cards, text, note slips, QR codes, pictures and
   test pages. It reads no files and opens no sockets, so a picture job
   is handed its image. Job behaviour belongs here, not in a front end,
-  or the two drift. `preview` draws what a job will look like: a
+  or the two drift. The job types derive `JsonSchema`, and the API
+  hands that schema to agents, so a field's doc comment is written for
+  them too. `preview` draws what a job will look like: a
   layout for the printer's own fonts, and a PNG from the bitmap that
   prints, with thermal dots widened to the measured size. Both front
   ends show previews from it and nothing else. `FaxHeader` is the bar a
@@ -46,8 +48,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   profiles and schedules are the server's. The server listens at
   loopback on port 9110; the API button's switch also puts it on a LAN
   address, which is a restart there, and the button shows the URL and
-  token, and on the LAN a QR code of the phone page's URL with the
-  token in the fragment, drawn by `qrcode.react`. A LAN address that
+  token, the MCP address with a copy menu that gives an agent's client
+  its config entry, as an HTTP server or for Claude Desktop through
+  `mcp-remote`, and on the LAN a QR code of the phone page's
+  URL with the token in the fragment, drawn by `qrcode.react`. A LAN address that
   will not bind falls back to loopback, and turning the switch on
   before an address was chosen takes the first adapter's. The same button switches the app to another machine's
   server: `App` hands `Workspace` whichever `Server` the settings name
@@ -88,7 +92,7 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   unattended. A library with a thin command line on top, so the desktop
   app can run the same server. One concern per module; anything new
   goes in whichever of `body`, `job`, `printers`, `config`, `data`,
-  `schedule`, `faxing`, `problem`, `app` or `server` owns it. `data` is the data directory:
+  `schedule`, `faxing`, `problem`, `app`, `mcp` or `server` owns it. `data` is the data directory:
   `printers.json`, `schedules.json`, `token` and `fax.json`, each read
   once at startup and written whole under its lock after every change.
   The directory is locked while open, so two servers cannot share one,
@@ -140,6 +144,31 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   The GUI keeps one queue across restarts of its server. Its guard must
   live inside the blocking task so cancellation cannot release a write
   still in progress.
+  `mcp` serves agents: MCP over streamable HTTP at `/mcp`, mounted by
+  `app` under the same token, on the official Rust SDK. It keeps no
+  session and answers each call as plain JSON, so a client survives a
+  restart and no stream holds a shutdown up. A tool calls what its
+  route calls, which is why the work behind a route lives in `job`,
+  `printers`, `schedule` and `faxing` and not in a handler, and it
+  fails with the route's problem details as its error. Arguments that
+  do not fit a tool's schema are the exception: the SDK refuses those
+  in plain text before the tool runs.
+  The SDK runs a tool on a task of its own and only signals when the
+  client goes, so `call_tool` drops the tool then, as a route's handler
+  is dropped with its connection. Without that a job waiting for its
+  printer prints for nobody, after a shutdown too. The tools are
+  the printer list and status, print, preview, the schedules, sending a
+  fax and the fax book. Raw bytes, profiles and setting up the fax line
+  have none, since a description is a weaker fence than a missing
+  tool. A picture travels as base64 in the call, which
+  only suits a small one, so the `image` argument points an agent at
+  the form route for a file. An agent is told nothing but the tools'
+  descriptions and their arguments' schemas, and both are doc comments:
+  a tool's on its function, an argument's on the field that reads it,
+  in `mcp`, in `schedule` or on the job types in the workflows crate,
+  which derive `JsonSchema`. So what a comment there says is what an
+  agent does. A preview's bitmap comes back as an image beside the
+  layout, not as a `data:` URL in the text.
 - `crates/starprint-fax/`: the fax protocol, which does no I/O. A
   number is the Bech32m address of an identity key (`number`), a line
   record is signed by Ed25519 and ML-DSA-65 (`line`), a fax is sealed to
@@ -158,11 +187,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   nothing of printers.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
-- `skills/starprint-print/`: the skill users install into their own
-  agents to print through the API. `apps/starprint-api/API.md` is the
-  reference: every route, field and status, in tables. Anything the API
-  gains goes in both, the reference for what it is and the skill for
-  how an agent should use it.
+- `apps/starprint-api/API.md`: the reference, with every route, field,
+  status and tool in tables. Anything the API gains goes there. There
+  is no skill to keep beside it: an agent connects to `/mcp` and reads
+  the tools as they are.
 
 ## Conventions
 
@@ -300,8 +328,10 @@ breaks every line made or fax sent before it, so it is a finding
 unless the PR bumps the protocol version and says what happens to
 existing lines.
 
-### The API skill and reference
+### The API reference and its tools
 
-An endpoint, job field, profile field, schedule field or fax field added to
-`apps/starprint-api` without the matching change in both
-`apps/starprint-api/API.md` and `skills/starprint-print/` is a finding.
+An endpoint, job field, profile field, schedule field, fax field or
+tool added to `apps/starprint-api` without the matching change in
+`apps/starprint-api/API.md` is a finding. So is a tool for raw bytes,
+for changing a profile or for setting up the fax line, and a tool that
+does its route's work itself instead of calling what the route calls.

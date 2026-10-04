@@ -7,6 +7,12 @@ import { CommitInput } from "@/components/commit-input";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Popover,
@@ -159,6 +165,31 @@ export function ApiButton({
           <Row label="Token">
             <ReadOnlyField value={embedded.token} />
           </Row>
+          <Row label="MCP">
+            <Value>{`${embedded.url}/mcp`}</Value>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Copy client config"
+                    title="Copy client config"
+                  />
+                }
+              >
+                <CopyIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => copy(mcpEntry(embedded))}>
+                  For Claude Code and other HTTP clients
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => copy(desktopEntry(embedded))}>
+                  For Claude Desktop
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Row>
           {/* The page reads the token from the fragment, which stays on
               the phone. Loopback would send the phone to itself. */}
           {onLan ? (
@@ -254,26 +285,71 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ReadOnlyField({ value }: { value: string }) {
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.success("Copied");
-    } catch (error) {
-      toast.error("Could not copy", { description: String(error) });
-    }
+/**
+ * The server as an agent's MCP client is told of it: one entry for the
+ * `mcpServers` object most clients keep, with the token it has to send.
+ */
+function mcpEntry({ url, token }: Server): string {
+  const entry = {
+    type: "http",
+    url: `${url}/mcp`,
+    headers: { Authorization: `Bearer ${token}` },
   };
+  return `"starprint": ${JSON.stringify(entry)}`;
+}
+
+/**
+ * The same entry for Claude Desktop, whose config only runs local
+ * commands, so `mcp-remote` bridges it to `/mcp`. Desktop on Windows
+ * splits an argument at a space, so the header is written without one
+ * and `mcp-remote` fills the token in from the environment.
+ * `--allow-http` lets it reach an address that is not loopback.
+ */
+function desktopEntry({ url, token }: Server): string {
+  const entry = {
+    command: "npx",
+    args: [
+      "-y",
+      "mcp-remote",
+      `${url}/mcp`,
+      "--allow-http",
+      "--transport",
+      "http-only",
+      "--header",
+      "Authorization:${AUTH_HEADER}",
+    ],
+    env: { AUTH_HEADER: `Bearer ${token}` },
+  };
+  return `"starprint": ${JSON.stringify(entry)}`;
+}
+
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success("Copied");
+  } catch (error) {
+    toast.error("Could not copy", { description: String(error) });
+  }
+}
+
+function Value({ children }: { children: string }) {
+  return (
+    <code className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-sm text-muted-foreground select-all">
+      {children}
+    </code>
+  );
+}
+
+function ReadOnlyField({ value }: { value: string }) {
   return (
     <>
-      <code className="flex h-8 min-w-0 flex-1 items-center truncate rounded-lg border border-input bg-muted/50 px-2.5 font-mono text-sm text-muted-foreground select-all">
-        {value}
-      </code>
+      <Value>{value}</Value>
       <Button
         variant="ghost"
         size="icon"
         aria-label="Copy"
         title="Copy"
-        onClick={copy}
+        onClick={() => copy(value)}
       >
         <CopyIcon />
       </Button>

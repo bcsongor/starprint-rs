@@ -2,6 +2,7 @@
 
 use std::{iter, mem};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
@@ -94,14 +95,18 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
 /// `text` is the only part a caller must supply; the styles default to
 /// off. Deriving [`Default`] does not make `text` optional, since the
 /// defaults are per field.
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[schemars(inline)]
 pub struct Text {
+    /// Wrapped to the paper. Typed spaces and blank lines are kept.
     pub text: String,
     #[serde(default)]
     pub bold: bool,
+    /// Double width.
     #[serde(default)]
     pub wide: bool,
+    /// Double height.
     #[serde(default)]
     pub tall: bool,
     /// Red on impact, inverse on thermal.

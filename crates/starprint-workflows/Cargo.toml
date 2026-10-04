@@ -18,6 +18,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # QR symbols are encoded here rather than by the printer, so the impact
 # head can print them too. See `qr`.
 qrcodegen = "1.8"
+# A job's JSON Schema, which the API hands to agents as a tool's
+# arguments. The field comments are its descriptions.
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 starprint = { path = "../starprint", features = ["image"] }
 

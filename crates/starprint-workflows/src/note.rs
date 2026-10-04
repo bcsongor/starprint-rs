@@ -5,6 +5,7 @@
 //! something the character grid can express.
 
 use chrono::Local;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile};
 use starprint::{Builder, Document, Impact, LineSpacing, Protocol, RasterQuality, StarLine};
@@ -14,8 +15,9 @@ use crate::text::TextStyle;
 use crate::{MM_PER_INCH, Paper, finish};
 
 /// The slip's ruling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Rule {
     /// Bare paper.
     Blank,
@@ -29,9 +31,11 @@ pub enum Rule {
 
 /// A caller that supplies none of this gets the ruling notebooks are
 /// sold at: ten rows, 7 mm apart, which tears off at 70 mm.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[schemars(inline)]
 pub struct Note {
+    /// The slip's ruling.
     pub rule: Rule,
     /// Rows to write in.
     pub rows: u8,

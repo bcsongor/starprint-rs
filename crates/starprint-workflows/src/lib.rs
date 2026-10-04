@@ -19,6 +19,7 @@ pub mod task_card;
 pub mod test_page;
 pub mod text;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Cut, Document, Protocol};
 
@@ -55,14 +56,26 @@ pub(crate) fn finish_graphic<P: Protocol>(doc: Builder<P>, cut: bool) -> Documen
 /// The six jobs, as one tagged enum. `kind` picks the variant and the
 /// rest of the object is that job's own settings. Serialises to the
 /// same shape, so a stored job reads back as it was sent.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// Its JSON Schema is what an agent is shown, so the comments on the
+/// variants and their fields are written to be read there too.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Job {
+    /// A task in large bold type, under a header with an optional
+    /// priority banner, reference and due date.
     TaskCard(TaskCard),
+    /// Anything freeform, in the printer's own font.
     Text(Text),
+    /// A ruled slip to write on by hand, dated today.
     Note(Note),
+    /// A QR code, for handing a link or a password to a phone.
     Qr(Qr),
+    /// A head-check page, whose patterns show a dead dot, a weak pin or
+    /// a worn ribbon.
     TestPage(TestPage),
+    /// A photo, dithered. Its image travels beside the job.
     Picture(Picture),
 }
 

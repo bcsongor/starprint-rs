@@ -20,6 +20,10 @@ dirs = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Talking to fax relays.
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+# MCP at `/mcp`, on the router the REST routes are on.
+rmcp = { version = "3.5", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
+# The schemas of the tools' arguments, from the types that read them.
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 # `preserve_order` keeps GET /v1/printers in the order the file lists.
 serde_json = { version = "1", features = ["preserve_order"] }
