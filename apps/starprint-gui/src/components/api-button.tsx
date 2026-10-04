@@ -181,10 +181,10 @@ export function ApiButton({
                 <CopyIcon />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => copy(mcpEntry(embedded))}>
+                <DropdownMenuItem onClick={() => copy(httpConfig(embedded))}>
                   For Claude Code and other HTTP clients
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => copy(desktopEntry(embedded))}>
+                <DropdownMenuItem onClick={() => copy(desktopConfig(embedded))}>
                   For Claude Desktop
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -286,27 +286,32 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /**
- * The server as an agent's MCP client is told of it: one entry for the
- * `mcpServers` object most clients keep, with the token it has to send.
+ * A client's whole config file with this server in it, under the
+ * `mcpServers` key most clients keep theirs in, so it pastes into an
+ * empty file as it is and nothing is left to type.
  */
-function mcpEntry({ url, token }: Server): string {
-  const entry = {
+function mcpConfig(starprint: object): string {
+  return JSON.stringify({ mcpServers: { starprint } }, null, 2);
+}
+
+/** The server as an HTTP client is told of it, with the token to send. */
+function httpConfig({ url, token }: Server): string {
+  return mcpConfig({
     type: "http",
     url: `${url}/mcp`,
     headers: { Authorization: `Bearer ${token}` },
-  };
-  return `"starprint": ${JSON.stringify(entry)}`;
+  });
 }
 
 /**
- * The same entry for Claude Desktop, whose config only runs local
- * commands, so `mcp-remote` bridges it to `/mcp`. Desktop on Windows
- * splits an argument at a space, so the header is written without one
- * and `mcp-remote` fills the token in from the environment.
- * `--allow-http` lets it reach an address that is not loopback.
+ * The same for Claude Desktop, whose config only runs local commands,
+ * so `mcp-remote` bridges it to `/mcp`. Desktop on Windows splits an
+ * argument at a space, so the header is written without one and
+ * `mcp-remote` fills the token in from the environment. `--allow-http`
+ * lets it reach an address that is not loopback.
  */
-function desktopEntry({ url, token }: Server): string {
-  const entry = {
+function desktopConfig({ url, token }: Server): string {
+  return mcpConfig({
     command: "npx",
     args: [
       "-y",
@@ -319,8 +324,7 @@ function desktopEntry({ url, token }: Server): string {
       "Authorization:${AUTH_HEADER}",
     ],
     env: { AUTH_HEADER: `Bearer ${token}` },
-  };
-  return `"starprint": ${JSON.stringify(entry)}`;
+  });
 }
 
 async function copy(text: string) {

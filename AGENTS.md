@@ -49,8 +49,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   loopback on port 9110; the API button's switch also puts it on a LAN
   address, which is a restart there, and the button shows the URL and
   token, the MCP address with a copy menu that gives an agent's client
-  its config entry, as an HTTP server or for Claude Desktop through
-  `mcp-remote`, and on the LAN a QR code of the phone page's
+  its whole config, `mcpServers` key and all, as an HTTP server or for
+  Claude Desktop through `mcp-remote`, and on the LAN a QR code of the phone page's
   URL with the token in the fragment, drawn by `qrcode.react`. A LAN address that
   will not bind falls back to loopback, and turning the switch on
   before an address was chosen takes the first adapter's. The same button switches the app to another machine's

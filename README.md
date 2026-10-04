@@ -81,8 +81,8 @@ the button also shows a QR code: scan it with a phone to print or fax a task
 card or a picture from there.
 
 An agent needs nothing installed. The server speaks MCP at `/mcp`, and the
-**API** button's copy menu beside that address gives the entry to paste into
-your agent's MCP config, token included, with a form for Claude Desktop. The
+**API** button's copy menu beside that address gives the config to paste into
+your agent's MCP settings, token included, with a form for Claude Desktop. The
 agent then has tools to list your
 printers, print and preview jobs, keep schedules and send faxes. See the
 [API reference](apps/starprint-api/API.md) for every route, field and tool,

@@ -478,11 +478,19 @@ number's.
 server over streamable HTTP, behind the same token. Point an agent's
 client at it once and it reads the tools from the server each time, so
 there is nothing to install and nothing to go stale. Most clients take
-an entry like this one, which the desktop app's API button copies from
-the menu beside the MCP address, with the token filled in:
+a config like this one, which the desktop app's API button copies from
+the menu beside the MCP address, whole and with the token filled in:
 
 ```json
-"starprint": { "type": "http", "url": "http://127.0.0.1:9110/mcp", "headers": { "Authorization": "Bearer <token>" } }
+{
+  "mcpServers": {
+    "starprint": {
+      "type": "http",
+      "url": "http://127.0.0.1:9110/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
 ```
 
 With Claude Code that is one command:
@@ -492,11 +500,23 @@ claude mcp add --transport http starprint http://127.0.0.1:9110/mcp --header "Au
 ```
 
 Claude Desktop's config file only runs local commands, so there the
-entry goes through `mcp-remote`, which needs Node. The API button
+server goes through `mcp-remote`, which needs Node. The API button
 copies this form too:
 
 ```json
-"starprint": { "command": "npx", "args": ["-y", "mcp-remote", "http://127.0.0.1:9110/mcp", "--allow-http", "--transport", "http-only", "--header", "Authorization:${AUTH_HEADER}"], "env": { "AUTH_HEADER": "Bearer <token>" } }
+{
+  "mcpServers": {
+    "starprint": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote", "http://127.0.0.1:9110/mcp",
+        "--allow-http", "--transport", "http-only",
+        "--header", "Authorization:${AUTH_HEADER}"
+      ],
+      "env": { "AUTH_HEADER": "Bearer <token>" }
+    }
+  }
+}
 ```
 
 The header has no space in it because Claude Desktop on Windows splits
