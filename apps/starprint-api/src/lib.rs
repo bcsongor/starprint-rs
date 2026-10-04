@@ -12,6 +12,7 @@ mod config;
 mod data;
 mod faxing;
 mod job;
+mod mcp;
 mod printers;
 mod problem;
 mod schedule;

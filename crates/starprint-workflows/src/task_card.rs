@@ -2,6 +2,7 @@
 //! reference and a due date above it.
 
 use chrono::{Datelike, NaiveDate};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::{Builder, Document, Impact, Protocol, StarLine};
 
@@ -12,10 +13,13 @@ use crate::{Paper, finish};
 /// [`Default`] derive leaves `text` required.
 ///
 /// [`Text`]: crate::Text
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[schemars(inline)]
 pub struct TaskCard {
+    /// The task. It prints large, so only a few words fit a line.
     pub text: String,
+    /// Prints a `HIGH PRIORITY` banner above the task.
     #[serde(default)]
     pub priority: bool,
     /// A short identifier, such as an issue key, centred between the

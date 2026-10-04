@@ -4,9 +4,10 @@
 use axum::body::Bytes;
 use axum::http::StatusCode;
 use image::DynamicImage;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use starprint_workflows::{FaxHeader, Head, Job, Preview, Printer, Speed, check_density};
 
+use crate::printers::{self, PrintQueue};
 use crate::problem::Problem;
 
 /// Everything about a job but the image. Omitted options come from the
@@ -20,9 +21,31 @@ pub struct JobRequest {
     pub(crate) speed: Option<Speed>,
 }
 
+/// What a client is told of a job that was written.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintReport {
+    /// A completed socket write, and nothing more.
+    pub(crate) bytes_sent: usize,
+}
+
 impl JobRequest {
     pub fn parse(body: &[u8]) -> Result<Self, Problem> {
         crate::body::parse_json(body)
+    }
+
+    /// Builds this job for `profile` and writes it in that printer's
+    /// turn.
+    pub async fn print(
+        self,
+        profile: &Printer,
+        image: Option<Bytes>,
+        queue: &PrintQueue,
+    ) -> Result<PrintReport, Problem> {
+        let payload = self.document(profile, image).await?;
+        Ok(PrintReport {
+            bytes_sent: printers::send(profile, payload, queue).await?,
+        })
     }
 
     /// The bytes this job prints on `profile`, with `image` for the one

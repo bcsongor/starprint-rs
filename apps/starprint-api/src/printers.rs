@@ -8,11 +8,12 @@ use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::http::StatusCode;
+use serde::Serialize;
 use starprint::transport::{TcpTransport, Transport};
 use starprint_workflows::Printer;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
-use crate::config::Profile;
+use crate::config::{Profile, ProfileSpec};
 use crate::data::Data;
 use crate::faxing::Faxing;
 use crate::problem::Problem;
@@ -137,6 +138,53 @@ impl Printers {
             .profile(name)
             .ok_or_else(|| Problem::not_found(format!("No printer named `{name}`.")))
     }
+
+    pub fn list(&self) -> PrinterList {
+        PrinterList {
+            version: env!("CARGO_PKG_VERSION"),
+            printers: self.data.profiles().iter().map(PrinterView::from).collect(),
+        }
+    }
+
+    /// Whether the printer called `name` answers, asked in its turn.
+    pub async fn status(&self, name: &str) -> Result<StatusView, Problem> {
+        let printer = self.find(name)?.printer;
+        Ok(StatusView {
+            online: reachable(&printer.host, printer.port, &self.queue).await,
+        })
+    }
+}
+
+/// A profile as a client sees it: the name it is addressed by and the
+/// settings a `PUT` takes.
+#[derive(Debug, Serialize)]
+pub struct PrinterView {
+    name: String,
+    #[serde(flatten)]
+    spec: ProfileSpec,
+}
+
+impl From<&Profile> for PrinterView {
+    fn from(profile: &Profile) -> Self {
+        Self {
+            name: profile.name.clone(),
+            spec: profile.spec(),
+        }
+    }
+}
+
+/// The profiles, and the version of the server that holds them, so a
+/// client can tell an older server from one it expects.
+#[derive(Debug, Serialize)]
+pub struct PrinterList {
+    version: &'static str,
+    printers: Vec<PrinterView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatusView {
+    /// Something accepted a connection at the printer's address.
+    online: bool,
 }
 
 #[cfg(test)]

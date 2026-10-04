@@ -2,6 +2,7 @@
 //! bytes a [`Job`] comes to on it.
 
 use image::DynamicImage;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::DeviceProfile;
 use starprint::{Builder, Color, Document, PrintMode, PrintSpeed, StarLine};
@@ -64,8 +65,9 @@ impl Paper {
 }
 
 /// Mirrors [`PrintSpeed`], which has no serde support of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Speed {
     High,
     Medium,

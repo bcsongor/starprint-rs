@@ -5,6 +5,7 @@
 
 use image::DynamicImage;
 use image::imageops::FilterType;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Density, DeviceProfile, Dithering, Grayscale, ImagePipeline};
 use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, StarLine};
@@ -12,8 +13,9 @@ use starprint::{Alignment, Builder, Document, Impact, PrintMode, RasterQuality, 
 use crate::{Paper, PrinterKind, finish_graphic};
 
 /// [`Dithering`] without its threshold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Dither {
     FloydSteinberg,
     Atkinson,
@@ -34,15 +36,20 @@ impl Dither {
 
 /// Everything but the image itself. A caller that supplies none of it
 /// gets the reference settings: Floyd-Steinberg at 128, untouched tone.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[schemars(inline)]
 pub struct Picture {
-    /// Impact: double density. Thermal: double-resolution mode.
+    /// Impact: double density. Thermal: double-resolution mode, which
+    /// is ignored at density 4.
     pub double: bool,
+    /// How grey becomes dots.
     pub dither: Dither,
-    /// Ignored by Bayer.
+    /// Greys darker than this turn black. Ignored by Bayer.
     pub threshold: u8,
+    /// 1.0 leaves the picture as it is.
     pub brightness: f64,
+    /// 1.0 leaves the picture as it is.
     pub contrast: f64,
 }
 

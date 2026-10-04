@@ -78,9 +78,14 @@ you choose. It can also point the app at another machine's Starprint server by
 URL and token, so a laptop prints through a box that is always on: profiles,
 schedules and previews are then that server's. With the server on the LAN,
 the button also shows a QR code: scan it with a phone to print or fax a task
-card or a picture from there. See the
-[API reference](apps/starprint-api/API.md) for every route
-and field, and the [skill](skills/starprint-print/SKILL.md) to give your agent,
+card or a picture from there.
+
+An agent needs nothing installed. The server speaks MCP at `/mcp`, and the
+**API** button's copy menu beside that address gives the config to paste into
+your agent's MCP settings, token included, with a form for Claude Desktop. The
+agent then has tools to list your
+printers, print and preview jobs, keep schedules and send faxes. See the
+[API reference](apps/starprint-api/API.md) for every route, field and tool,
 including running the server on its own.
 
 ## Fax

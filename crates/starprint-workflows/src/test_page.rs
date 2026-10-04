@@ -2,6 +2,7 @@
 //! example; the impact one checks pins, ribbon and registration between
 //! densities.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint::graphics::{BitImage, Bitmap, Density, Dithering, Grayscale};
 
@@ -11,8 +12,9 @@ use starprint::{
     RasterQuality, StarLine, Symbology, ThermalFont,
 };
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[schemars(inline)]
 pub struct TestPage {
     /// Thermal only: repeat the grey ramp in double resolution.
     pub double_resolution: bool,

@@ -77,11 +77,17 @@ impl Png {
     pub fn into_bytes(self) -> Vec<u8> {
         self.0
     }
+
+    /// The bytes as base64, for a client that takes an image that way
+    /// instead of as a URL.
+    pub fn base64(&self) -> String {
+        BASE64.encode(&self.0)
+    }
 }
 
 impl Serialize for Png {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!("data:image/png;base64,{}", BASE64.encode(&self.0)))
+        serializer.serialize_str(&format!("data:image/png;base64,{}", self.base64()))
     }
 }
 

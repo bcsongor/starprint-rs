@@ -1,7 +1,8 @@
 //! The routes, and the JSON the client sees. `body` reads the request,
 //! `job` turns it into printable bytes, `printers` writes them, `data`
 //! keeps the profiles and schedules, and `faxing` sends and receives
-//! faxes. This module wires them together and does nothing else.
+//! faxes. This module wires them together and does nothing else. `mcp`
+//! is the same wiring for agents, mounted here under the same token.
 
 use std::sync::Arc;
 
@@ -12,7 +13,6 @@ use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse as _, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Serialize;
 use starprint_workflows::Preview;
 
 use crate::body;
@@ -21,10 +21,11 @@ use crate::faxing::{
     self, AddRelay, Contact, ContactRequest, FaxView, RelayEntry, SendRequest, Sent,
     SettingsRequest,
 };
-use crate::job::JobRequest;
-use crate::printers::{self, Printers};
+use crate::job::{JobRequest, PrintReport};
+use crate::mcp;
+use crate::printers::{self, PrinterList, PrinterView, Printers, StatusView};
 use crate::problem::Problem;
-use crate::schedule::{self, ScheduleSpec};
+use crate::schedule::{self, ScheduleSpec, ScheduleView};
 
 /// The phone page: a task card or a picture, printed through the routes
 /// below from a browser on the same network. Served without the token,
@@ -70,6 +71,7 @@ pub fn router(printers: Arc<Printers>) -> Router {
             "/v1/schedules/{id}",
             axum::routing::put(replace_schedule).delete(delete_schedule),
         )
+        .route_service("/mcp", mcp::service(Arc::clone(&printers)))
         .fallback(|| async { Problem::not_found("No such endpoint.") })
         .method_not_allowed_fallback(|| async {
             Problem::new(
@@ -145,62 +147,8 @@ async fn require_token(
     Ok(next.run(request).await)
 }
 
-/// A profile as a client sees it: the name it is addressed by and the
-/// settings a `PUT` takes.
-#[derive(Debug, Serialize)]
-struct PrinterView {
-    name: String,
-    #[serde(flatten)]
-    spec: ProfileSpec,
-}
-
-impl From<&Profile> for PrinterView {
-    fn from(profile: &Profile) -> Self {
-        Self {
-            name: profile.name.clone(),
-            spec: profile.spec(),
-        }
-    }
-}
-
-/// The profiles, and the version of the server that holds them, so a
-/// client can tell an older server from one it expects.
-#[derive(Debug, Serialize)]
-struct PrinterList {
-    version: &'static str,
-    printers: Vec<PrinterView>,
-}
-
-#[derive(Debug, Serialize)]
-struct StatusView {
-    /// Something accepted a connection at the printer's address.
-    online: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct ScheduleView {
-    id: String,
-    #[serde(flatten)]
-    spec: ScheduleSpec,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PrintReport {
-    /// A completed socket write, and nothing more.
-    bytes_sent: usize,
-}
-
 async fn list_printers(State(printers): State<Arc<Printers>>) -> Json<PrinterList> {
-    Json(PrinterList {
-        version: env!("CARGO_PKG_VERSION"),
-        printers: printers
-            .data
-            .profiles()
-            .iter()
-            .map(PrinterView::from)
-            .collect(),
-    })
+    Json(printers.list())
 }
 
 /// Creates the profile, or replaces the one of that name in place.
@@ -244,10 +192,7 @@ async fn printer_status(
     State(printers): State<Arc<Printers>>,
     Path(name): Path<String>,
 ) -> Result<Json<StatusView>, Problem> {
-    let printer = printers.find(&name)?.printer;
-    Ok(Json(StatusView {
-        online: printers::reachable(&printer.host, printer.port, &printers.queue).await,
-    }))
+    Ok(Json(printers.status(&name).await?))
 }
 
 /// A job request as JSON, or as a form with the picture beside it.
@@ -272,10 +217,7 @@ async fn create_job(
 ) -> Result<Json<PrintReport>, Problem> {
     let printer = printers.find(&name)?.printer;
     let (job, image) = job_request(request).await?;
-    let payload = job.document(&printer, image).await?;
-    Ok(Json(PrintReport {
-        bytes_sent: printers::send(&printer, payload, &printers.queue).await?,
-    }))
+    Ok(Json(job.print(&printer, image, &printers.queue).await?))
 }
 
 /// The same request as a job, answered with how it would look instead
@@ -310,14 +252,7 @@ async fn create_raw_job(
 }
 
 async fn list_schedules(State(printers): State<Arc<Printers>>) -> Json<Vec<ScheduleView>> {
-    Json(
-        printers
-            .data
-            .schedules()
-            .into_iter()
-            .map(|(id, spec)| ScheduleView { id, spec })
-            .collect(),
-    )
+    Json(schedule::list(&printers.data))
 }
 
 async fn create_schedule(
@@ -325,12 +260,8 @@ async fn create_schedule(
     request: Request,
 ) -> Result<(StatusCode, Json<ScheduleView>), Problem> {
     let spec: ScheduleSpec = body::json(request).await?;
-    schedule::admit(&spec, &printers.data).await?;
-    let id = printers
-        .data
-        .add_schedule(spec.clone())
-        .map_err(Problem::not_saved)?;
-    Ok((StatusCode::CREATED, Json(ScheduleView { id, spec })))
+    let created = schedule::create(&printers.data, spec).await?;
+    Ok((StatusCode::CREATED, Json(created)))
 }
 
 async fn replace_schedule(
@@ -339,28 +270,14 @@ async fn replace_schedule(
     request: Request,
 ) -> Result<Json<ScheduleView>, Problem> {
     let spec: ScheduleSpec = body::json(request).await?;
-    schedule::admit(&spec, &printers.data).await?;
-    if !printers
-        .data
-        .put_schedule(&id, spec.clone())
-        .map_err(Problem::not_saved)?
-    {
-        return Err(Problem::not_found(format!("No schedule with id `{id}`.")));
-    }
-    Ok(Json(ScheduleView { id, spec }))
+    Ok(Json(schedule::replace(&printers.data, &id, spec).await?))
 }
 
 async fn delete_schedule(
     State(printers): State<Arc<Printers>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    if !printers
-        .data
-        .remove_schedule(&id)
-        .map_err(Problem::not_saved)?
-    {
-        return Err(Problem::not_found(format!("No schedule with id `{id}`.")));
-    }
+    schedule::remove(&printers.data, &id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -404,16 +321,8 @@ async fn remove_relay(
     State(printers): State<Arc<Printers>>,
     Path(name): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    if !faxing::remove_relay(&printers, &name)? {
-        return Err(Problem::not_found(format!("No relay named `{name}`.")));
-    }
+    faxing::remove_relay(&printers, &name)?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// A number from a path, with or without its star.
-fn fax_number(text: &str) -> Result<starprint_fax::Number, Problem> {
-    text.parse()
-        .map_err(|e: String| Problem::bad_request(format!("{e}.")))
 }
 
 async fn put_contact(
@@ -421,7 +330,7 @@ async fn put_contact(
     Path(number): Path<String>,
     request: Request,
 ) -> Result<Json<Contact>, Problem> {
-    let number = fax_number(&number)?;
+    let number = faxing::parse_number(&number)?;
     let request: ContactRequest = body::json(request).await?;
     Ok(Json(faxing::put_contact(&printers, number, request)?))
 }
@@ -430,12 +339,7 @@ async fn remove_contact(
     State(printers): State<Arc<Printers>>,
     Path(number): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    let number = fax_number(&number)?;
-    if !faxing::remove_contact(&printers, number)? {
-        return Err(Problem::not_found(format!(
-            "{number} is not in the fax book."
-        )));
-    }
+    faxing::remove_contact(&printers, faxing::parse_number(&number)?)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -461,8 +365,9 @@ async fn send_fax(
     Ok(Json(faxing::send(&printers, request, image).await?))
 }
 
+/// `mcp` tests through this router too, on the same stand-in printers.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::data::Data;
     use axum::body::Body;
@@ -474,10 +379,10 @@ mod tests {
     use tower::ServiceExt as _;
 
     const BOUNDARY: &str = "starprintboundary";
-    const TOKEN: &str = "test-token";
+    pub(crate) const TOKEN: &str = "test-token";
 
     /// Accepts one job and hands back the bytes it was sent.
-    async fn fake_printer() -> (u16, tokio::task::JoinHandle<Vec<u8>>) {
+    pub(crate) async fn fake_printer() -> (u16, tokio::task::JoinHandle<Vec<u8>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("a free port");
         let port = listener.local_addr().unwrap().port();
         let received = tokio::spawn(async move {
@@ -490,7 +395,7 @@ mod tests {
     }
 
     /// A port nothing is listening on.
-    async fn closed_port() -> u16 {
+    pub(crate) async fn closed_port() -> u16 {
         TcpListener::bind("127.0.0.1:0")
             .await
             .unwrap()
@@ -499,7 +404,7 @@ mod tests {
             .port()
     }
 
-    fn printers(port: u16) -> Arc<Printers> {
+    pub(crate) fn printers(port: u16) -> Arc<Printers> {
         let data = Data::ephemeral(
             vec![
                 Profile {
@@ -617,7 +522,7 @@ mod tests {
         body
     }
 
-    fn png() -> Vec<u8> {
+    pub(crate) fn png() -> Vec<u8> {
         let mut image = image::GrayImage::new(64, 32);
         for (x, y, pixel) in image.enumerate_pixels_mut() {
             *pixel = image::Luma([((x * 4) ^ (y * 8)) as u8]);

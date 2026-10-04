@@ -9,14 +9,14 @@ The server listens on `http://127.0.0.1:9110` by default. The desktop
 app runs the same server on the same data directory while it is open,
 and its API button can put it on a LAN address instead, or point the app
 at another machine's server by URL and token. One server per
-directory: the app and the command line cannot run at once. For how to
-use the API from an agent, see the
-[skill](../../skills/starprint-print/SKILL.md).
+directory: the app and the command line cannot run at once. An agent
+uses it over [MCP](#mcp), which the same server speaks at `/mcp`.
 
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | [`/`](#the-phone-page) | The phone page |
 | `GET` | [`/icon.png`](#the-phone-page) | The phone page's icon |
+| `POST` | [`/mcp`](#mcp) | The same jobs, schedules and faxes as tools, for agents |
 | `GET` | [`/v1/printers`](#get-v1printers) | List the profiles and the server's version |
 | `PUT` | [`/v1/printers/{name}`](#put-v1printersname) | Create or replace a profile |
 | `DELETE` | [`/v1/printers/{name}`](#delete-v1printersname) | Remove a profile |
@@ -471,6 +471,100 @@ activated or a relay is added. `404` if `to` is neither a number nor a
 name in the fax book, or no relay has the number. `502` if a relay
 refused or did not answer, or answered with a key that is not the
 number's.
+
+## MCP
+
+`/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io)
+server over streamable HTTP, behind the same token. Point an agent's
+client at it once and it reads the tools from the server each time, so
+there is nothing to install and nothing to go stale. Most clients take
+a config like this one, which the desktop app's API button copies from
+the menu beside the MCP address, whole and with the token filled in:
+
+```json
+{
+  "mcpServers": {
+    "starprint": {
+      "type": "http",
+      "url": "http://127.0.0.1:9110/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+With Claude Code that is one command:
+
+```
+claude mcp add --transport http starprint http://127.0.0.1:9110/mcp --header "Authorization: Bearer <token>"
+```
+
+Claude Desktop's config file only runs local commands, so there the
+server goes through `mcp-remote`, which needs Node. The API button
+copies this form too:
+
+```json
+{
+  "mcpServers": {
+    "starprint": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote", "http://127.0.0.1:9110/mcp",
+        "--allow-http", "--transport", "http-only",
+        "--header", "Authorization:${AUTH_HEADER}"
+      ],
+      "env": { "AUTH_HEADER": "Bearer <token>" }
+    }
+  }
+}
+```
+
+The header has no space in it because Claude Desktop on Windows splits
+an argument at one, which loses the token. `--allow-http` lets the
+bridge reach a plain-HTTP address that is not loopback.
+
+The server keeps no session, so `GET` and `DELETE` are a `405` and a
+client carries on across a restart. It answers each call as plain JSON.
+The MCP SDK answers what the transport itself refuses, such as a call
+past its size limit, in plain text and not as problem details.
+
+| Tool | Route it stands for | Notes |
+| --- | --- | --- |
+| `list_printers` | [`GET /v1/printers`](#get-v1printers) | |
+| `printer_status` | [`GET /v1/printers/{name}/status`](#get-v1printersnamestatus) | `printer` |
+| `print` | [`POST /v1/printers/{name}/jobs`](#post-v1printersnamejobs) | `printer`, and the route's body: `job`, `cut`, `density`, `speed` |
+| `preview` | [`POST /v1/printers/{name}/preview`](#post-v1printersnamepreview) | As `print`. What is drawn as dots comes back as an image beside the layout, which has no `image` of its own |
+| `list_schedules` | [`GET /v1/schedules`](#get-v1schedules) | |
+| `create_schedule` | [`POST /v1/schedules`](#post-v1schedules) | A [schedule](#schedule) |
+| `update_schedule` | [`PUT /v1/schedules/{id}`](#put-v1schedulesid) | A schedule with its `id`, as `list_schedules` gives it |
+| `delete_schedule` | [`DELETE /v1/schedules/{id}`](#delete-v1schedulesid) | `id` |
+| `get_fax_line` | [`GET /v1/fax`](#get-v1fax) | |
+| `send_fax` | [`POST /v1/fax/send`](#post-v1faxsend) | `to` and `job` |
+| `save_fax_contact` | [`PUT /v1/fax/contacts/{number}`](#put-v1faxcontactsnumber) | `number` and `name` |
+| `delete_fax_contact` | [`DELETE /v1/fax/contacts/{number}`](#delete-v1faxcontactsnumber) | `number` |
+
+A tool takes what its route takes and answers with what it answers, as
+JSON in the tool's text. A failure is the tool's error, carrying the
+[problem details](#errors) the route would have answered with.
+Arguments that do not fit a tool's schema are the exception, which the
+MCP SDK refuses in plain text. The server drops a call whose client
+disconnects, as it drops a request. A job still waiting for its printer
+never starts, and one already being written finishes. There is
+no tool for [raw bytes](#post-v1printersnameraw), for changing a
+profile or for setting up the fax line. Do those in the desktop app or
+over the routes.
+
+A tool call has no part to put a picture in, so `print`, `preview` and
+`send_fax` take it as base64 in `image`, beside `job`. A call may be
+about 22 MiB, room for a 16 MiB picture, and more is a `413`. An agent
+writes its arguments out a token at a time, though, so only a small
+picture is practical that way. Post a file to the route as a form
+instead.
+
+What an agent knows of a tool is its description and the schema of its
+arguments. The server builds both from the code, and they say what an
+agent must not get wrong: printing is physical, a success is a
+completed write and not a print, and a failure may still have printed.
 
 ## Errors
 

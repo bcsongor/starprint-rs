@@ -11,6 +11,7 @@ use chrono::{DateTime, Days, Local, TimeDelta, Timelike};
 use croner::Cron;
 use croner::errors::CronError;
 use croner::parser::{CronParser, Seconds};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use starprint_workflows::Job;
 
@@ -20,10 +21,13 @@ use crate::printers::{self, Printers};
 use crate::problem::Problem;
 
 /// The due date a scheduled task card gets when it prints.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(inline)]
 pub enum Due {
+    /// The day it prints.
     RunDay,
+    /// The day after.
     NextDay,
 }
 
@@ -40,19 +44,27 @@ impl Due {
 }
 
 /// A schedule as a client sends one: a job request as `/jobs` takes
-/// it, with the printer it goes to and when.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// it, with the printer it goes to and when. The field comments are
+/// what an agent reads of it over MCP.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScheduleSpec {
+    /// The printer it prints on, by name. A schedule whose printer is
+    /// deleted is kept, and does not run until one of that name is back.
     pub printer: String,
-    /// Five fields, in the server's local time.
+    /// Five fields, in the server's local time: `0 9 * * 1-5` is nine
+    /// in the morning on weekdays.
     pub cron: String,
+    /// False keeps the schedule without running it.
     #[serde(default = "enabled")]
     pub enabled: bool,
-    /// Task cards only: the form's date does not carry over.
+    /// Task cards only: the date the card gets when it prints. Left
+    /// out, the card prints undated, since the job's own `due` does not
+    /// carry over.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due: Option<Due>,
-    /// Prints with the profile's settings; a schedule carries no
+    /// Not a picture, since the server holds no image to print one
+    /// from. Prints with the profile's settings; a schedule carries no
     /// overrides, so a profile change cannot leave it unable to print.
     pub job: Job,
 }
@@ -129,6 +141,56 @@ pub async fn admit(spec: &ScheduleSpec, data: &Data) -> Result<(), Problem> {
         .document(&profile.printer, None)
         .await?;
     Ok(())
+}
+
+/// A schedule as a client sees it: the id the server gave it, and what
+/// it was sent as.
+#[derive(Debug, Serialize)]
+pub struct ScheduleView {
+    id: String,
+    #[serde(flatten)]
+    spec: ScheduleSpec,
+}
+
+pub fn list(data: &Data) -> Vec<ScheduleView> {
+    data.schedules()
+        .into_iter()
+        .map(|(id, spec)| ScheduleView { id, spec })
+        .collect()
+}
+
+pub async fn create(data: &Data, spec: ScheduleSpec) -> Result<ScheduleView, Problem> {
+    admit(&spec, data).await?;
+    let id = data
+        .add_schedule(spec.clone())
+        .map_err(Problem::not_saved)?;
+    Ok(ScheduleView { id, spec })
+}
+
+/// Replaces the schedule with that id whole, or is a `404`.
+pub async fn replace(data: &Data, id: &str, spec: ScheduleSpec) -> Result<ScheduleView, Problem> {
+    admit(&spec, data).await?;
+    if !data
+        .put_schedule(id, spec.clone())
+        .map_err(Problem::not_saved)?
+    {
+        return Err(missing(id));
+    }
+    Ok(ScheduleView {
+        id: id.to_owned(),
+        spec,
+    })
+}
+
+pub fn remove(data: &Data, id: &str) -> Result<(), Problem> {
+    if !data.remove_schedule(id).map_err(Problem::not_saved)? {
+        return Err(missing(id));
+    }
+    Ok(())
+}
+
+fn missing(id: &str) -> Problem {
+    Problem::not_found(format!("No schedule with id `{id}`."))
 }
 
 /// The schedules that fire in the minute `now` falls in, by id.
