@@ -99,7 +99,7 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
 #[serde(rename_all = "camelCase")]
 #[schemars(inline)]
 pub struct Text {
-    /// Wrapped to the paper. Typed spaces and blank lines are kept.
+    /// Wraps to the paper, and keeps typed spaces and blank lines.
     pub text: String,
     #[serde(default)]
     pub bold: bool,

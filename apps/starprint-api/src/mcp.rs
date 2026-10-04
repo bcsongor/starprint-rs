@@ -43,9 +43,9 @@ use crate::schedule::{self, ScheduleSpec};
 /// base64, which is a third larger.
 const BODY_LIMIT: usize = body::BINARY_LIMIT.div_ceil(3) * 4 + body::JSON_LIMIT;
 
-/// What a client is told once, on connecting. A client need not show
-/// this to its model, so what a tool cannot be used safely without is
-/// in that tool's description as well.
+/// What a client is told once, on connecting. A client may not show
+/// this to its model, so each tool's description repeats what that tool
+/// needs said.
 const INSTRUCTIONS: &str = "\
 Prints to Star receipt printers on the local network: task cards, text, note slips, QR codes, \
 pictures and test pages. It also prints them on a schedule and faxes them to other people's \
@@ -67,13 +67,14 @@ app.";
 /// The service `app::router` mounts at `/mcp`.
 pub fn service(printers: Arc<Printers>) -> StreamableHttpService<Mcp, NeverSessionManager> {
     let config = StreamableHttpServerConfig::default()
-        // Nothing is kept between calls and each is answered as plain
-        // JSON. A client survives the server restarting, and no stream
+        // The server keeps nothing between calls and answers each as
+        // plain JSON, so a client survives a restart and no stream
         // stays open to hold a shutdown up.
         .with_legacy_session_mode(false)
         .with_json_response(true)
-        // The server answers at whatever address it was bound to, and
-        // the token is what admits a request, as it is for the routes.
+        // No `Host` check. The server answers at whichever address it
+        // was bound to, and the token admits a request, as for the
+        // routes.
         .disable_allowed_hosts()
         .with_max_request_body_bytes(BODY_LIMIT);
     StreamableHttpService::new(
@@ -87,7 +88,7 @@ pub fn service(printers: Arc<Printers>) -> StreamableHttpService<Mcp, NeverSessi
     )
 }
 
-/// The tools. One is made for every call.
+/// The tools. The service makes one for every call.
 pub struct Mcp {
     printers: Arc<Printers>,
 }
@@ -120,8 +121,8 @@ struct JobArgs {
     /// density 4. Left out, the profile decides.
     speed: Option<Speed>,
     /// A picture job's picture, as base64: PNG, JPEG, WebP or BMP. It
-    /// travels in the call, so only a small one fits. A file is better
-    /// posted to `/v1/printers/{printer}/jobs` on this server as
+    /// travels in the call, so only a small one fits. Post a file to
+    /// `/v1/printers/{printer}/jobs` on this server instead, as
     /// `multipart/form-data` under the same token, with `job` and the
     /// overrides as JSON in a `job` part and the file in an `image`
     /// part.
@@ -173,8 +174,8 @@ struct FaxArgs {
     job: Job,
     /// A picture job's picture, as base64: PNG, JPEG, WebP or BMP, up
     /// to 50 megapixels and four times as tall as it is wide. It
-    /// travels in the call, so only a small one fits. A file is better
-    /// posted to `/v1/fax/send` on this server as `multipart/form-data`
+    /// travels in the call, so only a small one fits. Post a file to
+    /// `/v1/fax/send` on this server instead, as `multipart/form-data`
     /// under the same token, with `to` and `job` as JSON in a `job`
     /// part and the file in an `image` part.
     #[serde(default, with = "base64_bytes::option")]
@@ -187,8 +188,8 @@ struct FaxArgs {
 struct ContactArgs {
     /// The number to file, with or without its star.
     number: String,
-    /// What to call it: up to 64 characters, and no other number's
-    /// name.
+    /// What to call it, in up to 64 characters. No other number may
+    /// have the name.
     name: String,
 }
 
@@ -200,8 +201,8 @@ struct NumberArgs {
 }
 
 /// The picture as the jobs take it, or the `400` for a picture job
-/// without one. The routes' own is about a form, which a tool has none
-/// of.
+/// without one. The routes' own `400` talks of a form, which a tool
+/// does not have.
 fn image_for(job: &Job, image: Option<Vec<u8>>) -> Result<Option<Bytes>, Problem> {
     if job.needs_image() && image.is_none() {
         return Err(Problem::bad_request(
@@ -220,9 +221,9 @@ fn said(text: impl Into<String>) -> CallToolResult {
     CallToolResult::success(vec![ContentBlock::text(text)])
 }
 
-/// A preview as an agent can look at it: the layout as JSON, and what
-/// is drawn as dots as an image beside it, which a `data:` URL in the
-/// text would not be.
+/// A preview an agent can look at. The layout goes as JSON, and what is
+/// drawn as dots goes as an image beside it, since a model cannot see a
+/// `data:` URL in text.
 fn shown(preview: &Preview) -> CallToolResult {
     let image = match preview {
         Preview::Note { image, .. } | Preview::Qr { image, .. } | Preview::Picture { image } => {
@@ -396,11 +397,8 @@ impl Mcp {
     ) -> Result<CallToolResult, Problem> {
         let number = faxing::parse_number(&args.number)?;
         let request = ContactRequest { name: args.name };
-        Ok(reply(&faxing::put_contact(
-            &self.printers,
-            number,
-            request,
-        )?))
+        let contact = faxing::put_contact(&self.printers, number, request)?;
+        Ok(reply(&contact))
     }
 
     /// Takes a number out of the fax book.
@@ -423,12 +421,12 @@ impl ServerHandler for Mcp {
             .with_instructions(INSTRUCTIONS)
     }
 
-    /// Runs a tool until it answers or its client goes away, as a
-    /// route's handler is dropped with its connection. The SDK runs a
-    /// tool on a task of its own and only signals that the client went,
-    /// so without this a job still waiting for its printer would print
-    /// for nobody, after a shutdown too. A write already under way
-    /// finishes under its queue guard either way.
+    /// Runs a tool until it answers or its client goes away. The SDK
+    /// runs a tool on a task of its own and only signals that the
+    /// client went, where axum drops a route's handler with its
+    /// connection. Without this a job still waiting for its printer
+    /// would print for nobody, after a shutdown too. A write already
+    /// under way finishes under its queue guard either way.
     async fn call_tool(
         &self,
         request: CallToolRequestParams,

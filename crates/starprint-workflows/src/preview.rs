@@ -78,8 +78,8 @@ impl Png {
         self.0
     }
 
-    /// The bytes as base64, for a client that takes an image as that
-    /// and its media type rather than as a URL.
+    /// The bytes as base64, for a client that takes an image that way
+    /// instead of as a URL.
     pub fn base64(&self) -> String {
         BASE64.encode(&self.0)
     }

@@ -547,9 +547,9 @@ A tool takes what its route takes and answers with what it answers, as
 JSON in the tool's text. A failure is the tool's error, carrying the
 [problem details](#errors) the route would have answered with.
 Arguments that do not fit a tool's schema are the exception, which the
-MCP SDK refuses in plain text. A call whose client disconnects is
-dropped as a request is: a job still waiting for its printer never
-starts, and one already being written finishes. There is
+MCP SDK refuses in plain text. The server drops a call whose client
+disconnects, as it drops a request. A job still waiting for its printer
+never starts, and one already being written finishes. There is
 no tool for [raw bytes](#post-v1printersnameraw), for changing a
 profile or for setting up the fax line. Do those in the desktop app or
 over the routes.
@@ -558,8 +558,8 @@ A tool call has no part to put a picture in, so `print`, `preview` and
 `send_fax` take it as base64 in `image`, beside `job`. A call may be
 about 22 MiB, room for a 16 MiB picture, and more is a `413`. An agent
 writes its arguments out a token at a time, though, so only a small
-picture is practical that way; a file is better posted to the route as
-a form.
+picture is practical that way. Post a file to the route as a form
+instead.
 
 What an agent knows of a tool is its description and the schema of its
 arguments. The server builds both from the code, and they say what an

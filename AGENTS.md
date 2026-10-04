@@ -144,25 +144,25 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   The GUI keeps one queue across restarts of its server. Its guard must
   live inside the blocking task so cancellation cannot release a write
   still in progress.
-  `mcp` serves agents: MCP over streamable HTTP at `/mcp`, mounted by
+  `mcp` serves agents MCP over streamable HTTP at `/mcp`, mounted by
   `app` under the same token, on the official Rust SDK. It keeps no
   session and answers each call as plain JSON, so a client survives a
   restart and no stream holds a shutdown up. A tool calls what its
   route calls, which is why the work behind a route lives in `job`,
   `printers`, `schedule` and `faxing` and not in a handler, and it
   fails with the route's problem details as its error. Arguments that
-  do not fit a tool's schema are the exception: the SDK refuses those
+  do not fit a tool's schema are the exception. The SDK refuses those
   in plain text before the tool runs.
   The SDK runs a tool on a task of its own and only signals when the
-  client goes, so `call_tool` drops the tool then, as a route's handler
-  is dropped with its connection. Without that a job waiting for its
-  printer prints for nobody, after a shutdown too. The tools are
+  client goes, where axum drops a route's handler with its connection,
+  so `call_tool` drops the tool then. Without that a job waiting for
+  its printer prints for nobody, after a shutdown too. The tools are
   the printer list and status, print, preview, the schedules, sending a
   fax and the fax book. Raw bytes, profiles and setting up the fax line
   have none, since a description is a weaker fence than a missing
   tool. A picture travels as base64 in the call, which
   only suits a small one, so the `image` argument points an agent at
-  the form route for a file. An agent is told nothing but the tools'
+  the form route for a file. An agent knows nothing but the tools'
   descriptions and their arguments' schemas, and both are doc comments:
   a tool's on its function, an argument's on the field that reads it,
   in `mcp`, in `schedule` or on the job types in the workflows crate,

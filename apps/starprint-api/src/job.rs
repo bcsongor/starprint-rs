@@ -21,7 +21,7 @@ pub struct JobRequest {
     pub(crate) speed: Option<Speed>,
 }
 
-/// What a job that was written answers with.
+/// What a client is told of a job that was written.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrintReport {

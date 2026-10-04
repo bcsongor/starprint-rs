@@ -45,7 +45,7 @@ pub struct Picture {
     pub double: bool,
     /// How grey becomes dots.
     pub dither: Dither,
-    /// The grey level that turns black. Ignored by Bayer.
+    /// Greys darker than this turn black. Ignored by Bayer.
     pub threshold: u8,
     /// 1.0 leaves the picture as it is.
     pub brightness: f64,
