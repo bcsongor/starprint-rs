@@ -207,9 +207,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   are on the same minor as `@tauri-apps/api` and
   `@tauri-apps/plugin-store`. CI does not run it, so a Dependabot bump
   of one side passes and still breaks `tauri dev`. Bump both sides in
-  one pull request. `src-tauri/Cargo.toml` names the minor, since
-  cargo would otherwise hold the crates at the newest one the
-  workspace's Rust floor allows.
+  one pull request. `src-tauri/Cargo.toml` holds each crate to its
+  minor with `~`. Left looser, cargo keeps the crates at the newest
+  minor the workspace's Rust floor allows, or lets a lockfile refresh
+  run ahead of the npm side.
 - `rust-toolchain.toml` pins the compiler, so those checks give the same
   answer here as on CI. Bumping it can turn up new lints; do it on its
   own commit.
