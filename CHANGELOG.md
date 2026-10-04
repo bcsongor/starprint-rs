@@ -6,9 +6,8 @@
 
 - **The app ships for Linux**, as a `.deb` for x86-64 that runs on
   Ubuntu 22.04 or newer. It asks GTK for its dark theme whatever the
-  desktop's setting, and where GTK draws the title bar, as on GNOME
-  under Wayland, the bar is the toolbar's colour and 27 px tall
-  instead of 37.
+  desktop's setting, and on Wayland the title bar is the toolbar's
+  colour and 27 px tall instead of 47.
 
 ## 1.1.0
 

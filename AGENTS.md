@@ -38,8 +38,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   binds the server at the address it is given, replacing one already
   running, and `list_addresses` names the adapters. `window.rs` makes
   the title bar match the dark toolbar: by DWM on Windows, and on
-  Linux by asking GTK for its dark theme and styling the bar GTK
-  draws, which a window manager that draws its own ignores. The Linux
+  Linux by asking GTK for its dark theme and styling the header bar
+  tao adds on Wayland. On X11 the window manager draws the bar and
+  only the theme reaches it. The Linux
   release is a `.deb` built on `ubuntu-22.04`, the oldest runner, so
   it starts on that glibc and anything newer. Everything else
   is `fetch` from `src/lib/api.ts`: profiles, jobs, previews,
