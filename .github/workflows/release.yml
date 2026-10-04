@@ -4,7 +4,7 @@ on:
   push:
     tags: ["v*"]
 
-# The draft is created once and both platform jobs upload into it, so a
+# The draft is created once and every platform job uploads into it, so a
 # re-pushed tag must not run twice against the same release.
 concurrency:
   group: release-${{ github.ref_name }}
@@ -68,6 +68,12 @@ jobs:
           ```
           xattr -d com.apple.quarantine /Applications/Starprint.app
           ```
+
+          **Linux, x86-64.** Install the `.deb` on Ubuntu 22.04 or newer:
+
+          ```
+          sudo apt install ./Starprint_*_amd64.deb
+          ```
           EOF
           )
           gh release create "$GITHUB_REF_NAME" \
@@ -79,7 +85,7 @@ jobs:
 
   build:
     needs: draft
-    # One platform failing should still leave the other's installer on
+    # One platform failing should still leave the others' installers on
     # the draft for you to look at.
     strategy:
       fail-fast: false
@@ -95,13 +101,25 @@ jobs:
             target: aarch64-apple-darwin
             bundles: dmg
             artefacts: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          # The oldest image there is, since a binary needs at least the
+          # glibc it was linked against. A `.deb` and no AppImage: the
+          # package uses the distribution's WebKitGTK, where an AppImage
+          # carries its own and is several times the size.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb
+            artefacts: target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install
-      # A no-op on both runners, whose host triple is already the target;
+      # A no-op on every runner, whose host triple is already the target;
       # here so the matrix stays honest if a runner image ever changes.
       - run: rustup target add ${{ matrix.target }}
+      # The WebKitGTK headers, which bring GTK's with them. The other
+      # two runners have their webview already.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - run: bun install --frozen-lockfile
@@ -121,7 +139,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/starprint-gui.exe" \
              "Starprint_${GITHUB_REF_NAME#v}_x64-portable.exe"
 
-      # bash on both platforms, because PowerShell will not expand the
+      # bash on every platform, because PowerShell will not expand the
       # glob for a native command.
       - name: Upload the installer to the draft
         shell: bash

@@ -19,8 +19,9 @@
 ## Get started
 
 [Download the latest release](https://github.com/bcsongor/starprint-rs/releases/latest)
-for Windows or macOS on Apple silicon. Windows has an installer and a portable
-executable. The builds are unsigned; the release page has installation instructions.
+for Windows, macOS on Apple silicon or Linux. Windows has an installer and a
+portable executable, Linux a `.deb` for Ubuntu 22.04 or newer. The builds are
+unsigned; the release page has installation instructions.
 
 Connect your printer over Ethernet, then open **Profile actions** beside the
 profile picker and choose **New profile…** to enter its IP address. Choose a
