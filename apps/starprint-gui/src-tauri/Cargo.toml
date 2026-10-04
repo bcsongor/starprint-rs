@@ -34,3 +34,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 [target.'cfg(windows)'.dependencies]
 # Paints the title bar in the app's own colour (DwmSetWindowAttribute).
 windows-sys = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Asks for the dark theme and styles the title bar GTK draws. The
+# version is the one Tauri builds against.
+gtk = "0.18"

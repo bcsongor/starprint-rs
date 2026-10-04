@@ -34,6 +34,51 @@ pub fn colour_title_bar(app: &tauri::App) {
     }
 }
 
+/// Asks GTK for its dark theme, and paints the title bar GTK draws to
+/// match the toolbar under it, at 27 px where the theme's is 37. tao
+/// takes the theme from the desktop's setting and not from
+/// `tauri.conf.json`, so a light desktop would otherwise get a light
+/// title bar over the dark app.
+///
+/// GTK draws the title bar where the compositor leaves it to the
+/// window: GNOME on Wayland, and WSLg. Elsewhere the window manager
+/// draws it, and only the dark theme reaches it, as a hint.
+#[cfg(target_os = "linux")]
+pub fn colour_title_bar(_app: &tauri::App) {
+    use gtk::prelude::*;
+
+    // `default-decoration` is the title bar GTK gives a window that
+    // brought none, so a dialog's own header bar keeps the theme's.
+    const CSS: &[u8] = b"
+        headerbar.default-decoration {
+            min-height: 0;
+            padding: 2px 4px;
+            background: #0a0a0a;
+            border-color: #0a0a0a;
+            box-shadow: none;
+            color: #fafafa;
+        }
+        headerbar.default-decoration button.titlebutton {
+            min-height: 20px;
+            min-width: 20px;
+        }
+    ";
+
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(true);
+    }
+    let provider = gtk::CssProvider::new();
+    if provider.load_from_data(CSS).is_ok()
+        && let Some(screen) = gtk::gdk::Screen::default()
+    {
+        gtk::StyleContext::add_provider_for_screen(
+            &screen,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+}
+
 /// macOS draws its own, and already matches the dark theme.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn colour_title_bar(_app: &tauri::App) {}

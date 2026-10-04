@@ -57,13 +57,12 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   gui:
-    # The two platforms the app is released for. Neither needs extra
-    # system packages: WebView2 ships with Windows, WebKit with macOS.
-    # Linux would, so it is left out until the app ships there.
+    # The platforms the app is released for. Linux is the image the
+    # release builds on, for the reason given there.
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -72,6 +71,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # WebView2 ships with Windows and WebKit with macOS. On Linux the
+      # WebKitGTK headers come from apt, and bring GTK's with them.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
       - run: bun run lint
