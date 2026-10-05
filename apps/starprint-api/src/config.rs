@@ -144,8 +144,7 @@ pub fn write(path: &Path, profiles: &[Profile]) -> Result<(), String> {
             (profile.name.clone(), spec)
         })
         .collect();
-    let text = serde_json::to_vec_pretty(&file).map_err(|e| e.to_string())?;
-    crate::data::replace(path, &text)
+    crate::data::write_json(path, &file)
 }
 
 fn parse(text: &str) -> Result<Vec<Profile>, String> {

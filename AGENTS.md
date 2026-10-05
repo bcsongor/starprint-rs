@@ -113,7 +113,7 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   replaces, and jobs still cannot carry `host` or `port`. `/preview`
   takes a job's body and answers with the workflows crate's `Preview`,
   so a client needs no job code of its own. The connection
-  probe lives here too, behind `/status` and exported as `reachable`,
+  probe lives here too, behind `/status`,
   so it takes the printer's turn like a job. `src/phone.html` is the
   phone page, served at `/` without the token: one file, no framework
   and no build step, so the command line serves it too. It prints and

@@ -229,7 +229,7 @@ fn settings(printers: &Printers) -> Result<FaxSettings, String> {
         if let Some(line) = &mut settings.line {
             line.rotate(now);
         }
-        Ok(settings.clone())
+        settings.clone()
     })
 }
 
@@ -346,10 +346,7 @@ pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Pr
     }
     printers
         .data
-        .change_fax(|settings| {
-            settings.printer = request.printer;
-            Ok(())
-        })
+        .change_fax(|settings| settings.printer = request.printer)
         .map_err(Problem::not_saved)
 }
 
@@ -367,10 +364,7 @@ pub fn activate(printers: &Printers, replace: bool) -> Result<(), Problem> {
     let line = LineSecret::new(&Identity::generate(), now());
     printers
         .data
-        .change_fax(|settings| {
-            settings.line = Some(line);
-            Ok(())
-        })
+        .change_fax(|settings| settings.line = Some(line))
         .map_err(Problem::not_saved)
 }
 
@@ -408,13 +402,12 @@ pub async fn add_relay(printers: &Printers, request: AddRelay) -> Result<RelayEn
     let added = entry.clone();
     printers
         .data
-        .change_fax(|settings| {
-            match settings.relays.iter_mut().find(|r| r.name == added.name) {
+        .change_fax(
+            |settings| match settings.relays.iter_mut().find(|r| r.name == added.name) {
                 Some(existing) => *existing = added,
                 None => settings.relays.push(added),
-            }
-            Ok(())
-        })
+            },
+        )
         .map_err(Problem::not_saved)?;
     Ok(entry)
 }
@@ -426,7 +419,7 @@ pub fn remove_relay(printers: &Printers, name: &str) -> Result<(), Problem> {
         .change_fax(|settings| {
             let before = settings.relays.len();
             settings.relays.retain(|relay| relay.name != name);
-            Ok(settings.relays.len() != before)
+            settings.relays.len() != before
         })
         .map_err(Problem::not_saved)?;
     if !removed {
@@ -475,12 +468,12 @@ pub fn put_contact(
                 .iter()
                 .any(|c| c.number != number && c.name.eq_ignore_ascii_case(&filed.name))
             {
-                return Ok(true);
+                return true;
             }
             settings.contacts.retain(|c| c.number != number);
             settings.contacts.push(filed);
             settings.contacts.sort_by_key(|c| c.name.to_lowercase());
-            Ok(false)
+            false
         })
         .map_err(Problem::not_saved)?;
     if taken {
@@ -499,7 +492,7 @@ pub fn remove_contact(printers: &Printers, number: Number) -> Result<(), Problem
         .change_fax(|settings| {
             let before = settings.contacts.len();
             settings.contacts.retain(|c| c.number != number);
-            Ok(settings.contacts.len() != before)
+            settings.contacts.len() != before
         })
         .map_err(Problem::not_saved)?;
     if !removed {
@@ -590,7 +583,7 @@ pub async fn send(
     // Built once here so a job that cannot print is turned away now,
     // rather than failing on the other side where nobody sees it.
     if let Some(profile) = settings.printer(&printers.data) {
-        request_for(request.job.clone())
+        JobRequest::from(request.job.clone())
             .document(&profile.printer, image.clone())
             .await?;
     }
@@ -633,10 +626,10 @@ pub async fn send(
             .await
             .map_err(|e| Problem::bad_gateway(format!("{}: {e}.", relay.name)))?;
         // It went whether or not this is saved, so a failure is only logged.
-        if let Err(e) = printers.data.change_fax(|settings| {
-            settings.add_recent(to, now());
-            Ok(())
-        }) {
+        if let Err(e) = printers
+            .data
+            .change_fax(|settings| settings.add_recent(to, now()))
+        {
             eprintln!("starprint-api: a faxed number could not be remembered: {e}");
         }
         return Ok(Sent {
@@ -686,15 +679,6 @@ fn fits(job: &Job, image: Option<&[u8]>) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-fn request_for(job: Job) -> JobRequest {
-    JobRequest {
-        job,
-        cut: None,
-        density: None,
-        speed: None,
-    }
 }
 
 /// `record` checked, and for `number`, since a relay could answer with
@@ -866,7 +850,7 @@ async fn receive(
         number: sender.number.to_string(),
         sent: local(fax.sent),
     };
-    let payload = request_for(contents.job)
+    let payload = JobRequest::from(contents.job)
         .fax(&profile.printer, contents.image.map(Bytes::from), header)
         .await
         .map_err(|p| Receive::Refused(p.detail().to_owned()))?;
@@ -881,7 +865,6 @@ async fn receive(
             line.printed.insert(id, now);
         }
         settings.add_recent(sender.number, now);
-        Ok(())
     });
     if let Err(e) = remembered {
         eprintln!("starprint-api: a printed fax could not be remembered: {e}");
@@ -1074,7 +1057,6 @@ mod tests {
             .change_fax(|settings| {
                 let line = settings.line.as_mut().unwrap();
                 line.rotate(now() + ROTATE_AFTER);
-                Ok(())
             })
             .unwrap();
         let ben_line = ben.data.fax().line.unwrap();

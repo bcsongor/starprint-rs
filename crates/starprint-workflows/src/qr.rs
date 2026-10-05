@@ -38,9 +38,7 @@ impl From<Align> for Alignment {
     }
 }
 
-/// How much of the symbol can be lost and still scan. Mirrors
-/// [`starprint::QrErrorCorrection`], which has no serde support of its
-/// own.
+/// How much of the symbol can be lost and still scan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[schemars(inline)]

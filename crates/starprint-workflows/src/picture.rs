@@ -73,7 +73,7 @@ const SOURCE_OVERSAMPLE: u32 = 2;
 /// Shrinks to at most `max_width`, keeping the aspect ratio, or `None`
 /// when the image is already no wider.
 #[must_use]
-pub fn fit_width(image: &DynamicImage, max_width: u32) -> Option<DynamicImage> {
+fn fit_width(image: &DynamicImage, max_width: u32) -> Option<DynamicImage> {
     if image.width() <= max_width {
         return None;
     }
@@ -103,15 +103,13 @@ impl Picture {
         }
     }
 
-    /// What [`prepare`](Self::prepare) shrinks its source to. A caller
-    /// that caches decoded images shrinks to this width once, so the
-    /// result is the same either way.
-    pub fn source_width(&self, kind: PrinterKind, paper: Paper) -> u32 {
+    /// What [`prepare`](Self::prepare) shrinks its source to.
+    fn source_width(&self, kind: PrinterKind, paper: Paper) -> u32 {
         self.profile(kind, paper).max_width(self.density(kind)) * SOURCE_OVERSAMPLE
     }
 
     /// The picture as it prints.
-    pub fn prepare(
+    fn prepare(
         &self,
         kind: PrinterKind,
         paper: Paper,
@@ -124,7 +122,7 @@ impl Picture {
     }
 
     /// The picture for the screen, one head wide.
-    pub fn preview(
+    pub(crate) fn preview(
         &self,
         kind: PrinterKind,
         paper: Paper,

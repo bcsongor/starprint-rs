@@ -18,8 +18,6 @@ mod problem;
 mod schedule;
 mod server;
 
-pub use config::{Profile, ProfileSpec};
 pub use data::Data;
-pub use printers::{PrintQueue, reachable};
-pub use schedule::{Due, ScheduleSpec, parse_cron};
+pub use printers::PrintQueue;
 pub use server::{DEFAULT_LISTEN, Server};

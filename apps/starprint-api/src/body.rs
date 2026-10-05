@@ -83,6 +83,24 @@ pub async fn form(request: Request) -> Result<(Bytes, Option<Bytes>), Problem> {
     Ok((job, image))
 }
 
+/// A `T` as JSON, or as a form whose `job` part is one, with the picture
+/// beside it.
+pub async fn json_or_form<T: DeserializeOwned>(
+    request: Request,
+) -> Result<(T, Option<Bytes>), Problem> {
+    match media_type(request.headers()).as_deref() {
+        Some("application/json") => Ok((json(request).await?, None)),
+        Some("multipart/form-data") => {
+            let (job, image) = form(request).await?;
+            Ok((parse_json(&job)?, image))
+        }
+        other => Err(unsupported(
+            other,
+            "application/json or multipart/form-data",
+        )),
+    }
+}
+
 fn part_problem(error: axum::extract::multipart::MultipartError) -> Problem {
     let detail = format!("The form could not be read: {error}.");
     match error.status() {
