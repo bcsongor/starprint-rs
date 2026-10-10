@@ -29,11 +29,19 @@ pub struct PrintReport {
     pub(crate) bytes_sent: usize,
 }
 
-impl JobRequest {
-    pub fn parse(body: &[u8]) -> Result<Self, Problem> {
-        crate::body::parse_json(body)
+/// The job as the profile prints it, with no overrides.
+impl From<Job> for JobRequest {
+    fn from(job: Job) -> Self {
+        Self {
+            job,
+            cut: None,
+            density: None,
+            speed: None,
+        }
     }
+}
 
+impl JobRequest {
     /// Builds this job for `profile` and writes it in that printer's
     /// turn.
     pub async fn print(
@@ -164,6 +172,7 @@ impl JobRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::body::parse_json;
     use starprint_workflows::Paper;
 
     fn thermal() -> Printer {
@@ -181,7 +190,7 @@ mod tests {
     }
 
     fn request(json: &str) -> JobRequest {
-        JobRequest::parse(json.as_bytes()).expect("parses")
+        parse_json(json.as_bytes()).expect("parses")
     }
 
     fn detail(problem: Problem) -> String {
@@ -222,9 +231,13 @@ mod tests {
     /// The profile alone decides where the job goes and how wide it is.
     #[test]
     fn an_override_cannot_reach_the_address_or_the_paper() {
-        assert!(JobRequest::parse(br#"{"host":"10.0.0.1","job":{"kind":"test-page"}}"#).is_err());
-        assert!(JobRequest::parse(br#"{"paper":112,"job":{"kind":"test-page"}}"#).is_err());
-        assert!(JobRequest::parse(br#"{"kind":"impact","job":{"kind":"test-page"}}"#).is_err());
+        assert!(
+            parse_json::<JobRequest>(br#"{"host":"10.0.0.1","job":{"kind":"test-page"}}"#).is_err()
+        );
+        assert!(parse_json::<JobRequest>(br#"{"paper":112,"job":{"kind":"test-page"}}"#).is_err());
+        assert!(
+            parse_json::<JobRequest>(br#"{"kind":"impact","job":{"kind":"test-page"}}"#).is_err()
+        );
     }
 
     #[test]

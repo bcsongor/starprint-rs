@@ -44,34 +44,26 @@ impl PrintQueue {
     }
 }
 
-/// Whether something answers at `host` and `port`, checked in the
-/// printer's turn so the probe never lands in the middle of a job. The
-/// name is resolved before the turn is taken, so a slow lookup holds
-/// nobody up. An empty host is offline without a lookup.
-pub async fn reachable(host: &str, port: u16, queue: &PrintQueue) -> bool {
+/// Whether something answers at the printer's address, checked in its
+/// turn so the probe never lands in the middle of a job. The name is
+/// resolved before the turn is taken, so a slow lookup holds nobody up.
+/// An empty host is offline without a lookup.
+pub async fn reachable(printer: &Printer, queue: &PrintQueue) -> bool {
     // Only bounds how long a missing printer takes to show as offline.
     const TIMEOUT: Duration = Duration::from_millis(400);
 
-    let host = host.trim().to_owned();
-    if host.is_empty() {
+    if printer.host.trim().is_empty() {
         return false;
     }
-    let name = host
-        .strip_prefix('[')
-        .and_then(|host| host.strip_suffix(']'))
-        .unwrap_or(&host)
-        .to_owned();
-    let addrs: Vec<SocketAddr> = match tokio::task::spawn_blocking(move || {
-        (name.as_str(), port)
-            .to_socket_addrs()
-            .map(Iterator::collect)
-    })
-    .await
-    {
-        Ok(Ok(addrs)) => addrs,
-        _ => return false,
-    };
-    let turn = queue.lock(&host, port).await;
+    let address = printer.address();
+    let addrs: Vec<SocketAddr> =
+        match tokio::task::spawn_blocking(move || address.to_socket_addrs().map(Iterator::collect))
+            .await
+        {
+            Ok(Ok(addrs)) => addrs,
+            _ => return false,
+        };
+    let turn = queue.lock(&printer.host, printer.port).await;
     tokio::task::spawn_blocking(move || {
         let _turn = turn;
         addrs
@@ -150,7 +142,7 @@ impl Printers {
     pub async fn status(&self, name: &str) -> Result<StatusView, Problem> {
         let printer = self.find(name)?.printer;
         Ok(StatusView {
-            online: reachable(&printer.host, printer.port, &self.queue).await,
+            online: reachable(&printer, &self.queue).await,
         })
     }
 }
@@ -352,12 +344,14 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let queue = PrintQueue::default();
-        assert!(reachable("127.0.0.1", port, &queue).await);
-        assert!(!reachable("", port, &queue).await);
-        assert!(!reachable("[[127.0.0.1]]", port, &queue).await);
+        let at = |host: &str| Printer::impact(host.to_owned(), port);
+        let printer = at("127.0.0.1");
+        assert!(reachable(&printer, &queue).await);
+        assert!(!reachable(&at(""), &queue).await);
+        assert!(!reachable(&at("[[127.0.0.1]]"), &queue).await);
 
         let turn = queue.lock("127.0.0.1", port).await;
-        let mut probe = pin!(reachable("127.0.0.1", port, &queue));
+        let mut probe = pin!(reachable(&printer, &queue));
         let mut cx = Context::from_waker(Waker::noop());
         // The lookup runs first; the connection waits for the turn.
         let _ = timeout(Duration::from_millis(200), probe.as_mut()).await;
@@ -366,7 +360,7 @@ mod tests {
         assert!(probe.await);
 
         drop(listener);
-        assert!(!reachable("127.0.0.1", port, &queue).await);
+        assert!(!reachable(&printer, &queue).await);
     }
 
     #[tokio::test]
@@ -374,7 +368,8 @@ mod tests {
         let listener = TcpListener::bind("[::1]:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let queue = PrintQueue::default();
-        assert!(reachable("::1", port, &queue).await);
-        assert!(reachable("[::1]", port, &queue).await);
+        for host in ["::1", "[::1]"] {
+            assert!(reachable(&Printer::impact(host.to_owned(), port), &queue).await);
+        }
     }
 }

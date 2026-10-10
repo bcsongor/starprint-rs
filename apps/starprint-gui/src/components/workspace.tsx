@@ -104,14 +104,19 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const [faxDrawer, setFaxDrawer] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
 
-  /** Runs a change against the server and reports what went wrong. */
-  const attempt = async (what: string, action: () => Promise<void>) => {
+  /** Runs a change against the server and rejects, after saying what
+   * went wrong, for a caller that waits on the outcome. */
+  const tryTo = async (what: string, action: () => Promise<void>) => {
     try {
       await action();
     } catch (error) {
       toast.error(what, { description: String(error) });
+      throw error;
     }
   };
+  /** As `tryTo`, for a caller with nothing to do on failure. */
+  const attempt = (what: string, action: () => Promise<void>) =>
+    tryTo(what, action).catch(() => {});
   const profile =
     profiles.find((p) => p.name === settings.printer) ?? byName(profiles)[0];
 
@@ -193,9 +198,9 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
 
   /** Faxes the job in the form; rejects, after saying why, if it did
    * not go. */
-  const sendFax = async (to: string) => {
+  const sendFax = (to: string) => {
     const what = NAMES[workflow];
-    try {
+    return tryTo(`Could not fax ${what}`, async () => {
       const sent = await api.sendFax(
         to,
         job,
@@ -208,10 +213,7 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
           </>
         ),
       });
-    } catch (error) {
-      toast.error(`Could not fax ${what}`, { description: String(error) });
-      throw error;
-    }
+    });
   };
 
   useAutoPrint(settings.linear, (card) =>
@@ -426,17 +428,12 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
                 ready={ready}
                 onSend={sendFax}
                 onSetUp={() => setFaxDrawer(true)}
-                onSaveContact={async (number, name) => {
-                  try {
+                onSaveContact={(number, name) =>
+                  tryTo("Could not save the contact", async () => {
                     await api.putContact(number, name);
                     await refreshFax();
-                  } catch (error) {
-                    toast.error("Could not save the contact", {
-                      description: String(error),
-                    });
-                    throw error;
-                  }
-                }}
+                  })
+                }
                 onRemoveContact={(contact) =>
                   attempt("Could not remove the contact", async () => {
                     await api.deleteContact(contact.number);
@@ -569,18 +566,13 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               await refreshFax();
             })
           }
-          onAddRelay={async (url) => {
-            try {
+          onAddRelay={(url) =>
+            tryTo("Could not add the relay", async () => {
               const relay = await api.addRelay(url);
               toast.success(`Added ${relay.name}`, { description: relay.url });
               await refreshFax();
-            } catch (error) {
-              toast.error("Could not add the relay", {
-                description: String(error),
-              });
-              throw error;
-            }
-          }}
+            })
+          }
           onRemoveRelay={(relay) =>
             attempt("Could not remove the relay", async () => {
               await api.removeRelay(relay.name);

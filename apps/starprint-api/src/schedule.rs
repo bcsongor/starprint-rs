@@ -121,12 +121,7 @@ impl ScheduleSpec {
         if let Job::TaskCard(card) = &mut job {
             card.due = self.due.map(|due| due.date(at));
         }
-        JobRequest {
-            job,
-            cut: None,
-            density: None,
-            speed: None,
-        }
+        job.into()
     }
 }
 

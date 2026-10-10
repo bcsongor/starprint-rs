@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
@@ -195,28 +194,13 @@ async fn printer_status(
     Ok(Json(printers.status(&name).await?))
 }
 
-/// A job request as JSON, or as a form with the picture beside it.
-async fn job_request(request: Request) -> Result<(JobRequest, Option<Bytes>), Problem> {
-    match body::media_type(request.headers()).as_deref() {
-        Some("application/json") => Ok((body::json(request).await?, None)),
-        Some("multipart/form-data") => {
-            let (job, image) = body::form(request).await?;
-            Ok((JobRequest::parse(&job)?, image))
-        }
-        other => Err(body::unsupported(
-            other,
-            "application/json or multipart/form-data",
-        )),
-    }
-}
-
 async fn create_job(
     State(printers): State<Arc<Printers>>,
     Path(name): Path<String>,
     request: Request,
 ) -> Result<Json<PrintReport>, Problem> {
     let printer = printers.find(&name)?.printer;
-    let (job, image) = job_request(request).await?;
+    let (job, image) = body::json_or_form::<JobRequest>(request).await?;
     Ok(Json(job.print(&printer, image, &printers.queue).await?))
 }
 
@@ -228,7 +212,7 @@ async fn preview_job(
     request: Request,
 ) -> Result<Json<Preview>, Problem> {
     let printer = printers.find(&name)?.printer;
-    let (job, image) = job_request(request).await?;
+    let (job, image) = body::json_or_form::<JobRequest>(request).await?;
     Ok(Json(job.preview(&printer, image).await?))
 }
 
@@ -349,19 +333,7 @@ async fn send_fax(
     State(printers): State<Arc<Printers>>,
     request: Request,
 ) -> Result<Json<Sent>, Problem> {
-    let (request, image) = match body::media_type(request.headers()).as_deref() {
-        Some("application/json") => (body::json::<SendRequest>(request).await?, None),
-        Some("multipart/form-data") => {
-            let (job, image) = body::form(request).await?;
-            (body::parse_json(&job)?, image)
-        }
-        other => {
-            return Err(body::unsupported(
-                other,
-                "application/json or multipart/form-data",
-            ));
-        }
-    };
+    let (request, image) = body::json_or_form::<SendRequest>(request).await?;
     Ok(Json(faxing::send(&printers, request, image).await?))
 }
 

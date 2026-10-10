@@ -8,7 +8,7 @@ export type PrinterKind = "thermal" | "impact";
 export type Speed = "high" | "medium" | "slow";
 
 /** Roll width in millimetres, matching the print width memory switch. */
-export type Paper = 80 | 112;
+type Paper = 80 | 112;
 
 /** Selects two-colour mode; mirrors `TWO_COLOR_DENSITY` in starprint-workflows. */
 export const TWO_COLOR_DENSITY = 4;
@@ -303,15 +303,9 @@ function jobBody(job: Job, image: File | null): RequestInit {
 
 /** A request that carries a job, with its picture as a form part. */
 function requestBody(value: object, image: File | null): RequestInit {
-  const request = JSON.stringify(value);
-  if (!image) {
-    return {
-      body: request,
-      headers: { "Content-Type": "application/json" },
-    };
-  }
+  if (!image) return jsonBody(value);
   const form = new FormData();
-  form.append("job", request);
+  form.append("job", JSON.stringify(value));
   form.append("image", image);
   return { body: form };
 }

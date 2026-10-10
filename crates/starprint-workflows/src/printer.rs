@@ -18,13 +18,11 @@ pub enum PrinterKind {
 
 /// Roll width of a thermal printer. The SP700's carriage is fixed, so
 /// impact ignores it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Paper {
     /// 72 mm print region, 576 dots.
-    #[serde(rename = "80")]
     Mm80,
     /// 104 mm print region, 832 dots.
-    #[serde(rename = "112")]
     Mm112,
 }
 

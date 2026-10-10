@@ -16,6 +16,9 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
 use crate::config::{self, Profile};
 use crate::faxing::FaxSettings;
 use crate::schedule::ScheduleSpec;
@@ -58,7 +61,7 @@ impl Data {
             .map_err(|_| format!("{}: another server has it open", dir.display()))?;
         let profiles = config::read(&dir.join(PROFILES))?;
         let schedules = read_schedules(&dir.join(SCHEDULES))?;
-        let fax = read_fax(&dir.join(FAX))?;
+        let fax = read_json(&dir.join(FAX))?;
         let token_path = dir.join(TOKEN);
         // Trimmed either way, as a request's bearer is.
         let token = match token {
@@ -118,34 +121,27 @@ impl Data {
     /// Replaces the profile of that name in place, or adds one. `true`
     /// when it was new.
     pub fn put_profile(&self, profile: Profile) -> Result<bool, String> {
-        let mut profiles = self.profiles.write().unwrap();
-        let mut next = profiles.clone();
-        let created = match next.iter_mut().find(|p| p.name == profile.name) {
-            Some(existing) => {
-                *existing = profile;
-                false
+        self.change_profiles(|profiles| {
+            match profiles.iter_mut().find(|p| p.name == profile.name) {
+                Some(existing) => {
+                    *existing = profile;
+                    false
+                }
+                None => {
+                    profiles.push(profile);
+                    true
+                }
             }
-            None => {
-                next.push(profile);
-                true
-            }
-        };
-        self.save_profiles(&next)?;
-        *profiles = next;
-        Ok(created)
+        })
     }
 
     /// `false` when there was none. Its schedules stay, and do not run.
     pub fn remove_profile(&self, name: &str) -> Result<bool, String> {
-        let mut profiles = self.profiles.write().unwrap();
-        let Some(index) = profiles.iter().position(|p| p.name == name) else {
-            return Ok(false);
-        };
-        let mut next = profiles.clone();
-        next.remove(index);
-        self.save_profiles(&next)?;
-        *profiles = next;
-        Ok(true)
+        self.change_profiles(|profiles| {
+            let before = profiles.len();
+            profiles.retain(|p| p.name != name);
+            profiles.len() != before
+        })
     }
 
     /// By id.
@@ -161,99 +157,88 @@ impl Data {
     /// Returns the id the schedule was given.
     pub fn add_schedule(&self, spec: ScheduleSpec) -> Result<String, String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let mut schedules = self.schedules.write().unwrap();
-        let mut next = schedules.clone();
-        next.insert(id.clone(), spec);
-        self.save_schedules(&next)?;
-        *schedules = next;
+        self.change_schedules(|schedules| schedules.insert(id.clone(), spec))?;
         Ok(id)
     }
 
     /// `false` when there is no schedule with that id.
     pub fn put_schedule(&self, id: &str, spec: ScheduleSpec) -> Result<bool, String> {
-        let mut schedules = self.schedules.write().unwrap();
-        if !schedules.contains_key(id) {
-            return Ok(false);
-        }
-        let mut next = schedules.clone();
-        next.insert(id.to_owned(), spec);
-        self.save_schedules(&next)?;
-        *schedules = next;
-        Ok(true)
+        self.change_schedules(|schedules| schedules.get_mut(id).map(|kept| *kept = spec).is_some())
     }
 
     /// `false` when there was none.
     pub fn remove_schedule(&self, id: &str) -> Result<bool, String> {
-        let mut schedules = self.schedules.write().unwrap();
-        let mut next = schedules.clone();
-        if next.remove(id).is_none() {
-            return Ok(false);
-        }
-        self.save_schedules(&next)?;
-        *schedules = next;
-        Ok(true)
+        self.change_schedules(|schedules| schedules.remove(id).is_some())
     }
 
     pub fn fax(&self) -> FaxSettings {
         self.fax.read().unwrap().clone()
     }
 
-    /// Applies `change` to the fax settings and writes them; nothing is
-    /// kept if `change` fails or the write does.
-    pub fn change_fax<T>(
+    /// Applies `change` to the fax settings and writes them.
+    pub fn change_fax<T>(&self, change: impl FnOnce(&mut FaxSettings) -> T) -> Result<T, String> {
+        self.change(&self.fax, change, FAX, write_json)
+    }
+
+    fn change_profiles<T>(&self, change: impl FnOnce(&mut Vec<Profile>) -> T) -> Result<T, String> {
+        self.change(&self.profiles, change, PROFILES, |path, profiles| {
+            config::write(path, profiles)
+        })
+    }
+
+    fn change_schedules<T>(
         &self,
-        change: impl FnOnce(&mut FaxSettings) -> Result<T, String>,
+        change: impl FnOnce(&mut BTreeMap<String, ScheduleSpec>) -> T,
     ) -> Result<T, String> {
-        let mut fax = self.fax.write().unwrap();
-        let mut next = fax.clone();
-        let result = change(&mut next)?;
+        self.change(&self.schedules, change, SCHEDULES, write_json)
+    }
+
+    /// Applies `change` to a copy of what `kept` guards and writes the
+    /// copy as `file` before keeping it, so a failed write leaves memory
+    /// and disk as they were. The file is written even when `change`
+    /// found nothing to do.
+    fn change<S: Clone, T>(
+        &self,
+        kept: &RwLock<S>,
+        change: impl FnOnce(&mut S) -> T,
+        file: &str,
+        write: impl FnOnce(&Path, &S) -> Result<(), String>,
+    ) -> Result<T, String> {
+        let mut kept = kept.write().unwrap();
+        let mut next = kept.clone();
+        let result = change(&mut next);
         if let Some(dir) = &self.dir {
-            let text = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
-            replace(&dir.join(FAX), &text)?;
+            write(&dir.join(file), &next)?;
         }
-        *fax = next;
+        *kept = next;
         Ok(result)
     }
+}
 
-    fn save_profiles(&self, profiles: &[Profile]) -> Result<(), String> {
-        let Some(dir) = &self.dir else {
-            return Ok(());
-        };
-        config::write(&dir.join(PROFILES), profiles)
+/// The file at `path` as a `T`, or the default when there is no file.
+fn read_json<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String> {
+    match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
     }
+}
 
-    fn save_schedules(&self, schedules: &BTreeMap<String, ScheduleSpec>) -> Result<(), String> {
-        let Some(dir) = &self.dir else {
-            return Ok(());
-        };
-        let text = serde_json::to_vec_pretty(schedules).map_err(|e| e.to_string())?;
-        replace(&dir.join(SCHEDULES), &text)
-    }
+/// `value` as the whole of the file at `path`.
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let text = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
+    replace(path, &text)
 }
 
 /// The schedules by id, with their cron and job kind checked. Their
 /// printers may have been deleted since they were saved.
 fn read_schedules(path: &Path) -> Result<BTreeMap<String, ScheduleSpec>, String> {
-    let schedules: BTreeMap<String, ScheduleSpec> = match std::fs::read(path) {
-        Ok(bytes) => {
-            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
-        Err(e) => return Err(format!("{}: {e}", path.display())),
-    };
+    let schedules: BTreeMap<String, ScheduleSpec> = read_json(path)?;
     for (id, spec) in &schedules {
         spec.check()
             .map_err(|problem| format!("{}: {id}: {}", path.display(), problem.detail()))?;
     }
     Ok(schedules)
-}
-
-fn read_fax(path: &Path) -> Result<FaxSettings, String> {
-    match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(FaxSettings::default()),
-        Err(e) => Err(format!("{}: {e}", path.display())),
-    }
 }
 
 fn generate_token(path: &Path) -> Result<String, String> {
@@ -266,7 +251,7 @@ fn generate_token(path: &Path) -> Result<String, String> {
 /// mid-write leaves the old file rather than half of the new one. The
 /// token is a secret, so on Unix the file is the owner's alone; the
 /// other two get the same treatment for want of a reason not to.
-pub fn replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let name = path
         .file_name()
         .map(|name| name.to_string_lossy())

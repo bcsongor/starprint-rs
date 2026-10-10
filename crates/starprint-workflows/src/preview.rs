@@ -74,10 +74,6 @@ impl Png {
         png(&shown).map(Self)
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
-    }
-
     /// The bytes as base64, for a client that takes an image that way
     /// instead of as a URL.
     pub fn base64(&self) -> String {
