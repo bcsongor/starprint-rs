@@ -3,7 +3,8 @@ name = "starprint-gui"
 version = "1.1.0"
 description = "Desktop app for printing to Star receipt printers"
 edition.workspace = true
-rust-version.workspace = true
+# Tauri 2.12 needs it. The library keeps the workspace floor.
+rust-version = "1.90"
 license.workspace = true
 repository.workspace = true
 publish = false
@@ -23,8 +24,13 @@ serde = { version = "1", features = ["derive"] }
 if-addrs = "0.15"
 # The server the app is a client of, run in-process.
 starprint-api = { path = "../../starprint-api" }
-tauri = { version = "2", features = [] }
-tauri-plugin-store = "2"
+# The Tauri CLI will not build unless these are on the same minor as
+# their npm packages in `package.json`, so `~` holds each to its minor
+# and the two sides are bumped together. Left at `2`, cargo holds them
+# at the newest minor the workspace's Rust floor allows while the npm
+# side moves on, and a bare `2.12` lets a lockfile refresh run ahead.
+tauri = { version = "~2.12", features = [] }
+tauri-plugin-store = "~2.5"
 
 [dev-dependencies]
 # A data directory that is thrown away after the test.
