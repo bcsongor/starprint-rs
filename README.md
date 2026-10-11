@@ -105,6 +105,10 @@ you gave them. The fax book also lists recent numbers, so you can add one
 afterwards. Faxes are sealed end to end with post-quantum keys, so the relay
 cannot read them.
 
+To keep strangers off your paper, turn on **Only print faxes from my fax
+book** at the foot of the same drawer. A fax from any other number then waits
+there, and the phone button shows a dot, until you print or drop it.
+
 A relay is a small public server anyone can run:
 `cargo run --release -p starprint-relay -- --name LONRELAY01`,
 behind a TLS proxy. See [its README](apps/starprint-relay/README.md).

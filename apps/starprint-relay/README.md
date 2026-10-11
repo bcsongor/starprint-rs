@@ -28,8 +28,8 @@ together. It takes no token: records check themselves, faxes are signed
 by lines it holds, and only a line's identity can poll for its faxes or
 confirm them, with a request that names this relay.
 
-Every fax arrives and prints, so the relay limits each client address
-instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
+A fax prints unasked unless its line keeps to its fax book, so the relay
+limits each client address instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
 lines, then 10 an hour, since each is a new identity to fax from.
 A poll answers with everything held for its line, so polls are limited
 too: a burst of 30, then 1,800 an hour, which is five lines polling

@@ -10,6 +10,7 @@ import {
 import { FaxNumber } from "@/components/fax-number";
 import type { FaxContact, FaxLine, FaxRecent } from "@/lib/api";
 import { isFaxNumber } from "@/lib/fax-number";
+import { when } from "@/lib/utils";
 
 interface Props {
   fax: FaxLine | null;
@@ -285,14 +286,4 @@ function FaxBook({
       </form>
     </div>
   );
-}
-
-/** Unix seconds as a short local date and time, like `3 Oct, 01:44`. */
-function when(at: number): string {
-  return new Date(at * 1000).toLocaleString(undefined, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

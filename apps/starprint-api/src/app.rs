@@ -18,7 +18,7 @@ use crate::body;
 use crate::config::{Profile, ProfileSpec};
 use crate::faxing::{
     self, AddRelay, Contact, ContactRequest, FaxView, RelayEntry, SendRequest, Sent,
-    SettingsRequest,
+    SettingsRequest, Verdict,
 };
 use crate::job::{JobRequest, PrintReport};
 use crate::mcp;
@@ -62,6 +62,8 @@ pub fn router(printers: Arc<Printers>) -> Router {
             "/v1/fax/contacts/{number}",
             axum::routing::put(put_contact).delete(remove_contact),
         )
+        .route("/v1/fax/waiting/{id}", axum::routing::delete(drop_waiting))
+        .route("/v1/fax/waiting/{id}/print", post(print_waiting))
         .route(
             "/v1/fax/send",
             post(send_fax).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
@@ -327,6 +329,24 @@ async fn remove_contact(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Lets a stranger's fax print. It prints at the poll this wakes, so
+/// the answer is that it will.
+async fn print_waiting(
+    State(printers): State<Arc<Printers>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, Problem> {
+    faxing::decide(&printers, &id, Verdict::Print)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn drop_waiting(
+    State(printers): State<Arc<Printers>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, Problem> {
+    faxing::decide(&printers, &id, Verdict::Drop)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// A number and a job as JSON, or as a form with the picture beside it,
 /// as `/jobs` takes them.
 async fn send_fax(
@@ -530,6 +550,24 @@ pub(crate) mod tests {
         )
         .await;
         assert_eq!(reply.json["printer"], "sp743");
+        assert_eq!(reply.json["contactsOnly"], false);
+        let only = json!({ "printer": null, "contactsOnly": true });
+        let reply = call(Arc::clone(&printers), put_json("/v1/fax", only)).await;
+        assert_eq!(reply.json["waiting"], json!([]));
+        let reply = call(
+            Arc::clone(&printers),
+            put_json("/v1/fax", json!({ "printer": "sp743" })),
+        )
+        .await;
+        assert_eq!(reply.json["contactsOnly"], true, "kept when left out");
+        let reply = call(Arc::clone(&printers), delete("/v1/fax/waiting/abc")).await;
+        assert_eq!(reply.status, StatusCode::NOT_FOUND);
+        let reply = call(
+            Arc::clone(&printers),
+            post_json("/v1/fax/waiting/abc/print", json!({})),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::NOT_FOUND);
         let reply = call(
             Arc::clone(&printers),
             put_json("/v1/fax", json!({ "printer": "nope" })),

@@ -302,11 +302,16 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
             variant="outline"
             size="icon"
             aria-label="Fax"
-            title="Fax"
+            title={fax?.waiting.length ? "Fax, with some waiting" : "Fax"}
             disabled={!fax}
+            className="relative"
             onClick={() => setFaxDrawer(true)}
           >
             <PhoneIcon />
+            {/* A fax waits in the drawer to be printed or dropped. */}
+            {!!fax?.waiting.length && (
+              <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500" />
+            )}
           </Button>
           <ProfileToolbar
             profiles={profiles}
@@ -563,6 +568,18 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
           onSettings={(changes) =>
             attempt("Could not save the fax settings", async () => {
               await api.putFax(changes);
+              await refreshFax();
+            })
+          }
+          onPrintWaiting={(waiting) =>
+            attempt("Could not print the fax", async () => {
+              await api.printWaiting(waiting.id);
+              await refreshFax();
+            })
+          }
+          onDropWaiting={(waiting) =>
+            attempt("Could not drop the fax", async () => {
+              await api.dropWaiting(waiting.id);
               await refreshFax();
             })
           }

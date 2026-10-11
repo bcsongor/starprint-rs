@@ -83,7 +83,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   newly assigned open issue, posted to the server like any other job.
   Fax is the server's too. The phone button opens a drawer to activate
   the line, choose its printer and add relays, and to load the number
-  into the QR form as a card to print. **Fax** beside **Print** sends
+  into the QR form as a card to print. A switch at its foot keeps the
+  line to its fax book, and a stranger's fax then waits in the drawer
+  to be printed or dropped, with a dot on the button while one does. **Fax** beside **Print** sends
   the job in the form to a number or a name in the fax book, which is
   kept in the same popover with the recent numbers it lacks.
   Every number on screen is drawn by
@@ -124,7 +126,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   recent numbers and the line's own number, read again every ten
   seconds. The number's QR code, for another phone's camera, is the
   `Preview` of a `qr` job, so the page encodes nothing. Activating the
-  line, relays and the fax printer stay on the desktop. Printing is
+  line, relays, the fax printer and strangers' faxes stay on the
+  desktop. Printing is
   what the page is for, so faxing sits below the preview and is drawn
   lighter. A LAN address is plain HTTP, where a browser gives a page
   no clipboard API and no camera. Copying falls back to a selection,
@@ -142,7 +145,14 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   a key that opens it, so a fax handed over twice prints once. Neither
   a relay nor a sender is trusted. A relay's answer is read up to a
   limit, a request for the line's faxes names the relay it is for, and
-  a fax may take only so much paper. A received fax
+  a fax may take only so much paper. With `contactsOnly` set, a fax
+  from a number outside the fax book stays at its relay until a person
+  prints or drops it, both of which go to the relay as the confirm a
+  printed fax gets, so the protocol has no word for either. Only the
+  list of what waits is kept, in memory, and a waiting fax is checked
+  and opened once, not every round. Strangers get a share of what a
+  relay holds for a line and no more, or they could keep the fax
+  book's faxes out. A received fax
   prints under the workflows crate's `FaxHeader`, through
   `Printer::fax`, so the API still builds no bytes of its own. Its tests send
   through a real `starprint-relay`, a dev-dependency only, so no relay
@@ -164,9 +174,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   so `call_tool` drops the tool then. Without that a job waiting for
   its printer prints for nobody, after a shutdown too. The tools are
   the printer list and status, print, preview, the schedules, sending a
-  fax and the fax book. Raw bytes, profiles and setting up the fax line
-  have none, since a description is a weaker fence than a missing
-  tool. A picture travels as base64 in the call, which
+  fax and the fax book. Raw bytes, profiles, setting up the fax line
+  and printing or dropping a stranger's fax have none, since a
+  description is a weaker fence than a missing tool. A picture travels as base64 in the call, which
   only suits a small one, so the `image` argument points an agent at
   the form route for a file. An agent knows nothing but the tools'
   descriptions and their arguments' schemas, and both are doc comments:
@@ -186,7 +196,8 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   router in `lib.rs`, its SQLite file in `store.rs` and a command line
   in `main.rs`. It keeps a fax only until its line confirms it
   printed, or 30 days. It holds only so many lines, and so many bytes
-  for one line and for all of them. Since every fax prints, `limit`
+  for one line and for all of them. Since a fax prints unasked by
+  default, `limit`
   holds each client address to so many faxes, new lines and polls an
   hour, the address coming from `X-Forwarded-For` only with
   `--behind-proxy`. It logs who faxed whom, never what, and knows
@@ -339,5 +350,6 @@ existing lines.
 An endpoint, job field, profile field, schedule field, fax field or
 tool added to `apps/starprint-api` without the matching change in
 `apps/starprint-api/API.md` is a finding. So is a tool for raw bytes,
-for changing a profile or for setting up the fax line, and a tool that
+for changing a profile, for setting up the fax line or for printing or
+dropping a stranger's fax, and a tool that
 does its route's work itself instead of calling what the route calls.
