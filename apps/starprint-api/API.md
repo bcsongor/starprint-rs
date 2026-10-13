@@ -145,8 +145,9 @@ until a printer of that name is back. `404` if there is no such profile.
 ```
 
 `online` means something accepted a TCP connection at the printer's
-address. Each resolved address gets a 400 ms connection timeout, after
-DNS lookup and waiting for the printer's turn in the queue.
+address. Each resolved address gets a 3 s connection timeout, after
+DNS lookup and waiting for the printer's turn in the queue, so a
+printer that is switched off takes that long to answer `false`.
 
 ## Jobs
 
