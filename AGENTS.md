@@ -232,6 +232,16 @@ them, so do not retune these values from a screen:
   resolution and 200 % in double, measured against printed step wedges.
 - `Pacing::STAR_ETHERNET` (1400 bytes every 20 ms) is the rate at which
   the IFBD-HE07/08 cards never dropped a job.
+- A handshake a client abandons costs the IFBD-HE07/08 card (firmware
+  V2.0.0, in the TSP700II) a 9100 session until a power cycle: the
+  client gives up, its kernel answers the card's late reply with a
+  reset, and the card never frees the session. With one session
+  allowed, the default, the first one leaves the port refusing every
+  connection. With multi-session on, the card took 26 and was dead by
+  126. Neither its data timeout nor keep-alive frees one. The SP700's
+  newer card took 26 and carried on. So the status probe waits 3 s to
+  connect, and nothing here should connect to a printer with a shorter
+  timeout.
 - Two-colour mode prints a darker black than single colour at +3 on
   plain paper, measured on the TSP700II, which is what density +4 in a
   profile selects. In that mode the density command does nothing to

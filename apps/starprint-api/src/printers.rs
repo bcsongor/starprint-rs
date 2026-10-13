@@ -49,8 +49,13 @@ impl PrintQueue {
 /// resolved before the turn is taken, so a slow lookup holds nobody up.
 /// An empty host is offline without a lookup.
 pub async fn reachable(printer: &Printer, queue: &PrintQueue) -> bool {
-    // Only bounds how long a missing printer takes to show as offline.
-    const TIMEOUT: Duration = Duration::from_millis(400);
+    // Long enough for a handshake that lost a packet to finish, since
+    // the client sends its SYN again after a second. Giving up sooner
+    // answers the printer's late reply with a reset, and one of those
+    // leaves port 9100 on an IFBD-HE07/08 card refusing connections
+    // until a power cycle. A missing printer takes this long to show
+    // as offline.
+    const TIMEOUT: Duration = Duration::from_secs(3);
 
     if printer.host.trim().is_empty() {
         return false;
