@@ -239,9 +239,10 @@ them, so do not retune these values from a screen:
   allowed, the default, the first one leaves the port refusing every
   connection. With multi-session on, the card took 26 and was dead by
   126. Neither its data timeout nor keep-alive frees one. The SP700's
-  newer card took 26 and carried on. So the status probe waits 3 s to
-  connect, and nothing here should connect to a printer with a shorter
-  timeout.
+  newer card took 26 and carried on. A 3 s timeout still killed the
+  port from a desktop app reaching the printer over Tailscale, so the
+  status probe never abandons a connect: it answers offline after 3 s
+  and leaves the connect running until it completes or the OS gives up.
 - Two-colour mode prints a darker black than single colour at +3 on
   plain paper, measured on the TSP700II, which is what density +4 in a
   profile selects. In that mode the density command does nothing to
