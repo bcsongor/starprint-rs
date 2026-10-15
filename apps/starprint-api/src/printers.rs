@@ -12,6 +12,7 @@ use serde::Serialize;
 use starprint::transport::{TcpTransport, Transport};
 use starprint_workflows::Printer;
 use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio::time::timeout;
 
 use crate::config::{Profile, ProfileSpec};
 use crate::data::Data;
@@ -48,14 +49,18 @@ impl PrintQueue {
 /// turn so the probe never lands in the middle of a job. The name is
 /// resolved before the turn is taken, so a slow lookup holds nobody up.
 /// An empty host is offline without a lookup.
+///
+/// The probe never gives up on a handshake it started. Closing a socket
+/// mid-handshake answers the printer's late reply with a reset, and one
+/// of those leaves port 9100 on an IFBD-HE07/08 card refusing
+/// connections until a power cycle. Over Tailscale a handshake has taken
+/// longer than any timeout worth waiting for, so the connect runs on a
+/// task of its own: the probe answers offline after `ANSWER` and gives
+/// back the turn, and the connect carries on until it completes, when
+/// it closes cleanly, or the OS stops sending SYNs.
 pub async fn reachable(printer: &Printer, queue: &PrintQueue) -> bool {
-    // Long enough for a handshake that lost a packet to finish, since
-    // the client sends its SYN again after a second. Giving up sooner
-    // answers the printer's late reply with a reset, and one of those
-    // leaves port 9100 on an IFBD-HE07/08 card refusing connections
-    // until a power cycle. A missing printer takes this long to show
-    // as offline.
-    const TIMEOUT: Duration = Duration::from_secs(3);
+    // How long a missing printer takes to show as offline.
+    const ANSWER: Duration = Duration::from_secs(3);
 
     if printer.host.trim().is_empty() {
         return false;
@@ -68,15 +73,20 @@ pub async fn reachable(printer: &Printer, queue: &PrintQueue) -> bool {
             Ok(Ok(addrs)) => addrs,
             _ => return false,
         };
-    let turn = queue.lock(&printer.host, printer.port).await;
-    tokio::task::spawn_blocking(move || {
-        let _turn = turn;
-        addrs
-            .into_iter()
-            .any(|addr| std::net::TcpStream::connect_timeout(&addr, TIMEOUT).is_ok())
-    })
-    .await
-    .unwrap_or(false)
+    let _turn = queue.lock(&printer.host, printer.port).await;
+    // Dropping the handle on a timeout detaches the task; it does not
+    // cancel it.
+    let connect = tokio::spawn(async move {
+        for addr in addrs {
+            if tokio::net::TcpStream::connect(addr).await.is_ok() {
+                return true;
+            }
+        }
+        false
+    });
+    timeout(ANSWER, connect)
+        .await
+        .is_ok_and(|online| online.unwrap_or(false))
 }
 
 /// Writes `payload` to `printer` in its turn and reports how much went
