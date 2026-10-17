@@ -68,8 +68,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   out on loopback, where the app is only talking to itself. The button
   compares the version with the app's own, since the two are released
   together. The embedded server keeps running either way, and the app
-  still needs it to start. The schedules drawer says whose clock the
-  cron expressions run on.
+  still needs it to start, but it holds its schedules while the other
+  server is in use: that one may keep copies of them, which would print
+  twice, or be tried from off the printer's LAN. Switching restarts it.
+  The schedules drawer says whose clock the cron expressions run on.
   Every preview is the server's `Preview` drawn as it comes: a layout
   in the printer's font, an `<img>` of the `data:` PNG. A preview that
   kept a rule of its own drifted once, and squared finder patterns went

@@ -18,7 +18,8 @@ use crate::schedule;
 pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9110);
 
 /// A server on a task of the current runtime, running the schedules in
-/// its data and polling its fax relays for as long as it serves.
+/// its data, unless told to hold them, and polling its fax relays for as
+/// long as it serves.
 /// Dropping it stops it without waiting; [`Server::shutdown`] waits for
 /// requests in flight, not for scheduled jobs or faxes.
 pub struct Server {
@@ -30,10 +31,13 @@ pub struct Server {
 impl Server {
     /// Binds `listen` and serves `data` to callers with its token.
     /// Share `queue` with other clients of these printers in this process.
+    /// Without `schedules` it holds them: they can still be listed and
+    /// written, but none prints.
     pub async fn bind(
         listen: SocketAddr,
         data: Arc<Data>,
         queue: Arc<PrintQueue>,
+        schedules: bool,
     ) -> Result<Self, String> {
         let listener = TcpListener::bind(listen)
             .await
@@ -63,7 +67,7 @@ impl Server {
                 tokio::select! {
                     result = &mut serve => return result,
                     _ = stopped => {},
-                    () = &mut scheduler => {},
+                    () = &mut scheduler, if schedules => {},
                     () = &mut fax => {},
                 }
             }
@@ -119,7 +123,7 @@ mod tests {
 
     #[tokio::test]
     async fn serves_until_shut_down_and_then_releases_the_port() {
-        let server = Server::bind(any_port(), empty(), Arc::default())
+        let server = Server::bind(any_port(), empty(), Arc::default(), true)
             .await
             .unwrap();
         let addr = server.local_addr();
@@ -135,10 +139,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_port_in_use_is_reported_at_bind() {
-        let first = Server::bind(any_port(), empty(), Arc::default())
+        let first = Server::bind(any_port(), empty(), Arc::default(), true)
             .await
             .unwrap();
-        let error = Server::bind(first.local_addr(), empty(), Arc::default())
+        let error = Server::bind(first.local_addr(), empty(), Arc::default(), true)
             .await
             .err()
             .expect("in use");

@@ -26,8 +26,9 @@ export const DEFAULT_LISTEN: Listen = { ip: LOOPBACK, port: 9110 };
 
 /**
  * Starts the server inside the app at `listen`, replacing one already
- * running, and returns where it is and the token it wants.
+ * running, and returns where it is and the token it wants. Without
+ * `schedules` it holds them and prints none.
  */
-export function startServer(listen: Listen) {
-  return invoke<Server>("start_server", { ...listen });
+export function startServer(listen: Listen, schedules: boolean) {
+  return invoke<Server>("start_server", { ...listen, schedules });
 }
