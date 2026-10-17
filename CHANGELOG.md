@@ -2,12 +2,66 @@
 
 ## 1.2.0
 
+### Fax
+
+- **Any job can be faxed to another Starprint printer**, through a
+  relay both servers reach, so it prints behind someone else's router.
+  A number is `*star1…`, the address of the line's own key, so a relay
+  cannot hand out another. Faxes are sealed end to end to a key the
+  line replaces every week.
+- `starprint-relay` is the server faxes travel through. It keeps a fax
+  until its line confirms it printed, or 30 days, and limits faxes, new
+  lines and polls per client address.
+- A received fax prints under the name its number has in your fax
+  book, or under the number alone, so no sender chooses it. One fax is
+  at most 4,000 characters or a 50-megapixel picture.
+
+### Phone
+
+- **The server serves a phone page at `/`** that prints task cards and
+  pictures. On the LAN, the **API** button shows a QR code that opens it
+  with the token. The token stays in the URL fragment, so a home-screen
+  shortcut keeps it.
+- The page has a dark theme, faxes task cards and pictures, keeps the
+  fax book and shows the line's number with a QR code for another
+  phone's camera.
+
+### HTTP API
+
+- **The server speaks MCP at `/mcp`** for AI agents, behind the same
+  token. Its tools cover the printers, printing, previews, schedules,
+  sending faxes and the fax book. Raw bytes, profiles and setting up
+  the fax line have none. The `starprint-print` skill is gone: point an
+  agent at `/mcp` instead.
+- Fax routes under `/v1/fax` activate the line, add relays, keep the fax
+  book and send. See [`API.md`](apps/starprint-api/API.md).
+
+### Printing
+
+- **The status probe no longer kills the TSP700II's print port.** Its
+  IFBD-HE07/08 card loses a session until a power cycle when a client
+  abandons a handshake, and the probe gave up after 400 ms. It now
+  answers offline after 3 s but lets the connect finish. A link that
+  drops out can still kill the port, so reach the TSP700II from a
+  server on its own LAN.
+- Text jobs keep runs of spaces, indentation and blank lines, in print
+  and preview.
+
 ### Desktop app
 
 - **The app ships for Linux**, as a `.deb` for x86-64 that runs on
   Ubuntu 22.04 or newer. It asks GTK for its dark theme whatever the
   desktop's setting, and on Wayland the title bar is the toolbar's
   colour and 27 px tall instead of 47.
+- A fax drawer activates the line, chooses its printer and adds relays.
+  **Fax** beside **Print** sends the form's job to a number or a name in
+  the fax book.
+- The **API** button shows the MCP address, with a menu that copies an
+  agent's whole client config.
+- The schedules drawer can **move every schedule to another printer**.
+- While the app prints through another machine's server, its own
+  server holds its schedules, so copies on both no longer print twice.
+  They run again when you switch back.
 
 ## 1.1.0
 

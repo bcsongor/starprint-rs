@@ -4057,14 +4057,14 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "starprint"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "image",
 ]
 
 [[package]]
 name = "starprint-api"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -4088,7 +4088,7 @@ dependencies = [
 
 [[package]]
 name = "starprint-fax"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "base64 0.23.1",
  "bech32",
@@ -4105,7 +4105,7 @@ dependencies = [
 
 [[package]]
 name = "starprint-gui"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "gtk",
  "if-addrs",
@@ -4121,7 +4121,7 @@ dependencies = [
 
 [[package]]
 name = "starprint-relay"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -4137,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "starprint-workflows"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
