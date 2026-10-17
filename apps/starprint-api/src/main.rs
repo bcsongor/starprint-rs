@@ -46,7 +46,7 @@ fn run() -> Result<(), String> {
     tokio::runtime::Runtime::new()
         .map_err(|e| format!("the runtime could not start: {e}"))?
         .block_on(async {
-            let server = Server::bind(args.listen, Arc::clone(&data), Arc::default()).await?;
+            let server = Server::bind(args.listen, Arc::clone(&data), Arc::default(), true).await?;
             println!(
                 "starprint-api: listening on http://{} with token {}",
                 server.local_addr(),

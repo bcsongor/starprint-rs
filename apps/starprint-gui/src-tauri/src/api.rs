@@ -25,7 +25,12 @@ struct Inner {
 }
 
 impl Inner {
-    async fn start(&mut self, dir: &Path, listen: SocketAddr) -> Result<Started, String> {
+    async fn start(
+        &mut self,
+        dir: &Path,
+        listen: SocketAddr,
+        schedules: bool,
+    ) -> Result<Started, String> {
         let data = match &self.data {
             Some(data) => Arc::clone(data),
             None => {
@@ -37,7 +42,13 @@ impl Inner {
         if let Some(running) = self.server.take() {
             running.shutdown().await?;
         }
-        let server = Server::bind(listen, Arc::clone(&data), Arc::clone(&self.queue)).await?;
+        let server = Server::bind(
+            listen,
+            Arc::clone(&data),
+            Arc::clone(&self.queue),
+            schedules,
+        )
+        .await?;
         let started = Started {
             url: format!("http://{}", server.local_addr()),
             token: data.token().to_owned(),
@@ -55,13 +66,16 @@ pub struct Started {
 }
 
 /// Starts the server at `ip` and `port`, replacing one already running,
-/// so a changed address takes effect by starting again. The data
-/// directory is opened on the first call; if another server holds it,
-/// that is the error, and the next call tries again.
+/// so a changed address takes effect by starting again. Without
+/// `schedules` it holds them, for while the app prints through another
+/// machine's server that may keep the same ones. The data directory is
+/// opened on the first call; if another server holds it, that is the
+/// error, and the next call tries again.
 #[tauri::command]
 pub async fn start_server(
     ip: IpAddr,
     port: u16,
+    schedules: bool,
     state: tauri::State<'_, Embedded>,
 ) -> Result<Started, String> {
     let dir = Data::default_dir()?;
@@ -69,7 +83,7 @@ pub async fn start_server(
         .0
         .lock()
         .await
-        .start(&dir, SocketAddr::new(ip, port))
+        .start(&dir, SocketAddr::new(ip, port), schedules)
         .await
 }
 
@@ -114,8 +128,8 @@ mod tests {
     async fn restarting_keeps_the_directory_open() {
         let dir = tempfile::tempdir().unwrap();
         let mut embedded = Inner::default();
-        let first = embedded.start(dir.path(), any_port()).await.unwrap();
-        let second = embedded.start(dir.path(), any_port()).await.unwrap();
+        let first = embedded.start(dir.path(), any_port(), true).await.unwrap();
+        let second = embedded.start(dir.path(), any_port(), true).await.unwrap();
         assert_eq!(first.token, second.token);
         assert_ne!(first.url, second.url, "a new port each time here");
         assert!(

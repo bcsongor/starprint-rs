@@ -9,7 +9,9 @@ import { loadSettings, saveSettings, type Settings } from "@/lib/settings";
 /**
  * Starts the server inside the app and hands the workspace a client of
  * it, or of the other machine's server the settings name; the embedded
- * one runs either way. A change of address restarts the server; a LAN
+ * one runs either way, but holds its schedules while the other is in
+ * use, since that one may keep copies of them. A change of address, or
+ * of which server is in use, restarts the server; a LAN
  * address that will not bind falls back to loopback, and a start that
  * fails on loopback is shown in place of the app until a retry succeeds.
  */
@@ -42,10 +44,11 @@ export default function App() {
 
   const lan = settings?.lan ?? false;
   const listen = settings?.listen;
+  const useRemote = settings?.useRemote ?? false;
   useEffect(() => {
     if (!listen) return;
     let cancelled = false;
-    startServer({ ip: lan ? listen.ip : LOOPBACK, port: listen.port })
+    startServer({ ip: lan ? listen.ip : LOOPBACK, port: listen.port }, !useRemote)
       .then((started) => {
         if (cancelled) return;
         setEmbedded(started);
@@ -57,7 +60,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [lan, listen, attempt]);
+  }, [lan, listen, useRemote, attempt]);
 
   if (failure) {
     return (
