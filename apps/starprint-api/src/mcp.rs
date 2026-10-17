@@ -9,10 +9,10 @@
 //! may have printed. The schemas come from the types that read the
 //! arguments, whose comments are the descriptions.
 //!
-//! There is no tool for raw bytes, for changing a profile or for
-//! setting up the fax line. A person does those, in the desktop app or
-//! over the routes, and a description is a weaker fence than a missing
-//! tool.
+//! There is no tool for raw bytes, for changing a profile, for setting
+//! up the fax line or for printing or dropping a stranger's fax. A
+//! person does those, in the desktop app or over the routes, and a
+//! description is a weaker fence than a missing tool.
 
 use std::sync::Arc;
 
@@ -351,6 +351,11 @@ impl Mcp {
     /// `recent`, and its `relays`. A `number` of null, or no `relays`,
     /// means faxing is not set up, which the user does in the Starprint
     /// desktop app.
+    ///
+    /// With `contactsOnly` set, only the fax book's faxes print unasked,
+    /// and `waiting` lists the faxes from other numbers that the user
+    /// has yet to print or drop, which they do in the desktop app. Tell
+    /// them when one is waiting.
     #[tool(annotations(read_only_hint = true))]
     fn get_fax_line(&self) -> CallToolResult {
         reply(&faxing::view(&self.printers))
@@ -390,6 +395,8 @@ impl Mcp {
     /// Files a number in the fax book under a name, replacing the name
     /// it had, so faxes can be sent to the name. Offer this after a fax
     /// to a number that was not in the book, and ask what to call it.
+    /// A number in the book prints what it faxes unasked, a fax of its
+    /// that is waiting included, so file only a number the user gave.
     #[tool]
     fn save_fax_contact(
         &self,

@@ -3,9 +3,11 @@
 //! arrives. The protocol is `starprint-fax`'s; this is the part that
 //! talks to relays and printers, and what a fax carries.
 //!
-//! Every fax prints, under a header saying who sent it and when: there
-//! is no approving strangers yet. A number is the address of its line's
-//! identity key, so a relay cannot hand out another key under it.
+//! A fax prints under a header saying who sent it and when. Every fax
+//! prints unless the line keeps to its fax book. Then a stranger's fax
+//! waits at its relay until someone here prints or drops it. A number
+//! is the address of its line's identity key, so a relay cannot hand
+//! out another key under it.
 //!
 //! The key faxes are sealed to is replaced every week and forgotten
 //! once no fax sealed to it can still be waiting, so secrets stolen
@@ -16,7 +18,7 @@
 //! to a limit, a request for a line's faxes names the relay it is for,
 //! and a fax may take only so much paper.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -64,6 +66,12 @@ const TALLEST: u32 = 4;
 const NAME_LIMIT: usize = 64;
 /// How many numbers [`FaxSettings::recent`] keeps.
 const RECENT: usize = 10;
+/// How many faxes from strangers may wait to be printed or dropped, and
+/// how many sealed bytes between them. They count towards what a relay
+/// holds for the line, 100 faxes and 64 MiB, so strangers get a share
+/// of it and cannot keep the fax book's faxes out.
+const WAITING: usize = 20;
+const WAITING_BYTES: usize = 16 << 20;
 
 /// What a fax carries, sealed: a job as `/jobs` takes it, and the
 /// picture a picture job needs, as JSON. The recipient prints it with its
@@ -98,6 +106,10 @@ pub struct FaxSettings {
     /// The fax book, by name.
     #[serde(default)]
     pub contacts: Vec<Contact>,
+    /// Whether only the fax book's faxes print unasked. A fax from any
+    /// other number then waits to be printed or dropped.
+    #[serde(default)]
+    pub contacts_only: bool,
     /// The numbers last faxed or printed from, newest first, so one can
     /// be filed after the fact. Only numbers: no fax is kept.
     #[serde(default)]
@@ -265,6 +277,32 @@ pub struct Faxing {
     client: reqwest::Client,
     /// Each relay's last poll by name: `None` when it went through.
     polled: Mutex<HashMap<String, Option<String>>>,
+    /// The strangers' faxes held back, by [`Fax::id`]. The faxes stay at
+    /// their relays and only this list is kept, in memory, so a restart
+    /// finds them again at the next poll and forgets a verdict that had
+    /// not been carried out.
+    waiting: Mutex<BTreeMap<String, Waiting>>,
+    /// Wakes the poll loop, so a verdict is carried out at once.
+    wake: tokio::sync::Notify,
+}
+
+/// A stranger's fax, checked and opened once, waiting at a relay.
+struct Waiting {
+    /// The name of the relay holding it.
+    relay: String,
+    from: Number,
+    sent: u64,
+    /// Its sealed bytes.
+    size: usize,
+    /// `None` until someone here decides.
+    verdict: Option<Verdict>,
+}
+
+/// What someone here decided about a waiting fax.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Print,
+    Drop,
 }
 
 impl Default for Faxing {
@@ -276,6 +314,8 @@ impl Default for Faxing {
                 .build()
                 .expect("an HTTP client"),
             polled: Mutex::default(),
+            waiting: Mutex::default(),
+            wake: tokio::sync::Notify::new(),
         }
     }
 }
@@ -290,6 +330,18 @@ pub struct FaxView {
     contacts: Vec<Contact>,
     /// Those not in the fax book.
     recent: Vec<Recent>,
+    contacts_only: bool,
+    /// The strangers' faxes nobody has decided about, oldest first.
+    waiting: Vec<WaitingView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitingView {
+    id: String,
+    from: Number,
+    /// Unix seconds, by the sender's clock.
+    sent: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -306,9 +358,25 @@ pub struct RelayView {
 pub fn view(printers: &Printers) -> FaxView {
     let settings = printers.data.fax();
     let polled = printers.fax.polled.lock().unwrap();
+    let mut waiting: Vec<_> = printers
+        .fax
+        .waiting
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, waiting)| waiting.verdict.is_none())
+        .map(|(id, waiting)| WaitingView {
+            id: id.clone(),
+            from: waiting.from,
+            sent: waiting.sent,
+        })
+        .collect();
+    waiting.sort_by_key(|waiting| waiting.sent);
     FaxView {
         number: settings.line.as_ref().map(|line| line.number),
         printer: settings.printer,
+        contacts_only: settings.contacts_only,
+        waiting,
         recent: settings
             .recent
             .into_iter()
@@ -331,11 +399,14 @@ pub fn view(printers: &Printers) -> FaxView {
     }
 }
 
-/// `PUT /v1/fax`: where faxes print.
+/// `PUT /v1/fax`: where faxes print, and whose print unasked.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingsRequest {
     printer: Option<String>,
+    /// Kept as it is when left out, so a client that knows only of the
+    /// printer cannot let strangers back in by choosing one.
+    contacts_only: Option<bool>,
 }
 
 pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Problem> {
@@ -346,8 +417,24 @@ pub fn configure(printers: &Printers, request: SettingsRequest) -> Result<(), Pr
     }
     printers
         .data
-        .change_fax(|settings| settings.printer = request.printer)
+        .change_fax(|settings| {
+            settings.printer = request.printer;
+            if let Some(only) = request.contacts_only {
+                settings.contacts_only = only;
+            }
+        })
         .map_err(Problem::not_saved)
+}
+
+/// Prints or drops the waiting fax `id`, at the poll this wakes. A
+/// `404` when no such fax waits for a verdict.
+pub fn decide(printers: &Printers, id: &str, verdict: Verdict) -> Result<(), Problem> {
+    match printers.fax.waiting.lock().unwrap().get_mut(id) {
+        Some(waiting) if waiting.verdict.is_none() => waiting.verdict = Some(verdict),
+        _ => return Err(Problem::not_found(format!("No fax `{id}` is waiting."))),
+    }
+    printers.fax.wake.notify_one();
+    Ok(())
 }
 
 /// Gives the line a new identity, whose address is its number. With
@@ -365,7 +452,10 @@ pub fn activate(printers: &Printers, replace: bool) -> Result<(), Problem> {
     printers
         .data
         .change_fax(|settings| settings.line = Some(line))
-        .map_err(Problem::not_saved)
+        .map_err(Problem::not_saved)?;
+    // What waited was for the old number.
+    printers.fax.waiting.lock().unwrap().clear();
+    Ok(())
 }
 
 /// `POST /v1/fax/relays`.
@@ -425,6 +515,13 @@ pub fn remove_relay(printers: &Printers, name: &str) -> Result<(), Problem> {
     if !removed {
         return Err(Problem::not_found(format!("No relay named `{name}`.")));
     }
+    // Nothing polls it any more, so what waits there cannot be decided.
+    printers
+        .fax
+        .waiting
+        .lock()
+        .unwrap()
+        .retain(|_, waiting| waiting.relay != name);
     Ok(())
 }
 
@@ -694,21 +791,25 @@ fn checked(record: LineRecord, number: Number) -> Result<Line, String> {
     Ok(line)
 }
 
-/// Polls every relay each [`POLL_EVERY`] for as long as the future is
-/// polled. Dropping it stops between faxes; a blocking write already
-/// under way finishes under its queue guard.
+/// Polls every relay each [`POLL_EVERY`], and as soon as a waiting fax
+/// gets its verdict, for as long as the future is polled. Dropping it
+/// stops between faxes; a blocking write already under way finishes
+/// under its queue guard.
 pub async fn serve(printers: Arc<Printers>) {
     // The record each relay last took, by URL, so it is sent again only
     // when it changes or the relay has lost it.
     let mut published = HashMap::new();
     loop {
         poll(&printers, &mut published).await;
-        tokio::time::sleep(POLL_EVERY).await;
+        tokio::select! {
+            () = tokio::time::sleep(POLL_EVERY) => {}
+            () = printers.fax.wake.notified() => {}
+        }
     }
 }
 
 /// One round of every relay: publish the line if need be, print what
-/// is waiting and confirm what printed.
+/// is waiting and may print, and confirm what printed or was dropped.
 pub async fn poll(printers: &Printers, published: &mut HashMap<String, u64>) {
     let settings = match settings(printers) {
         Ok(settings) => settings,
@@ -763,6 +864,8 @@ async fn poll_relay(
     }
     let held: HeldFaxes = read(response).await?;
     let mut done = Vec::new();
+    // The faxes the relay goes on holding, by [`Fax::id`].
+    let mut kept = HashSet::new();
     for Held { id, fax } in held.faxes {
         match receive(printers, settings, relay, secret, &fax).await {
             Ok(()) => done.push(id),
@@ -775,6 +878,10 @@ async fn poll_relay(
                     "starprint-api: fax from {} will print later: {problem}",
                     fax.from
                 );
+                kept.insert(fax.id());
+            }
+            Err(Receive::Waiting) => {
+                kept.insert(fax.id());
             }
         }
     }
@@ -791,6 +898,13 @@ async fn poll_relay(
         )
         .await?;
     }
+    // Only now, so a verdict outlives a confirmation that was lost.
+    printers
+        .fax
+        .waiting
+        .lock()
+        .unwrap()
+        .retain(|id, waiting| waiting.relay != relay.name || kept.contains(id));
     Ok(())
 }
 
@@ -799,6 +913,8 @@ enum Receive {
     Refused(String),
     /// Kept at the relay and tried again next round.
     Later(String),
+    /// A stranger's, kept at the relay until someone here decides.
+    Waiting,
 }
 
 async fn receive(
@@ -819,6 +935,17 @@ async fn receive(
     if printed(&printers.data.fax()) {
         return Err(Receive::Refused("it has already printed".to_owned()));
     }
+    // A fax that waits was checked and opened when it was first held,
+    // so it is not fetched a record and opened again every round.
+    let stranger = settings.contacts_only && settings.name_of(fax.from).is_none();
+    let verdict = match printers.fax.waiting.lock().unwrap().get(&id) {
+        Some(waiting) if stranger => match waiting.verdict {
+            Some(Verdict::Drop) => return Err(Receive::Refused("it was dropped".to_owned())),
+            Some(Verdict::Print) => Some(Verdict::Print),
+            None => return Err(Receive::Waiting),
+        },
+        _ => None,
+    };
     let client = &printers.fax.client;
     let record = get_line(client, &relay.url, fax.from)
         .await
@@ -837,6 +964,30 @@ async fn receive(
     let contents: Contents = serde_json::from_slice(&contents)
         .map_err(|e| Receive::Refused(format!("the fax's contents are not a job: {e}")))?;
     fits(&contents.job, contents.image.as_deref()).map_err(Receive::Refused)?;
+    if stranger && verdict.is_none() {
+        let mut waiting = printers.fax.waiting.lock().unwrap();
+        let bytes: usize = waiting.values().map(|waiting| waiting.size).sum();
+        if waiting.len() >= WAITING || bytes + fax.sealed.len() > WAITING_BYTES {
+            return Err(Receive::Refused(
+                "too many faxes from strangers are waiting".to_owned(),
+            ));
+        }
+        eprintln!(
+            "starprint-api: fax from {} waits, since it is not in the fax book",
+            fax.from
+        );
+        waiting.insert(
+            id,
+            Waiting {
+                relay: relay.name.clone(),
+                from: fax.from,
+                sent: fax.sent,
+                size: fax.sealed.len(),
+                verdict: None,
+            },
+        );
+        return Err(Receive::Waiting);
+    }
     let Some(profile) = settings.printer(&printers.data) else {
         return Err(Receive::Later(
             "there is no printer to print it on".to_owned(),
@@ -1109,6 +1260,94 @@ mod tests {
             matches!(&again, Err(Receive::Refused(why)) if why.contains("already printed")),
             "printed once"
         );
+    }
+
+    /// What the relay holds for the line.
+    async fn held(printers: &Printers, relay: &str) -> usize {
+        let line = printers.data.fax().line.unwrap();
+        let request = printers
+            .fax
+            .client
+            .post(line_url(relay, line.number, "/poll"))
+            .json(&Collect::poll(&line.identity(), "LONRELAY01", line.number));
+        relay_json::<HeldFaxes>(request).await.unwrap().faxes.len()
+    }
+
+    #[tokio::test]
+    async fn a_strangers_fax_waits_to_be_printed_or_dropped() {
+        let relay = relay().await;
+        let printer = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let anna = server(1);
+        let ben = server(printer.local_addr().unwrap().port());
+        active(&anna, &relay).await;
+        let ben_number = active(&ben, &relay).await;
+        let only = serde_json::json!({ "printer": null, "contactsOnly": true });
+        configure(&ben, serde_json::from_value(only).unwrap()).unwrap();
+        let mut published = HashMap::new();
+        poll(&ben, &mut published).await;
+        let fax = || {
+            let mut request = note();
+            request.to = ben_number.to_string();
+            send(&anna, request, None)
+        };
+        let printed = || ben.data.fax().line.unwrap().printed.len();
+
+        // Round after round it waits, and nothing prints.
+        fax().await.unwrap();
+        for _ in 0..2 {
+            poll(&ben, &mut published).await;
+            let waiting = view(&ben).waiting;
+            assert_eq!(waiting.len(), 1);
+            assert_eq!(waiting[0].from, anna.data.fax().line.unwrap().number);
+        }
+        assert_eq!((printed(), held(&ben, &relay).await), (0, 1));
+
+        // Dropped, it leaves the relay unprinted.
+        let id = view(&ben).waiting[0].id.clone();
+        decide(&ben, &id, Verdict::Drop).unwrap();
+        assert!(view(&ben).waiting.is_empty(), "decided");
+        assert_eq!(
+            decide(&ben, &id, Verdict::Print).unwrap_err().status(),
+            StatusCode::NOT_FOUND,
+            "once"
+        );
+        poll(&ben, &mut published).await;
+        assert_eq!((printed(), held(&ben, &relay).await), (0, 0));
+
+        // Told to print, the next one does.
+        fax().await.unwrap();
+        poll(&ben, &mut published).await;
+        let id = view(&ben).waiting[0].id.clone();
+        decide(&ben, &id, Verdict::Print).unwrap();
+        let received = tokio::spawn(async move {
+            let (mut socket, _) = printer.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            socket.read_to_end(&mut bytes).await.unwrap();
+            bytes
+        });
+        poll(&ben, &mut published).await;
+        let bytes = received.await.unwrap();
+        assert!(String::from_utf8_lossy(&bytes).contains("Hello Ben"));
+        assert_eq!((printed(), held(&ben, &relay).await), (1, 0));
+        assert!(ben.fax.waiting.lock().unwrap().is_empty());
+
+        // With as many waiting as may, one more is dropped unseen.
+        let full = |id: usize| Waiting {
+            relay: "ELSEWHERE".to_owned(),
+            from: Number::of(&id.to_be_bytes()),
+            sent: 0,
+            size: 0,
+            verdict: None,
+        };
+        ben.fax
+            .waiting
+            .lock()
+            .unwrap()
+            .extend((0..WAITING).map(|id| (id.to_string(), full(id))));
+        fax().await.unwrap();
+        poll(&ben, &mut published).await;
+        assert_eq!(view(&ben).waiting.len(), WAITING);
+        assert_eq!((printed(), held(&ben, &relay).await), (1, 0));
     }
 
     #[tokio::test]

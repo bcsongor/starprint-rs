@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { CopyIcon, QrCodeIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import {
+  CopyIcon,
+  PrinterIcon,
+  QrCodeIcon,
+  RefreshCwIcon,
+  XIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ConnectionDot } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -17,8 +24,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { FaxNumber } from "@/components/fax-number";
-import { byName, type FaxLine, type FaxRelay, type Profile } from "@/lib/api";
+import {
+  byName,
+  type FaxLine,
+  type FaxRelay,
+  type FaxSettings,
+  type FaxWaiting,
+  type Profile,
+} from "@/lib/api";
+import { when } from "@/lib/utils";
 
 /** Stands for "no printer chosen", which prints on the first profile. No
  * profile's name has a slash in it. */
@@ -34,7 +50,10 @@ interface Props {
   onReplace: () => void;
   /** Puts the number in the QR code form, to print for someone to scan. */
   onShowCode: (number: string) => void;
-  onSettings: (settings: { printer: string | null }) => void;
+  onSettings: (settings: FaxSettings) => void;
+  /** Lets a waiting fax print. */
+  onPrintWaiting: (waiting: FaxWaiting) => void;
+  onDropWaiting: (waiting: FaxWaiting) => void;
   /** Resolves once the relay has answered with its name. */
   onAddRelay: (url: string) => Promise<void>;
   onRemoveRelay: (relay: FaxRelay) => void;
@@ -50,6 +69,8 @@ export function FaxDrawer({
   onReplace,
   onShowCode,
   onSettings,
+  onPrintWaiting,
+  onDropWaiting,
   onAddRelay,
   onRemoveRelay,
 }: Props) {
@@ -70,6 +91,11 @@ export function FaxDrawer({
             onReplace={onReplace}
             onShowCode={onShowCode}
           />
+          <Waiting
+            waiting={fax.waiting}
+            onPrint={onPrintWaiting}
+            onDrop={onDropWaiting}
+          />
 
           <Labelled label="Prints on" htmlFor="fax-printer">
             <OptionSelect
@@ -83,7 +109,10 @@ export function FaxDrawer({
                 })),
               ]}
               onChange={(printer) =>
-                onSettings({ printer: printer === FIRST ? null : printer })
+                onSettings({
+                  printer: printer === FIRST ? null : printer,
+                  contactsOnly: fax.contactsOnly,
+                })
               }
               align="start"
               labelClassName="w-40"
@@ -95,9 +124,28 @@ export function FaxDrawer({
             onRemove={onRemoveRelay}
           />
         </div>
-        <p className="mt-auto border-t p-4 text-sm text-muted-foreground">
-          Every fax to this number prints.
-        </p>
+        <div className="mt-auto flex flex-col gap-1.5 border-t p-4">
+          <Field orientation="horizontal" className="w-auto">
+            <Switch
+              id="fax-contacts-only"
+              checked={fax.contactsOnly}
+              onCheckedChange={(contactsOnly) =>
+                onSettings({ printer: fax.printer, contactsOnly })
+              }
+            />
+            <FieldLabel
+              htmlFor="fax-contacts-only"
+              className="text-sm tracking-normal normal-case text-foreground"
+            >
+              Only print faxes from my fax book
+            </FieldLabel>
+          </Field>
+          <p className="text-sm text-muted-foreground">
+            {fax.contactsOnly
+              ? "A fax from any other number waits here until you print or drop it."
+              : "Every fax to this number prints."}
+          </p>
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -203,6 +251,56 @@ function NewNumber({ onReplace }: { onReplace: () => void }) {
         </Button>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** The faxes from numbers outside the fax book, to print or drop. */
+function Waiting({
+  waiting,
+  onPrint,
+  onDrop,
+}: {
+  waiting: FaxWaiting[];
+  onPrint: (waiting: FaxWaiting) => void;
+  onDrop: (waiting: FaxWaiting) => void;
+}) {
+  if (waiting.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-xs tracking-wide text-muted-foreground uppercase">
+        Waiting
+      </div>
+      <ul className="flex flex-col">
+        {waiting.map((w) => (
+          <li key={w.id} className="flex items-center gap-1 py-1">
+            <div className="min-w-0 flex-1">
+              <FaxNumber number={w.from} className="block truncate text-xs" />
+              <div className="text-xs text-muted-foreground">
+                {when(w.sent)}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Print"
+              title="Print"
+              onClick={() => onPrint(w)}
+            >
+              <PrinterIcon />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Drop"
+              title="Drop"
+              onClick={() => onDrop(w)}
+            >
+              <XIcon />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

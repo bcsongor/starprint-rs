@@ -29,13 +29,15 @@ uses it over [MCP](#mcp), which the same server speaks at `/mcp`.
 | `PUT` | [`/v1/schedules/{id}`](#put-v1schedulesid) | Replace a schedule |
 | `DELETE` | [`/v1/schedules/{id}`](#delete-v1schedulesid) | Remove a schedule |
 | `GET` | [`/v1/fax`](#get-v1fax) | The fax line, its settings and its relays |
-| `PUT` | [`/v1/fax`](#put-v1fax) | Set where faxes print |
+| `PUT` | [`/v1/fax`](#put-v1fax) | Set where faxes print and whose print unasked |
 | `POST` | [`/v1/fax/line`](#post-v1faxline) | Activate the line |
 | `PUT` | [`/v1/fax/line`](#put-v1faxline) | Get the line a new number |
 | `POST` | [`/v1/fax/relays`](#post-v1faxrelays) | Add a relay by its address |
 | `DELETE` | [`/v1/fax/relays/{name}`](#delete-v1faxrelaysname) | Remove a relay |
 | `PUT` | [`/v1/fax/contacts/{number}`](#put-v1faxcontactsnumber) | File a number in the fax book under a name |
 | `DELETE` | [`/v1/fax/contacts/{number}`](#delete-v1faxcontactsnumber) | Take a number out of the fax book |
+| `POST` | [`/v1/fax/waiting/{id}/print`](#post-v1faxwaitingidprint) | Print a stranger's fax that is waiting |
+| `DELETE` | [`/v1/fax/waiting/{id}`](#delete-v1faxwaitingid) | Drop a stranger's fax that is waiting |
 | `POST` | [`/v1/fax/send`](#post-v1faxsend) | Fax a job to a number or a name in the fax book |
 
 ## Authentication
@@ -362,10 +364,22 @@ name it is filed under in the fax book, if it is. A line names nobody,
 so no sender can choose what their fax prints under. The number is
 checked. A fax that cannot print yet, because the printer is
 unreachable or there is none, waits at the relay and is tried again.
-Every fax prints: there is no approving strangers yet. A fax prints
-once: the server remembers what it has printed for as long as it keeps
-the key that opens it, so a relay handing one over again, or a
-confirmation that was lost, does not print it twice.
+A fax prints once: the server remembers what it has printed for as long
+as it keeps the key that opens it, so a relay handing one over again,
+or a confirmation that was lost, does not print it twice.
+
+**Strangers.** Every fax prints unless the line has `contactsOnly` set.
+Then a fax from a number outside the fax book is checked and opened,
+and left at its relay. The line lists it in `waiting` until someone
+[prints](#post-v1faxwaitingidprint) or
+[drops](#delete-v1faxwaitingid) it, or the relay's 30 days run out.
+Filing its number in the fax book prints it too, as does clearing
+`contactsOnly`. Up to 20 faxes wait, with 16 MiB between them as
+sealed, and a stranger's fax past either is dropped. A relay holds
+100 faxes and 64 MiB for a line, so that leaves room for the fax
+book's. The list is kept in memory. After a restart the next poll
+finds the faxes again, and one told to print that had not printed yet
+waits to be told again.
 
 **Limits.** A fax prints unasked, so it may take only so much paper.
 Its job is at most 4,000 characters as JSON, with at most 100 line
@@ -382,6 +396,8 @@ and dropped if it arrives anyway.
 | `relays` | array | `name`, `url`, `online` (`null` until polled) and, when the last poll failed, `problem`. A relay counts as online as soon as it is added, since adding it asks it for its name |
 | `contacts` | array | The fax book: `name` and `number`, in order of name |
 | `recent` | array | The last numbers faxed or printed from that are not in the fax book, newest first: `number` and `at`, in Unix seconds. The server keeps ten, and no faxes |
+| `contactsOnly` | boolean | Whether only the fax book's faxes print unasked. `false` on a new line |
+| `waiting` | array | The [strangers' faxes](#fax) nobody has decided about, oldest first: `id`, `from` and `sent`, in Unix seconds by the sender's clock |
 
 ### `GET /v1/fax`
 
@@ -391,16 +407,23 @@ and dropped if it arrives anyway.
   "printer": "tsp800ii",
   "relays": [{ "name": "LONRELAY01", "url": "https://relay.example.com", "online": true }],
   "contacts": [{ "name": "Anna", "number": "*star15089lwj8gn70m8gepwymguzl5qkangla" }],
-  "recent": [{ "number": "*star1y0stjmvgr0el9qnxd0uy8c2ge52hd4p2", "at": 1790995440 }]
+  "recent": [{ "number": "*star1y0stjmvgr0el9qnxd0uy8c2ge52hd4p2", "at": 1790995440 }],
+  "contactsOnly": true,
+  "waiting": [{
+    "id": "6241486a0f3c9d1e5b7a2c4d8e6f0a1b3c5d7e9f1a2b4c6d8e0f2a4b6c8d0e1f",
+    "from": "*star1y0stjmvgr0el9qnxd0uy8c2ge52hd4p2",
+    "sent": 1790995440
+  }]
 }
 ```
 
 ### `PUT /v1/fax`
 
-Body: `printer`, required.
+Body: `printer`, required, and `contactsOnly`, which stays as it is
+when left out.
 
 ```json
-{ "printer": null }
+{ "printer": null, "contactsOnly": true }
 ```
 
 `200` with the [line](#fax-line). `400` for a printer that does not
@@ -447,6 +470,18 @@ number. `409` if another number already has the name, in any case.
 ### `DELETE /v1/fax/contacts/{number}`
 
 `204`, or `404` if the number is not in the fax book.
+
+### `POST /v1/fax/waiting/{id}/print`
+
+Lets a [stranger's fax](#fax) print, by its `id` in `waiting`. `202`
+with no body: the server polls the fax's relay at once and prints it
+then, or once the printer answers. `404` if no fax of that id is
+waiting to be decided.
+
+### `DELETE /v1/fax/waiting/{id}`
+
+Drops a stranger's fax unprinted, at its relay too. `204`, or `404` if
+no fax of that id is waiting to be decided.
 
 ### `POST /v1/fax/send`
 
@@ -553,8 +588,10 @@ MCP SDK refuses in plain text. The server drops a call whose client
 disconnects, as it drops a request. A job still waiting for its printer
 never starts, and one already being written finishes. There is
 no tool for [raw bytes](#post-v1printersnameraw), for changing a
-profile or for setting up the fax line. Do those in the desktop app or
-over the routes.
+profile, for setting up the fax line or for printing or dropping a
+stranger's fax. Do those in the desktop app or over the routes.
+`save_fax_contact` does let a number's faxes print unasked, waiting
+ones included, and its description says so.
 
 A tool call has no part to put a picture in, so `print`, `preview` and
 `send_fax` take it as base64 in `image`, beside `job`. A call may be

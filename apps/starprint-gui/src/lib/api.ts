@@ -276,17 +276,34 @@ export interface FaxRecent {
   at: number;
 }
 
-/** The server's fax line, as `GET /v1/fax` gives it. */
-export interface FaxLine {
-  /** Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`; null until the line is activated. */
-  number: string | null;
+/** A fax from a number outside the fax book, held until it is printed
+ * or dropped. */
+export interface FaxWaiting {
+  id: string;
+  from: string;
+  /** Unix seconds, by the sender's clock. */
+  sent: number;
+}
+
+/** What `PUT /v1/fax` sets. */
+export interface FaxSettings {
   /** The profile faxes print on; null for the first one. */
   printer: string | null;
+  /** Whether only the fax book's faxes print unasked. */
+  contactsOnly: boolean;
+}
+
+/** The server's fax line, as `GET /v1/fax` gives it. */
+export interface FaxLine extends FaxSettings {
+  /** Like `*star1en2su3z68yscvky0n3j3l2qwny4dkq7s`; null until the line is activated. */
+  number: string | null;
   relays: FaxRelay[];
   /** The fax book, by name. */
   contacts: FaxContact[];
   /** Those not in the fax book, newest first. */
   recent: FaxRecent[];
+  /** Oldest first. */
+  waiting: FaxWaiting[];
 }
 
 export interface Sent {
@@ -356,7 +373,7 @@ export function createClient({ url, token }: Server) {
       json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
     fax: () => json<FaxLine>("GET", "/v1/fax"),
-    putFax: (settings: { printer: string | null }) =>
+    putFax: (settings: FaxSettings) =>
       json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
     activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
     replaceFaxLine: () => json<FaxLine>("PUT", "/v1/fax/line"),
@@ -371,6 +388,8 @@ export function createClient({ url, token }: Server) {
     putContact: (number: string, name: string) =>
       json<FaxContact>("PUT", contact(number), jsonBody({ name })),
     deleteContact: (number: string) => send("DELETE", contact(number)),
+    printWaiting: (id: string) => send("POST", `/v1/fax/waiting/${id}/print`),
+    dropWaiting: (id: string) => send("DELETE", `/v1/fax/waiting/${id}`),
     sendFax: (to: string, job: Job, image: File | null) =>
       json<Sent>("POST", "/v1/fax/send", requestBody({ to, job }, image)),
   };
