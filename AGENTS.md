@@ -243,6 +243,14 @@ them, so do not retune these values from a screen:
   port from a desktop app reaching the printer over Tailscale, so the
   status probe never abandons a connect: it answers offline after 3 s
   and leaves the connect running until it completes or the OS gives up.
+  A client that goes silent mid-handshake costs a session too: with the
+  card's replies dropped by a firewall on the client, the card resent
+  its SYN-ACK for 95 s, gave up and kept the session, and the port was
+  refusing three minutes later. Clean connects either side of a minute
+  apart left it alive. So a link that drops out, such as
+  Tailscale through a relay, will kill the port in the end whatever the
+  client does. Reach the TSP700II only from its own LAN, and give a
+  remote desktop app the server on that LAN instead.
 - Two-colour mode prints a darker black than single colour at +3 on
   plain paper, measured on the TSP700II, which is what density +4 in a
   profile selects. In that mode the density command does nothing to
