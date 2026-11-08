@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "app": "tauri build --no-bundle && ../../target/release/starprint-gui"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

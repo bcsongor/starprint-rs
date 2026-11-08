@@ -30,7 +30,10 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   bitmap gives one path, a known version, a preview that draws what
   prints and rounded modules, none of which `ESC GS y` would.
 - `apps/starprint-gui/`: Vite + React + shadcn/ui over a Rust side in
-  `src-tauri/`. Run with `bun tauri dev` from that directory. The app
+  `src-tauri/`. Run with `bun tauri dev` from that directory, or
+  `bun app` for a release build to leave running. Left idle, `tauri dev`
+  grew by about 280 MB an hour, most likely React's development build
+  keeping a performance entry for every render. The app
   is a web client of `starprint-api`, which it runs in-process on the
   same data directory the command line uses, so the two cannot run at
   once; the app says so and offers a retry. The Rust side is a
