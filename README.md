@@ -147,7 +147,9 @@ bun run gui-setup
 bun run gui
 ```
 
-Build an installer with `bun --cwd apps/starprint-gui tauri build`.
+`gui` is the development build. To leave the app running, use
+`bun run app`, which builds it for release and starts it. Build an
+installer with `bun --cwd apps/starprint-gui tauri build`.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and printer reports.
 
 ## Licence
