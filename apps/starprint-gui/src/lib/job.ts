@@ -32,7 +32,7 @@ const RULES: Record<Rule, string> = {
  * two or more, sharing the rest of the form, and otherwise the card as
  * typed. Blank lines are skipped, so a pasted list may have gaps.
  */
-export function cards<C extends TaskCard>(card: C): C[] {
+function cards<C extends TaskCard>(card: C): C[] {
   const lines = card.text
     .split("\n")
     .map((line) => line.trim())
@@ -40,11 +40,14 @@ export function cards<C extends TaskCard>(card: C): C[] {
   return lines.length < 2 ? [card] : lines.map((text) => ({ ...card, text }));
 }
 
+function isTaskCard<J extends Job>(job: J): job is J & Jobs["task-card"] {
+  return job.kind === "task-card";
+}
+
 /** The jobs the form's `job` prints, in order: a task card's cards,
  * and otherwise the job itself. */
 export function printed<J extends Job>(job: J): J[] {
-  // A generic `J` does not narrow, so the check is restated in its type.
-  return job.kind === "task-card" ? cards(job as J & TaskCard) : [job];
+  return isTaskCard(job) ? cards(job) : [job];
 }
 
 /** The characters of `text`, whatever their styles. */

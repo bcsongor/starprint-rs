@@ -105,10 +105,22 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const twoColor =
     profile?.kind === "thermal" && profile.density === TWO_COLOR_DENSITY;
   const canPrint = ready && profile !== undefined && printing === 0;
-  // A task card of several lines prints a card for each.
+  // A task card of several lines prints a card for each, and a
+  // schedule or a fax holds one job.
   const batch = printed(job);
   const several = batch.length > 1;
   const what = several ? `${batch.length} task cards` : NAMES[workflow];
+  const scheduleRefusal =
+    job.kind === "picture"
+      ? "Pictures cannot be scheduled."
+      : several
+        ? "Schedule one card at a time."
+        : null;
+  const faxRefusal = !ready
+    ? "Nothing to fax yet."
+    : several
+      ? "Fax one card at a time."
+      : null;
 
   /** A change to the server, and then what it left, read at once. */
   const thenRefresh = (change: () => Promise<unknown>) => async () => {
@@ -370,19 +382,9 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               <Button
                 variant="outline"
                 disabled={
-                  !ready ||
-                  !schedules ||
-                  !profile ||
-                  job.kind === "picture" ||
-                  several
+                  !ready || !schedules || !profile || scheduleRefusal !== null
                 }
-                title={
-                  job.kind === "picture"
-                    ? "Pictures cannot be scheduled."
-                    : several
-                      ? "Schedule one card at a time."
-                      : undefined
-                }
+                title={scheduleRefusal ?? undefined}
                 onClick={() => {
                   if (profile && job.kind !== "picture") {
                     setDraft(newSchedule(job, profile.name));
@@ -394,13 +396,7 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               </Button>
               <FaxButton
                 fax={fax}
-                refusal={
-                  !ready
-                    ? "Nothing to fax yet."
-                    : several
-                      ? "Fax one card at a time."
-                      : null
-                }
+                refusal={faxRefusal}
                 onSend={sendFax}
                 onSetUp={() => setFaxDrawer(true)}
                 onSaveContact={(number, name) =>

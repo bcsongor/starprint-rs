@@ -22,11 +22,13 @@ interface Answer {
   error: string | null;
 }
 
-function isOf<K extends Kind>(
-  preview: Preview,
+/** All or none, so a stray answer cannot drop a card and shift the
+ * rest. */
+function allOf<K extends Kind>(
+  previews: Preview[],
   kind: K,
-): preview is Previews[K] {
-  return preview.kind === kind;
+): previews is Previews[K][] {
+  return previews.every((preview) => preview.kind === kind);
 }
 
 /**
@@ -78,10 +80,7 @@ export function usePreviews<K extends Kind>(
   if (answer?.kind !== kind) return { previews: null, error: null };
   const { previews, error } = answer;
   return {
-    previews:
-      previews?.filter((preview): preview is Previews[K] =>
-        isOf(preview, kind),
-      ) ?? null,
+    previews: previews && allOf(previews, kind) ? previews : null,
     error,
   };
 }
