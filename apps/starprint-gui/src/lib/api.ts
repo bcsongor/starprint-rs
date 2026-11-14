@@ -93,7 +93,7 @@ export interface TextLayout {
   columns: number;
   /** Each line as its runs. A blank line is one empty run, in the
    * style its line feed prints in. */
-  lines: Run[][];
+  runs: Run[][];
 }
 
 export const DEFAULT_TEXT: Text = { runs: [] };

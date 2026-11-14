@@ -195,9 +195,10 @@ printer, so it answers while the printer is off.
 
 Response: the job as it will look on that printer, tagged by `kind`
 like the job. A text job is its layout: `columns` and the `lines` the
-printer's own font will set, each line its runs as the job spells them.
-A blank line is one empty run in the style its line feed prints in, so
-a blank line in tall text is a tall one. A job printed as dots carries `image`, a
+printer's own font will set as strings, and the same lines as `runs`,
+each line its runs as the job spells them. A blank line is one empty
+run in the style its line feed prints in, so a blank line in tall text
+is a tall one. A job printed as dots carries `image`, a
 `data:` URL of a PNG drawn from the bitmap that prints, dot for dot,
 with thermal dots widened as the head widens them. A picture in double
 resolution or on an impact printer is the exception. Those dots are not

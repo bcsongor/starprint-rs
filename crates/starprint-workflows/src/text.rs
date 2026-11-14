@@ -144,27 +144,40 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
 
 /// [`wrap_by_words`] for styled text, where a wide character takes two
 /// of the `columns`. Each line is its runs, merged where the style does
-/// not change. A blank line is one empty run in the style the line
-/// before it ended in, which is the style its line feed prints in, so
-/// a blank line in tall text feeds a tall line.
+/// not change.
+///
+/// A blank line is one empty run in the style of the break that ends
+/// it, or of the line before when nothing does. That is the style its
+/// line feed prints in, so a blank line in tall text feeds a tall line,
+/// and text in one style prints the bytes it did before runs.
 fn wrap(runs: &[Run], columns: usize) -> Vec<Vec<Run>> {
     let cells: Vec<Cell> = runs
         .iter()
         .flat_map(|run| run.text.chars().map(move |c| (c, run.style())))
         .collect();
+    let breaks: Vec<Style> = cells
+        .iter()
+        .filter(|&&(c, _)| c == '\n')
+        .map(|&(_, style)| style)
+        .collect();
     let mut style = Style::default();
+    let mut lines = Vec::new();
     // Not `lines()`, which would swallow a final blank line.
-    cells
-        .split(|&(c, _)| c == '\n')
-        .flat_map(|line| wrap_line(line, columns))
-        .map(|line| match line.last() {
-            Some(&(_, last)) => {
-                style = last;
-                join(&line)
-            }
-            None => vec![Run::new(String::new(), style)],
-        })
-        .collect()
+    for (index, raw) in cells.split(|&(c, _)| c == '\n').enumerate() {
+        for line in wrap_line(raw, columns) {
+            lines.push(match line.last() {
+                Some(&(_, last)) => {
+                    style = last;
+                    join(&line)
+                }
+                None => {
+                    style = breaks.get(index).copied().unwrap_or(style);
+                    vec![Run::new(String::new(), style)]
+                }
+            });
+        }
+    }
+    lines
 }
 
 fn width(cells: &[Cell]) -> usize {
@@ -328,9 +341,12 @@ impl From<Text> for Wire {
 pub struct Layout {
     /// At normal size, so a wide character takes two.
     pub columns: usize,
+    /// Each line's characters, whatever their styles, as clients from
+    /// before runs read a layout.
+    pub lines: Vec<String>,
     /// Each line as its runs. A blank line is one empty run, in the
     /// style its line feed prints in.
-    pub lines: Vec<Vec<Run>>,
+    pub runs: Vec<Vec<Run>>,
 }
 
 impl Text {
@@ -351,9 +367,14 @@ impl Text {
         Builder<P>: TextStyle,
     {
         let columns = <Builder<P> as TextStyle>::columns(paper);
+        let runs = wrap(&self.runs, columns);
         Layout {
             columns,
-            lines: wrap(&self.runs, columns),
+            lines: runs
+                .iter()
+                .map(|line| line.iter().map(|run| run.text.as_str()).collect())
+                .collect(),
+            runs,
         }
     }
 
@@ -370,7 +391,7 @@ impl Text {
     {
         let mut doc = builder;
         let mut style = Style::default();
-        for (index, line) in self.layout::<P>(paper).lines.iter().enumerate() {
+        for (index, line) in self.layout::<P>(paper).runs.iter().enumerate() {
             // In the style the last line ended in, as a job in one style
             // has always fed its lines.
             if index > 0 {
@@ -413,15 +434,6 @@ mod tests {
         accent: false,
     };
 
-    /// The lines as they read, whatever their styles.
-    fn strings(layout: &Layout) -> Vec<String> {
-        layout
-            .lines
-            .iter()
-            .map(|line| line.iter().map(|run| run.text.as_str()).collect())
-            .collect()
-    }
-
     #[test]
     fn wrapping_follows_the_paper_and_the_width() {
         // The first ten words are exactly 48 characters.
@@ -429,7 +441,7 @@ mod tests {
         let narrow = text.layout::<StarLine>(Paper::Mm80);
         assert_eq!(narrow.columns, 48);
         assert_eq!(
-            strings(&narrow),
+            narrow.lines,
             [
                 "one two three four five six seven eight nine ten",
                 "eleven twelve"
@@ -447,7 +459,7 @@ mod tests {
         text.runs[0].wide = true;
         let layout = text.layout::<StarLine>(Paper::Mm80);
         assert_eq!(layout.columns, 48, "still the paper's columns");
-        let lines = strings(&layout);
+        let lines = layout.lines;
         assert!(
             lines.iter().all(|line| line.chars().count() <= 24),
             "wrapped at 24: {lines:?}"
@@ -532,7 +544,7 @@ mod tests {
         assert_eq!(wrap_by_words("", 40), [""]);
         assert_eq!(wrap_by_words("one\r\n\ntwo", 40), ["one", "", "two"]);
         assert_eq!(
-            strings(&plain("\none\n\n").layout::<StarLine>(Paper::Mm80)),
+            plain("\none\n\n").layout::<StarLine>(Paper::Mm80).lines,
             ["", "one", "", ""],
             "blank lines at either end feed paper"
         );
@@ -554,7 +566,7 @@ mod tests {
             "no wider than the paper"
         );
         assert_eq!(
-            strings(&plain("  indented").layout::<StarLine>(Paper::Mm80)),
+            plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
             ["  indented"]
         );
     }
@@ -589,7 +601,7 @@ mod tests {
             ],
         };
         assert_eq!(
-            text.layout::<StarLine>(Paper::Mm80).lines,
+            text.layout::<StarLine>(Paper::Mm80).runs,
             [
                 vec![Run::plain("un"), styled("bold", bold), Run::plain("ed")],
                 vec![Run::plain("next")],
@@ -679,25 +691,58 @@ mod tests {
     }
 
     #[test]
-    fn a_blank_line_feeds_in_the_style_before_it() {
+    fn a_blank_line_feeds_in_the_style_of_its_break() {
         let tall = Style {
             tall: true,
             ..Style::default()
         };
         let text = Text {
-            runs: vec![Run::plain("\n"), styled("A\n\nB", tall), Run::plain("\n\n")],
+            runs: vec![
+                styled("\n", tall),
+                Run::plain("A\n\n"),
+                styled("B\n\n", tall),
+            ],
         };
         assert_eq!(
-            text.layout::<StarLine>(Paper::Mm80).lines,
+            text.layout::<StarLine>(Paper::Mm80).runs,
             [
-                vec![Run::plain("")],
-                vec![styled("A", tall)],
                 vec![styled("", tall)],
+                vec![Run::plain("A")],
+                vec![Run::plain("")],
                 vec![styled("B", tall)],
                 vec![styled("", tall)],
                 vec![styled("", tall)],
             ],
-            "a blank line takes the style the printer is in at its feed"
+            "and the last, which no break ends, takes the line before's"
         );
+    }
+
+    /// Schedules and API clients from before runs send text in one
+    /// style, which must print as it always has: every style on, the
+    /// lines joined by line feeds, every style off and a feed.
+    #[test]
+    fn text_in_one_style_prints_the_bytes_it_did_before_runs() {
+        let all = Style {
+            bold: true,
+            wide: true,
+            tall: true,
+            accent: true,
+        };
+        for raw in ["Hi", "\nA", "A\n", "A\n\nB", "\n", " a  b \n\tc"] {
+            let text = Text {
+                runs: vec![styled(raw, all)],
+            };
+            let lines = wrap_by_words(raw, Builder::<StarLine>::columns(Paper::Mm80) / 2);
+            let before = Style::default()
+                .switch(all, starprint::starline())
+                .text(&lines.join("\n"));
+            let before = all.switch(Style::default(), before).raw(b"\n").build();
+            assert_eq!(
+                text.document(starprint::starline(), Paper::Mm80, false)
+                    .as_bytes(),
+                before.as_bytes(),
+                "{raw:?}"
+            );
+        }
     }
 }

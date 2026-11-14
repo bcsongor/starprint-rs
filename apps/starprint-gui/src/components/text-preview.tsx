@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function TextPreview({ layout, error, printer }: Props) {
-  const lines = layout?.lines ?? [];
+  const lines = layout?.runs ?? [];
   const empty = lines.every((line) => line.every((run) => run.text === ""));
 
   return (
