@@ -71,15 +71,17 @@ export function TextForm({ text, kind, onChange, onSubmit }: Props) {
       },
       // A line to a paragraph both ways, where ProseMirror would fold
       // blank lines on paste and double every break on copy. Pasted text
-      // takes the style it lands in, as typed text does.
+      // takes the style typed text would: the one chosen for it, or the
+      // one it lands in.
       clipboardTextParser: (pasted, $context, _, view) => {
-        const { schema } = view.state;
+        const { schema, storedMarks } = view.state;
+        const marks = storedMarks ?? $context.marks();
         const lines = pasted
           .split(/\r\n?|\n/)
           .map((line) =>
             schema.nodes.paragraph.create(
               null,
-              line ? schema.text(line, $context.marks()) : null,
+              line ? schema.text(line, marks) : null,
             ),
           );
         return new Slice(Fragment.from(lines), 1, 1);

@@ -71,6 +71,8 @@ export function toDoc(runs: Run[]): JSONContent {
 export function sameRuns(a: Run[], b: Run[]): boolean {
   return (
     a.length === b.length &&
-    a.every((run, index) => run.text === b[index].text && sameStyle(run, b[index]))
+    a.every(
+      (run, index) => run.text === b[index].text && sameStyle(run, b[index]),
+    )
   );
 }

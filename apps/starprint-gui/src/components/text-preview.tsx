@@ -13,7 +13,7 @@ interface Props {
 
 export function TextPreview({ layout, error, printer }: Props) {
   const lines = layout?.lines ?? [];
-  const empty = lines.every((line) => line.length === 0);
+  const empty = lines.every((line) => line.every((run) => run.text === ""));
 
   return (
     <PreviewPane
@@ -28,12 +28,9 @@ export function TextPreview({ layout, error, printer }: Props) {
           lines.map((line, index) => (
             <Fragment key={index}>
               {index > 0 && "\n"}
-              {/* A blank line would otherwise take no height. */}
-              {line.length === 0
-                ? "​"
-                : line.map((run, index) => (
-                    <PrintedRun key={index} run={run} kind={printer.kind} />
-                  ))}
+              {line.map((run, index) => (
+                <PrintedRun key={index} run={run} kind={printer.kind} />
+              ))}
             </Fragment>
           ))
         )}
@@ -69,7 +66,8 @@ function PrintedRun({ run, kind }: { run: Run; kind: PrinterKind }) {
           transform: `scaleX(${width / height})`,
         }}
       >
-        {run.text}
+        {/* A blank line's empty run would otherwise take no height. */}
+        {run.text || "​"}
       </span>
     </span>
   );

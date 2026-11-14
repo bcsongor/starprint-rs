@@ -144,17 +144,26 @@ pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
 
 /// [`wrap_by_words`] for styled text, where a wide character takes two
 /// of the `columns`. Each line is its runs, merged where the style does
-/// not change.
+/// not change. A blank line is one empty run in the style the line
+/// before it ended in, which is the style its line feed prints in, so
+/// a blank line in tall text feeds a tall line.
 fn wrap(runs: &[Run], columns: usize) -> Vec<Vec<Run>> {
     let cells: Vec<Cell> = runs
         .iter()
         .flat_map(|run| run.text.chars().map(move |c| (c, run.style())))
         .collect();
+    let mut style = Style::default();
     // Not `lines()`, which would swallow a final blank line.
     cells
         .split(|&(c, _)| c == '\n')
         .flat_map(|line| wrap_line(line, columns))
-        .map(|line| join(&line))
+        .map(|line| match line.last() {
+            Some(&(_, last)) => {
+                style = last;
+                join(&line)
+            }
+            None => vec![Run::new(String::new(), style)],
+        })
         .collect()
 }
 
@@ -262,9 +271,9 @@ impl Run {
 
 /// Text in one style, or runs for text whose style changes partway.
 // Read in either shape of `Wire` and written as the plain one when one
-// run will do, which servers from before runs still read. Only text
-// whose style changes partway needs a newer server at the far end of a
-// fax.
+// run will do, so that servers from before runs, a fax's recipient
+// among them, read it as they always have. Text whose style changes
+// partway still prints there, without its styles.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(from = "Wire", into = "Wire")]
 #[schemars(inline)]
@@ -278,7 +287,14 @@ pub struct Text {
 enum Wire {
     /// Text whose style changes partway, as runs in order, each in its
     /// own style. A line break is a `\n` inside a run.
-    Runs { runs: Vec<Run> },
+    Runs {
+        runs: Vec<Run>,
+        // The runs' characters, written for servers from before runs,
+        // which require `text` and ignore `runs`. Nothing here reads it.
+        #[serde(default, skip_deserializing)]
+        #[schemars(skip)]
+        text: String,
+    },
     /// The whole text in one style.
     Plain(Run),
 }
@@ -286,7 +302,7 @@ enum Wire {
 impl From<Wire> for Text {
     fn from(wire: Wire) -> Self {
         match wire {
-            Wire::Runs { runs } => Self { runs },
+            Wire::Runs { runs, .. } => Self { runs },
             Wire::Plain(run) => Self { runs: vec![run] },
         }
     }
@@ -298,7 +314,10 @@ impl From<Text> for Wire {
         match runs.len() {
             0 => Self::Plain(Run::default()),
             1 => Self::Plain(runs.remove(0)),
-            _ => Self::Runs { runs },
+            _ => Self::Runs {
+                text: runs.iter().map(|run| run.text.as_str()).collect(),
+                runs,
+            },
         }
     }
 }
@@ -309,7 +328,8 @@ impl From<Text> for Wire {
 pub struct Layout {
     /// At normal size, so a wide character takes two.
     pub columns: usize,
-    /// Each line as its runs. A blank line has none.
+    /// Each line as its runs. A blank line is one empty run, in the
+    /// style its line feed prints in.
     pub lines: Vec<Vec<Run>>,
 }
 
@@ -632,6 +652,52 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&text).unwrap()["runs"][1]["wide"],
             true
+        );
+    }
+
+    /// A fax's recipient may run a server from before runs, which reads
+    /// only `text` and the styles beside it.
+    #[test]
+    fn runs_carry_their_characters_for_older_readers() {
+        #[derive(Deserialize)]
+        struct Older {
+            text: String,
+            #[serde(default)]
+            wide: bool,
+        }
+        let text = Text {
+            runs: vec![Run::plain("a\n"), styled("b", WIDE)],
+        };
+        let json = serde_json::to_value(&text).unwrap();
+        let older: Older = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!((older.text.as_str(), older.wide), ("a\nb", false));
+
+        let mut edited = json;
+        edited["text"] = "ignored".into();
+        let again: Text = serde_json::from_value(edited).unwrap();
+        assert_eq!(again, text, "the runs are what a new server reads");
+    }
+
+    #[test]
+    fn a_blank_line_feeds_in_the_style_before_it() {
+        let tall = Style {
+            tall: true,
+            ..Style::default()
+        };
+        let text = Text {
+            runs: vec![Run::plain("\n"), styled("A\n\nB", tall), Run::plain("\n\n")],
+        };
+        assert_eq!(
+            text.layout::<StarLine>(Paper::Mm80).lines,
+            [
+                vec![Run::plain("")],
+                vec![styled("A", tall)],
+                vec![styled("", tall)],
+                vec![styled("B", tall)],
+                vec![styled("", tall)],
+                vec![styled("", tall)],
+            ],
+            "a blank line takes the style the printer is in at its feed"
         );
     }
 }

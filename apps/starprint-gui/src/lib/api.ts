@@ -91,7 +91,8 @@ export interface Text {
 export interface TextLayout {
   /** At normal size, so a wide character takes two. */
   columns: number;
-  /** Each line as its runs. A blank line has none. */
+  /** Each line as its runs. A blank line is one empty run, in the
+   * style its line feed prints in. */
   lines: Run[][];
 }
 
@@ -264,14 +265,17 @@ export interface Schedule extends ScheduleSpec {
 }
 
 /** A schedule as the server writes it: a text job of one run comes in
- * the plain shape, the run's fields beside `kind`. */
+ * the plain shape, the run's fields beside `kind`, and one of several
+ * runs carries their characters as `text` for older servers. */
 type ScheduleWire = Omit<Schedule, "job"> & {
   job: Schedule["job"] | ({ kind: "text" } & Run);
 };
 
 /** `schedule` with its job as the app keeps it, a text job as runs. */
 function readSchedule({ job, ...schedule }: ScheduleWire): Schedule {
-  if (job.kind !== "text" || "runs" in job) return { ...schedule, job };
+  if (job.kind !== "text") return { ...schedule, job };
+  if ("runs" in job)
+    return { ...schedule, job: { kind: "text", runs: job.runs } };
   const { kind, ...run } = job;
   return { ...schedule, job: { kind, runs: [run] } };
 }
