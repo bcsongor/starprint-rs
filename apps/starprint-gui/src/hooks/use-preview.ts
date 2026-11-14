@@ -58,9 +58,13 @@ export function usePreviews<K extends Kind>(
       chain = chain.then(async () => {
         if (cancelled) return;
         try {
-          const previews = await Promise.all(
-            jobs.map((job) => api.preview(printer.name, job, image)),
-          );
+          // One by one, so an outdated batch stops at the next job
+          // rather than holding up the requests behind it.
+          const previews: Preview[] = [];
+          for (const job of jobs) {
+            if (cancelled) return;
+            previews.push(await api.preview(printer.name, job, image));
+          }
           if (!cancelled) setAnswer({ kind, previews, error: null });
         } catch (error) {
           if (!cancelled) {
