@@ -1,11 +1,13 @@
-//! Head-check pages. The thermal one is the `thermal_test_pattern`
-//! example; the impact one checks pins, ribbon and registration between
-//! densities.
+//! Head-check pages. The thermal one prints the patterns of the
+//! library's `thermal_test_pattern` example, at the profile's speed and
+//! density where the example takes flags. The impact one checks pins,
+//! ribbon and registration between densities.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use starprint::graphics::{BitImage, Bitmap, Density, Dithering, Grayscale};
+use starprint::graphics::{BitImage, Bitmap, Density, DeviceProfile, Dithering, Grayscale};
 
+use crate::text::IMPACT_COLUMNS;
 use crate::{Paper, finish};
 use starprint::{
     Alignment, Barcode, Builder, Color, Document, Impact, ImpactFont, PrintMode, QrCode,
@@ -20,7 +22,8 @@ pub struct TestPage {
     pub double_resolution: bool,
 }
 
-/// A numbered section, for the preview.
+/// A numbered section, for the preview. The page has room for a few
+/// words beside each number; this says more.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Section {
@@ -36,7 +39,7 @@ fn section(title: &str, check: &str) -> Section {
     }
 }
 
-pub fn thermal_sections(page: &TestPage) -> Vec<Section> {
+pub(crate) fn thermal_sections(page: &TestPage) -> Vec<Section> {
     let mut sections = vec![
         section("Solid bar", "white hairline = dead dot"),
         section("Lines every 8 dots", "faint or missing = weak dot"),
@@ -53,7 +56,7 @@ pub fn thermal_sections(page: &TestPage) -> Vec<Section> {
     sections
 }
 
-pub fn impact_sections() -> Vec<Section> {
+pub(crate) fn impact_sections() -> Vec<Section> {
     vec![
         section("Solid block", "white horizontal line = dead pin"),
         section(
@@ -145,8 +148,8 @@ pub(crate) fn thermal(
 }
 
 pub(crate) fn impact(builder: Builder<Impact>, cut: bool) -> Document {
-    const SINGLE: u32 = 210;
-    const DOUBLE: u32 = 420;
+    const SINGLE: u32 = DeviceProfile::SP700.width_dots_single;
+    const DOUBLE: u32 = DeviceProfile::SP700.width_dots_double;
     // Four 9-pin stripes.
     const ROWS: u32 = 36;
 
@@ -217,9 +220,9 @@ pub(crate) fn impact(builder: Builder<Impact>, cut: bool) -> Document {
         .color(Color::Black)
         .line("black on one line")
         .line("6 character set")
-        .line(&ascii[..42])
-        .line(&ascii[42..84])
-        .line(&ascii[84..])
+        .line(&ascii[..IMPACT_COLUMNS])
+        .line(&ascii[IMPACT_COLUMNS..2 * IMPACT_COLUMNS])
+        .line(&ascii[2 * IMPACT_COLUMNS..])
         .feed(2);
     finish(doc, cut)
 }

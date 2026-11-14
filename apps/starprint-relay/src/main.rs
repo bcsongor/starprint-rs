@@ -1,6 +1,6 @@
 //! The fax relay's command line: a name, an address and a database
-//! file, one relay until Ctrl-C. Put it behind a TLS proxy on a public host; servers reach it
-//! at its `https://` address.
+//! file, one relay until Ctrl-C or SIGTERM. Put it behind a TLS proxy on
+//! a public host; servers reach it at its `https://` address.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -78,10 +78,29 @@ fn run() -> Result<(), String> {
                 listener,
                 router.into_make_service_with_connect_info::<SocketAddr>(),
             )
-            .with_graceful_shutdown(async {
-                let _ = tokio::signal::ctrl_c().await;
-            })
+            .with_graceful_shutdown(stopped())
             .await
             .map_err(|e| format!("the relay stopped: {e}"))
         })
+}
+
+/// Resolves when the relay is told to stop: by Ctrl-C, or by the SIGTERM
+/// that systemd and Docker send, so requests under way finish either
+/// way.
+async fn stopped() {
+    let interrupted = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        if let Ok(mut terminated) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                () = interrupted => {}
+                _ = terminated.recv() => {}
+            }
+            return;
+        }
+    }
+    interrupted.await;
 }

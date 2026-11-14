@@ -16,10 +16,12 @@ interface Props {
  */
 export function PicturePreview({ image, error, printer }: Props) {
   return (
-    <PreviewPane printer={printer} hint={`${roll(printer).dots} dots`}>
-      {error ? (
-        <PreviewNote error>{error}</PreviewNote>
-      ) : image ? (
+    <PreviewPane
+      printer={printer}
+      hint={`${roll(printer).dots} dots`}
+      error={error}
+    >
+      {image ? (
         <img src={image} alt="Dithered preview" className="block w-full" />
       ) : (
         <PreviewNote>Choose a picture to see how it will print.</PreviewNote>

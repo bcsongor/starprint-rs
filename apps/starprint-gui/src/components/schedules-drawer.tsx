@@ -1,7 +1,6 @@
 import {
   EllipsisIcon,
   FlaskConicalIcon,
-  ImageIcon,
   QrCodeIcon,
   SquareCheckIcon,
   StickyNoteIcon,
@@ -24,16 +23,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { byName, type Job, type Profile, type Schedule } from "@/lib/api";
-import { describe, summary } from "@/lib/schedule";
+import type { Profile, Schedule } from "@/lib/api";
+import { summary } from "@/lib/job";
+import { describe } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
-const ICONS: Record<Job["kind"], LucideIcon> = {
+const ICONS: Record<Schedule["job"]["kind"], LucideIcon> = {
   "task-card": SquareCheckIcon,
   text: TypeIcon,
   note: StickyNoteIcon,
   qr: QrCodeIcon,
-  picture: ImageIcon,
   "test-page": FlaskConicalIcon,
 };
 
@@ -155,7 +154,7 @@ export function SchedulesDrawer({
               Move all to…
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-max">
-              {byName(profiles).map((p) => (
+              {profiles.map((p) => (
                 <DropdownMenuItem key={p.name} onClick={() => onMoveAll(p.name)}>
                   {p.name}
                 </DropdownMenuItem>

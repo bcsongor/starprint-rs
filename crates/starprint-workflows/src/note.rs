@@ -53,7 +53,8 @@ impl Default for Note {
     }
 }
 
-/// The slip's header. The ruling comes from [`Note::bitmap`].
+/// The slip's header. The ruling is the image beside it in the
+/// [`Preview`](crate::Preview).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
@@ -71,10 +72,7 @@ const MAX_PITCH_MM: u8 = 12;
 const DOT_MM: f32 = 0.3;
 
 /// What differs between the heads when ruling paper.
-pub trait NoteStyle: TextStyle + Sized {
-    /// The head and roll as geometry.
-    fn profile(paper: Paper) -> &'static DeviceProfile;
-
+pub(crate) trait NoteStyle: TextStyle {
     /// Feeds blank paper, near enough for a slip nobody measures.
     fn feed_mm(self, mm: f32) -> Self;
 
@@ -84,10 +82,6 @@ pub trait NoteStyle: TextStyle + Sized {
 }
 
 impl NoteStyle for Builder<StarLine> {
-    fn profile(paper: Paper) -> &'static DeviceProfile {
-        paper.profile()
-    }
-
     fn feed_mm(self, mm: f32) -> Self {
         // The pitch is selected rather than assumed, so the feed is the
         // length asked for. `ESC @` puts it back for the next job.
@@ -100,10 +94,6 @@ impl NoteStyle for Builder<StarLine> {
 }
 
 impl NoteStyle for Builder<Impact> {
-    fn profile(_paper: Paper) -> &'static DeviceProfile {
-        &DeviceProfile::SP700
-    }
-
     fn feed_mm(self, mm: f32) -> Self {
         // The SP700 has no line-pitch command here; `ESC @` leaves 1/6".
         self.feed(lines(mm, MM_PER_INCH / 6.0))
@@ -130,7 +120,7 @@ impl Note {
     }
 
     /// The ruling at the printer's dot pitch, including blank slips.
-    pub fn bitmap<P: Protocol>(&self, paper: Paper) -> Bitmap
+    pub(crate) fn bitmap<P: Protocol>(&self, paper: Paper) -> Bitmap
     where
         Builder<P>: NoteStyle,
     {
@@ -138,11 +128,11 @@ impl Note {
             self.rule,
             self.rows(),
             self.pitch(),
-            <Builder<P> as NoteStyle>::profile(paper),
+            <Builder<P> as TextStyle>::profile(paper),
         )
     }
 
-    pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
+    pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: TextStyle,
     {
@@ -154,7 +144,12 @@ impl Note {
     }
 
     /// Without `cut` the slip only feeds clear of the head.
-    pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
+    pub(crate) fn document<P: Protocol>(
+        &self,
+        builder: Builder<P>,
+        paper: Paper,
+        cut: bool,
+    ) -> Document
     where
         Builder<P>: NoteStyle,
     {

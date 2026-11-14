@@ -65,6 +65,9 @@ impl Default for Picture {
     }
 }
 
+/// What a picture job says when it is handed no image.
+pub(crate) const NO_PICTURE: &str = "No picture supplied.";
+
 /// The pipeline sharpens at source resolution, so a camera photo costs
 /// seconds per preview. Shrinking it to this many times the head width
 /// first keeps the sharpening comparable and the sliders responsive.
@@ -118,7 +121,7 @@ impl Picture {
         let shrunk = fit_width(source, self.source_width(kind, paper));
         self.pipeline(kind, paper)
             .prepare(shrunk.as_ref().unwrap_or(source))
-            .map_err(|e| e.to_string())
+            .map_err(refused)
     }
 
     /// The picture for the screen, one head wide.
@@ -131,7 +134,7 @@ impl Picture {
         let shrunk = fit_width(source, self.source_width(kind, paper));
         self.pipeline(kind, paper)
             .prepare_preview(shrunk.as_ref().unwrap_or(source))
-            .map_err(|e| e.to_string())
+            .map_err(refused)
     }
 
     fn pipeline(&self, kind: PrinterKind, paper: Paper) -> ImagePipeline {
@@ -141,6 +144,17 @@ impl Picture {
             .dither(self.dither.dithering(self.threshold))
             .brightness(self.brightness)
             .contrast(self.contrast)
+    }
+}
+
+/// Why the pipeline would not take an image, worded like [`decode`]'s
+/// message and for the same reader.
+fn refused(error: starprint::Error) -> String {
+    match error {
+        starprint::Error::InvalidData { reason } => {
+            format!("The picture cannot be printed: {reason}.")
+        }
+        other => format!("The picture cannot be printed: {other}."),
     }
 }
 
@@ -221,24 +235,6 @@ mod tests {
         );
         let shrunk = fit_width(&source, 840).unwrap();
         assert_eq!((shrunk.width(), shrunk.height()), (840, 210));
-
-        // Shrinking to the same width first changes nothing, so a cache
-        // that holds the shrunk source prints what the full one would.
-        let direct = picture
-            .preview(PrinterKind::Impact, Paper::Mm80, &source)
-            .unwrap();
-        let cached = picture
-            .preview(
-                PrinterKind::Impact,
-                Paper::Mm80,
-                &fit_width(
-                    &source,
-                    picture.source_width(PrinterKind::Impact, Paper::Mm80),
-                )
-                .unwrap(),
-            )
-            .unwrap();
-        assert_eq!(direct.pixels(), cached.pixels());
     }
 
     #[test]

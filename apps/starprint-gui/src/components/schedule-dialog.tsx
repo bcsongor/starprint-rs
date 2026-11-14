@@ -19,14 +19,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Due, Profile, ScheduleSpec } from "@/lib/api";
+import { NAMES, summary } from "@/lib/job";
+import { message } from "@/lib/message";
 import {
-  NAMES,
   PRESETS,
   describe,
   formatNext,
   fromCron,
   nextRun,
-  summary,
   toCron,
   type Preset,
 } from "@/lib/schedule";
@@ -40,11 +40,20 @@ interface Props {
   /** The schedule to edit, or null when closed. */
   draft: Draft | null;
   profiles: Profile[];
+  /** What a schedule keeps printing through, to follow "while": the
+   * app being open, or another machine's server running. */
+  runsWhile: string;
   onClose: () => void;
   onSave: (draft: Draft) => void;
 }
 
-export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
+export function ScheduleDialog({
+  draft,
+  profiles,
+  runsWhile,
+  onClose,
+  onSave,
+}: Props) {
   return (
     <Dialog
       open={draft !== null}
@@ -57,6 +66,7 @@ export function ScheduleDialog({ draft, profiles, onClose, onSave }: Props) {
         <ScheduleForm
           initial={draft}
           profiles={profiles}
+          runsWhile={runsWhile}
           onCancel={onClose}
           onSave={onSave}
         />
@@ -84,18 +94,20 @@ function check(cron: string): { at: Date } | { error: string } {
   try {
     return { at: nextRun(cron) };
   } catch (error) {
-    return { error: (error as Error).message };
+    return { error: message(error) };
   }
 }
 
 function ScheduleForm({
   initial,
   profiles,
+  runsWhile,
   onCancel,
   onSave,
 }: {
   initial: Draft;
   profiles: Profile[];
+  runsWhile: string;
   onCancel: () => void;
   onSave: (draft: Draft) => void;
 }) {
@@ -121,7 +133,7 @@ function ScheduleForm({
         <DialogDescription>
           {editing
             ? "Load into form to change the job itself."
-            : "Print this job at the chosen times while the app is open."}
+            : `Print this job at the chosen times while ${runsWhile}.`}
         </DialogDescription>
       </DialogHeader>
 
@@ -186,7 +198,9 @@ function ScheduleForm({
               value={spelled?.time ?? ""}
               disabled={custom}
               onChange={(e) => {
-                if (spelled)
+                // A time with a part cleared reads as empty, which
+                // spells no cron and would leave both fields shut.
+                if (spelled && e.target.value)
                   set("cron", toCron(spelled.preset, e.target.value));
               }}
             />

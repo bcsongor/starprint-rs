@@ -1,5 +1,7 @@
 import { addDays, format, parseISO } from "date-fns";
-import { CalendarIcon, CornerDownLeftIcon } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
+import { SubmitTextarea } from "@/components/submit-textarea";
+import { Toggle } from "@/components/toggle";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -8,9 +10,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import type { TaskCard } from "@/lib/api";
 
 interface Props {
@@ -45,36 +44,17 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
 
   return (
     <FieldGroup className="gap-4">
-      <Field>
-        <div className="flex h-5 items-center justify-between">
-          <FieldLabel htmlFor="task">Task</FieldLabel>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <KbdGroup>
-              <Kbd>Ctrl</Kbd>
-              <Kbd>
-                <CornerDownLeftIcon />
-              </Kbd>
-            </KbdGroup>
-            prints
-          </span>
-        </div>
-        <Textarea
-          id="task"
-          // 5px padding makes an empty box the date button's 32px height.
-          className="min-h-8 border-border bg-background py-[0.3125rem] text-sm"
-          value={card.text}
-          placeholder="What needs doing?"
-          rows={3}
-          autoFocus
-          onChange={(e) => set("text", e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-      </Field>
+      <SubmitTextarea
+        id="task"
+        label="Task"
+        // 5px padding makes an empty box the date button's 32px height.
+        className="min-h-8 border-border bg-background py-[0.3125rem] text-sm"
+        value={card.text}
+        placeholder="What needs doing?"
+        rows={3}
+        onChange={(text) => set("text", text)}
+        onSubmit={onSubmit}
+      />
 
       <Field>
         <FieldLabel htmlFor="due">Due</FieldLabel>
@@ -123,19 +103,13 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         </div>
       </Field>
 
-      <Field orientation="horizontal">
-        <Switch
-          id="priority"
-          checked={card.priority}
-          onCheckedChange={(checked) => set("priority", checked)}
-        />
-        <FieldLabel
-          htmlFor="priority"
-          className="text-sm tracking-normal normal-case text-foreground"
-        >
-          High priority
-        </FieldLabel>
-      </Field>
+      <Toggle
+        id="priority"
+        checked={card.priority}
+        onCheckedChange={(checked) => set("priority", checked)}
+      >
+        High priority
+      </Toggle>
     </FieldGroup>
   );
 }

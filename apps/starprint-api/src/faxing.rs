@@ -25,14 +25,14 @@ use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use starprint_fax::{
-    Collect, Fax, FaxKey, Held, HeldFaxes, Identity, Line, LineRecord, Number, RelayInfo,
-    base64_bytes, check_relay_name, now,
+    Collect, Fax, FaxKey, HELD_BYTES, HOLD_SECONDS, Held, HeldFaxes, Identity, Line, LineRecord,
+    Number, RelayInfo, base64_bytes, check_relay_name, now,
 };
 use starprint_workflows::{FaxHeader, Job};
 
 use crate::config::Profile;
 use crate::data::Data;
-use crate::job::JobRequest;
+use crate::job::{self, JobRequest};
 use crate::printers::{self, Printers};
 use crate::problem::Problem;
 
@@ -41,15 +41,14 @@ const POLL_EVERY: Duration = Duration::from_secs(10);
 const DAY: u64 = 24 * 60 * 60;
 /// How long a fax key is the one the record carries.
 const ROTATE_AFTER: u64 = 7 * DAY;
-/// How long a relay holds a fax nobody polls for.
-const RELAY_HOLD: u64 = 30 * DAY;
 /// How long a fax key is kept once the next has replaced it: until the
 /// last fax sealed to it has left its relay, and a day over for clocks
 /// that disagree.
-const KEEP: u64 = RELAY_HOLD + DAY;
+const KEEP: u64 = HOLD_SECONDS + DAY;
 /// How much of a relay's answer is read. A line's full allowance at a
-/// relay is 64 MiB, which is about 86 MiB as base64 in JSON.
-const ANSWER_LIMIT: usize = 128 << 20;
+/// relay is a third larger as base64 in JSON, so twice it is room
+/// enough.
+const ANSWER_LIMIT: usize = 2 * HELD_BYTES;
 /// A fax prints unasked, so its job may be only so long: this many
 /// characters, as the JSON it travels as.
 const JOB_LIMIT: usize = 4_000;
@@ -126,7 +125,7 @@ pub struct Contact {
 pub struct LineSecret {
     pub number: Number,
     #[serde(with = "base64_bytes")]
-    pub seed: Vec<u8>,
+    pub seed: [u8; 32],
     /// When the record last changed, so relays keep the newest.
     pub updated: u64,
     /// The keys faxes are sealed to, oldest first. The last is the one
@@ -144,19 +143,19 @@ pub struct StoredKey {
     /// Unix seconds.
     pub created: u64,
     #[serde(with = "base64_bytes")]
-    pub seed: Vec<u8>,
+    pub seed: [u8; 32],
 }
 
 impl StoredKey {
     fn new(created: u64) -> Self {
         Self {
             created,
-            seed: FaxKey::generate().seed().to_vec(),
+            seed: FaxKey::generate().seed(),
         }
     }
 
     fn key(&self) -> FaxKey {
-        FaxKey::from_seed(self.seed.as_slice().try_into().expect("a 32-byte seed"))
+        FaxKey::from_seed(self.seed)
     }
 }
 
@@ -164,7 +163,7 @@ impl LineSecret {
     fn new(identity: &Identity, now: u64) -> Self {
         Self {
             number: identity.number(),
-            seed: identity.seed().to_vec(),
+            seed: identity.seed(),
             updated: now,
             fax_keys: vec![StoredKey::new(now)],
             printed: BTreeMap::new(),
@@ -172,7 +171,7 @@ impl LineSecret {
     }
 
     fn identity(&self) -> Identity {
-        Identity::from_seed(self.seed.as_slice().try_into().expect("a 32-byte seed"))
+        Identity::from_seed(self.seed)
     }
 
     /// Whether the newest fax key is due to be replaced, or missing.
@@ -574,11 +573,7 @@ pub async fn send(
         ));
     }
     let to = settings.resolve(&request.to)?;
-    if request.job.needs_image() && image.is_none() {
-        return Err(Problem::bad_request(
-            "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
-        ));
-    }
+    job::check_image(&request.job, image.as_ref())?;
     fits(&request.job, image.as_deref()).map_err(Problem::bad_request)?;
     // Built once here so a job that cannot print is turned away now,
     // rather than failing on the other side where nobody sees it.
@@ -751,7 +746,7 @@ async fn poll_relay(
     }
     let response = client
         .post(line_url(&relay.url, secret.number, "/poll"))
-        .json(&Collect::poll(identity, &relay.name, secret.number))
+        .json(&Collect::poll(identity, &relay.name, secret.number, now()))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -787,6 +782,7 @@ async fn poll_relay(
                     &relay.name,
                     secret.number,
                     done,
+                    now(),
                 )),
         )
         .await?;
@@ -1069,6 +1065,7 @@ mod tests {
                 &ben_line.identity(),
                 "LONRELAY01",
                 ben_number,
+                now(),
             ))
             .send()
             .await
@@ -1162,7 +1159,7 @@ mod tests {
     fn a_fax_key_is_replaced_weekly_and_forgotten_once_nothing_needs_it() {
         let mut line = LineSecret::new(&Identity::generate(), 0);
         line.printed.insert("an old fax".to_owned(), 0);
-        let first = line.fax_keys[0].seed.clone();
+        let first = line.fax_keys[0].seed;
         line.rotate(ROTATE_AFTER - 1);
         assert_eq!((line.fax_keys.len(), line.updated), (1, 0), "not yet due");
 
@@ -1187,7 +1184,7 @@ mod tests {
     fn a_fax_key_outlives_a_server_that_was_switched_off() {
         let mut line = LineSecret::new(&Identity::generate(), 0);
         line.printed.insert("an old fax".to_owned(), 0);
-        let first = line.fax_keys[0].seed.clone();
+        let first = line.fax_keys[0].seed;
         let back = 100 * DAY;
         line.rotate(back);
         assert_eq!(line.fax_keys.len(), 2);
@@ -1236,6 +1233,37 @@ mod tests {
             fits(&picture, Some(b"not an image")).is_ok(),
             "for decode to refuse"
         );
+    }
+
+    /// `fax.json` as servers have written it so far must still load, and
+    /// be written back the same.
+    #[test]
+    fn fax_json_reads_as_it_was_written() {
+        let seed = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
+        let written = serde_json::json!({
+            "line": {
+                "number": Number::of(b"anna").to_string(),
+                "seed": seed,
+                "updated": 5,
+                "faxKeys": [{ "created": 5, "seed": seed }],
+                "printed": { "a fax": 6 },
+            },
+            "relays": [],
+            "contacts": [],
+            "recent": [],
+        });
+        let settings: FaxSettings = serde_json::from_value(written.clone()).unwrap();
+        let line = settings.line.as_ref().unwrap();
+        assert_eq!(line.seed, [7; 32]);
+        assert_eq!(line.fax_keys[0].seed, [7; 32]);
+        assert_eq!(serde_json::to_value(&settings).unwrap(), written);
+
+        // A seed of another length is caught when the file is read, not
+        // when the key is first wanted.
+        let mut damaged = written;
+        damaged["line"]["seed"] = "Bwc=".into();
+        let error = serde_json::from_value::<FaxSettings>(damaged).unwrap_err();
+        assert!(error.to_string().contains("wrong length"), "{error}");
     }
 
     #[test]

@@ -12,6 +12,16 @@ interface Props {
 const TOP_MM = 5;
 const BOTTOM_MM = 8;
 
+/** Scales `inner`, the sheet, down to fit `outer`, the pane, never up. */
+function fit(outer: HTMLElement, inner: HTMLElement) {
+  const scale = Math.min(
+    1,
+    outer.clientWidth / inner.offsetWidth,
+    outer.clientHeight / inner.offsetHeight,
+  );
+  inner.style.transform = `translateX(-50%) scale(${scale})`;
+}
+
 /**
  * The roll at true width with the print region centred, scaled down to
  * fit the pane but never up.
@@ -24,26 +34,22 @@ export function PaperSheet({ printer, children }: Props) {
   const width = paperMm * PX_PER_MM;
   const edge = ((paperMm - printMm) / 2) * PX_PER_MM;
 
+  // Before paint on every render, since any may change what the sheet
+  // holds.
+  useLayoutEffect(() => {
+    if (pane.current && sheet.current) fit(pane.current, sheet.current);
+  });
+
+  // And between renders, when the pane or the sheet changes size.
   useLayoutEffect(() => {
     const outer = pane.current;
     const inner = sheet.current;
     if (!outer || !inner) return;
-
-    const fit = () => {
-      const scale = Math.min(
-        1,
-        outer.clientWidth / inner.offsetWidth,
-        outer.clientHeight / inner.offsetHeight,
-      );
-      // Apply before paint, including resize callbacks outside React commits.
-      inner.style.transform = `translateX(-50%) scale(${scale})`;
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
+    const observer = new ResizeObserver(() => fit(outer, inner));
     observer.observe(outer);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, [width, children]);
+  }, []);
 
   return (
     <div className="relative min-h-0 flex-1">

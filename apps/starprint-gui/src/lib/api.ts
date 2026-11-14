@@ -35,6 +35,14 @@ export function toSpec({ name: _name, ...spec }: Profile): ProfileSpec {
   return spec;
 }
 
+/** What a thermal profile starts with, new or switched from impact. */
+export const THERMAL_DEFAULTS = {
+  kind: "thermal",
+  paper: 80,
+  density: 3,
+  speed: "slow",
+} satisfies Partial<ProfileSpec>;
+
 /** The profiles as the picker lists them, in alphabetical order. */
 export function byName(profiles: Profile[]): Profile[] {
   return [...profiles].sort((a, b) =>
@@ -241,7 +249,8 @@ export interface ScheduleSpec {
   enabled: boolean;
   /** Task cards only; absent prints the card undated. */
   due?: Due;
-  job: Job;
+  /** Not a picture: the server holds no image to print one from. */
+  job: Exclude<Job, { kind: "picture" }>;
 }
 
 export interface Schedule extends ScheduleSpec {
@@ -317,6 +326,14 @@ function jsonBody(value: unknown): RequestInit {
   };
 }
 
+/** A problem's `detail`, if `body` is a problem at all. */
+function detail(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return undefined;
+  }
+  return typeof body.detail === "string" ? body.detail : undefined;
+}
+
 export function createClient({ url, token }: Server) {
   /** The response, or the problem's `detail` thrown. */
   const send = async (method: string, path: string, init: RequestInit = {}) => {
@@ -325,7 +342,14 @@ export function createClient({ url, token }: Server) {
       method,
       headers: { ...init.headers, Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new Error((await response.json()).detail);
+    if (!response.ok) {
+      // A proxy, or an address that is not this server's, answers with
+      // something other than a problem, so the status has to do.
+      const body: unknown = await response.json().catch(() => null);
+      throw new Error(
+        detail(body) ?? (response.statusText || `HTTP ${response.status}`),
+      );
+    }
     return response;
   };
   const json = <T>(method: string, path: string, init?: RequestInit) =>

@@ -30,7 +30,7 @@ pub struct Number([u8; LENGTH]);
 
 impl Number {
     /// The number of the line whose identity key is `identity`, as
-    /// [`crate::IdentityKey::to_bytes`] writes it.
+    /// [`crate::LineRecord::identity`] carries it.
     pub fn of(identity: &[u8]) -> Self {
         let mut hash = Sha256::new();
         hash.update(LABEL);

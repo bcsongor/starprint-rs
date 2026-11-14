@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/popover";
 import { FaxNumber } from "@/components/fax-number";
 import type { FaxContact, FaxLine, FaxRecent } from "@/lib/api";
-import { isFaxNumber } from "@/lib/fax-number";
+import { fold, isFaxNumber } from "@/lib/fax-number";
 
 interface Props {
   fax: FaxLine | null;
@@ -26,8 +26,8 @@ interface Props {
 
 /** The contact `to` names, if it names one. */
 function named(contacts: FaxContact[], to: string): FaxContact | undefined {
-  const name = to.trim().toLowerCase();
-  return contacts.find((c) => c.name.toLowerCase() === name);
+  const name = fold(to.trim());
+  return contacts.find((c) => fold(c.name) === name);
 }
 
 /** Faxes the job in the form: pick someone from the fax book, or paste

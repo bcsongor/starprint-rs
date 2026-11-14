@@ -20,10 +20,16 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   is handed its image. Job behaviour belongs here, not in a front end,
   or the two drift. The job types derive `JsonSchema`, and the API
   hands that schema to agents, so a field's doc comment is written for
-  them too. `preview` draws what a job will look like: a
+  them too. `Printer::document`, `fax` and `preview` are the only way
+  in. The per-job methods and the `*Style` traits are `pub(crate)`,
+  since calling one directly skips the mode, colour and density a job
+  starts with. `preview` draws what a job will look like: a
   layout for the printer's own fonts, and a PNG from the bitmap that
-  prints, with thermal dots widened to the measured size. Both front
-  ends show previews from it and nothing else. `FaxHeader` is the bar a
+  prints, with thermal dots widened to the measured size. A picture in
+  double resolution or on the SP700 is the exception: those dots are
+  not square, so its preview is the same image dithered again at the
+  screen's pitch. Both front ends show previews from it and nothing
+  else. `FaxHeader` is the bar a
   received fax prints under, on the same builder as the job; it is not
   a job, so nothing previews it. QR symbols are encoded here by `qrcodegen` and
   printed as dots on both heads. The SP700 has no QR command, and one
@@ -36,7 +42,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   keeping a performance entry for every render. The app
   is a web client of `starprint-api`, which it runs in-process on the
   same data directory the command line uses, so the two cannot run at
-  once; the app says so and offers a retry. The Rust side is a
+  once; the app says so and offers a retry, and a way back to the
+  default address when the one it was given is what will not bind. The
+  Rust side is a
   launcher: `start_server` opens the directory on its first call and
   binds the server at the address it is given, replacing one already
   running, and `list_addresses` names the adapters. `window.rs` makes
@@ -47,9 +55,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   release is a `.deb` built on `ubuntu-22.04`, the oldest runner, so
   it starts on that glibc and anything newer. Everything else
   is `fetch` from `src/lib/api.ts`: profiles, jobs, previews,
-  schedules and the connection dot's status. Profiles, schedules and
-  statuses are read again every ten seconds, so a change another
-  program makes over the API shows up. The server answers the
+  schedules and the connection dot's status. Profiles, schedules, the
+  fax line and statuses are read again every ten seconds by
+  `use-server`, so a change another program makes over the API shows
+  up. A read that a later one has overtaken is dropped, so a poll
+  still out cannot undo a change made in the app. The server answers the
   webview's CORS preflight for that. A picture is a `File` from a file
   input, sent as the multipart form. The settings store keeps only the
   Linear key, the LAN switch and address, another server's URL and
@@ -61,7 +71,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   its whole config, `mcpServers` key and all, as an HTTP server or for
   Claude Desktop through `mcp-remote`, and on the LAN a QR code of the phone page's
   URL with the token in the fragment, drawn by `qrcode.react`. A LAN address that
-  will not bind falls back to loopback, and turning the switch on
+  will not bind falls back to loopback, and the switch goes off only
+  if loopback then starts, since otherwise the LAN was not the cause.
+  Turning the switch on
   before an address was chosen takes the first adapter's. The same button switches the app to another machine's
   server: `App` hands `Workspace` whichever `Server` the settings name
   and nothing else changes, since every request goes through the one
@@ -74,6 +86,11 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   still needs it to start, but it holds its schedules while the other
   server is in use: that one may keep copies of them, which would print
   twice, or be tried from off the printer's LAN. Switching restarts it.
+  Another server is in use once the switch is on and a URL is typed;
+  `usesRemote` in `src/lib/settings.ts` is the one place that says so.
+  The forms' state is `use-job-form`'s, a job of every kind so each
+  tab keeps what was typed, and `job-preview` picks a kind's pane.
+  What is said of a job by its kind lives in `src/lib/job.ts`.
   The schedules drawer says whose clock the cron expressions run on.
   Every preview is the server's `Preview` drawn as it comes: a layout
   in the printer's font, an `<img>` of the `data:` PNG. A preview that
@@ -97,7 +114,9 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   (`src/lib/fax-number.ts`), so a one-character change moves every
   chunk. It is for the eye only. The phone page shows numbers too and
   has no build step, so it carries a copy of the rule; change one and
-  the other must follow.
+  the other must follow. The same goes for `fold` beside it, which
+  matches a fax-book name the way the server does, ASCII letters
+  only.
 - `apps/starprint-api/`: an HTTP server over the same jobs, for other
   local programs, and the home of everything that has to run
   unattended. A library with a thin command line on top, so the desktop
@@ -143,7 +162,7 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   replaces the line's fax key every week, which is the line's forward
   secrecy. An old key goes at the first weekly replacement once 31 days
   have passed since its own. That is the relay's 30-day hold and a day,
-  so the two must stay in step. A fax's id is remembered for as long as
+  both read from `starprint_fax::HOLD_SECONDS`. A fax's id is remembered for as long as
   a key that opens it, so a fax handed over twice prints once. Neither
   a relay nor a sender is trusted. A relay's answer is read up to a
   limit, a request for the line's faxes names the relay it is for, and
@@ -185,16 +204,21 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   record is signed by Ed25519 and ML-DSA-65 (`line`), a fax is sealed to
   a random X-Wing key the line replaces now and then, under
   ChaCha20-Poly1305 (`fax`), and `relay` holds the
-  requests a line makes of a relay. A fax's contents are bytes here; the
+  requests a line makes of a relay, with the two figures a server and
+  a relay must agree on: how long a fax is held and how much one line
+  may have waiting. A fax's contents are bytes here; the
   API decides they are a job.
 - `apps/starprint-relay/`: the public server faxes travel through, a
   router in `lib.rs`, its SQLite file in `store.rs` and a command line
-  in `main.rs`. It keeps a fax only until its line confirms it
-  printed, or 30 days. It holds only so many lines, and so many bytes
+  in `main.rs`. The store is the only state: a line's record is read
+  and checked on each request, and every store call runs off the async
+  workers, since SQLite blocks. It keeps a fax only until its line
+  confirms it printed, or 30 days. It holds only so many lines, and so many bytes
   for one line and for all of them. Since every fax prints, `limit`
   holds each client address to so many faxes, new lines and polls an
   hour, the address coming from `X-Forwarded-For` only with
-  `--behind-proxy`. It logs who faxed whom, never what, and knows
+  `--behind-proxy`. An IPv6 client is counted by its /64, or it could
+  take a new address for every request. It logs who faxed whom, never what, and knows
   nothing of printers.
 - `manuals/README.md`: links to Star's specifications, which are Star's
   copyright and not kept here. Check bytes there, not from memory.
@@ -346,7 +370,11 @@ printing rule in a front end is a finding, the desktop app's frontend
 included: it builds no bytes and draws no preview of its own. So is a
 preview drawn from anything but the bitmap that prints, a QR symbol
 sent as `ESC GS y` instead of a bitmap, and a job that selects
-`PrintMode::DoubleResolution` without switching back at the end.
+`PrintMode::DoubleResolution` without switching back at the end. Two
+exceptions stand. A picture in double resolution or on the SP700
+previews a second dither of the same image, since its dots are not
+square. The thermal test page sends `ESC GS y`, since it is there to
+check the printer's own commands.
 
 ### The fax protocol
 

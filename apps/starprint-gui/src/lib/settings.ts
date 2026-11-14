@@ -29,6 +29,15 @@ export interface Settings {
   linear: Linear | null;
 }
 
+/**
+ * Whether the app prints through `remote`: the switch is on and there
+ * is an address to reach. Until one is typed the app's own server
+ * carries on, its schedules included.
+ */
+export function usesRemote({ useRemote, remote }: Settings): boolean {
+  return useRemote && remote.url !== "";
+}
+
 const DEFAULTS: Settings = {
   lan: false,
   listen: DEFAULT_LISTEN,

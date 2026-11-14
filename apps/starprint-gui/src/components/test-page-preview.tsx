@@ -3,6 +3,7 @@ import type { Section } from "@/lib/api";
 
 interface Props {
   sections: Section[];
+  error: string | null;
 }
 
 /**
@@ -10,9 +11,9 @@ interface Props {
  * numbered sections as they will print, each with what a fault looks
  * like on its own line.
  */
-export function TestPagePreview({ sections }: Props) {
+export function TestPagePreview({ sections, error }: Props) {
   return (
-    <PreviewPane>
+    <PreviewPane error={error}>
       <ol className="grid gap-1.5 text-sm leading-snug">
         {sections.map((section, index) => (
           <li

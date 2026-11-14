@@ -1,16 +1,14 @@
 import {
   BoldIcon,
   ContrastIcon,
-  CornerDownLeftIcon,
   DropletIcon,
   UnfoldHorizontalIcon,
   UnfoldVerticalIcon,
   type LucideIcon,
 } from "lucide-react";
+import { SubmitTextarea } from "@/components/submit-textarea";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Textarea } from "@/components/ui/textarea";
 import type { PrinterKind, Text } from "@/lib/api";
 
 type Style = "bold" | "wide" | "tall" | "accent";
@@ -39,35 +37,16 @@ export function TextForm({ text, kind, onChange, onSubmit }: Props) {
 
   return (
     <FieldGroup className="gap-4">
-      <Field>
-        <div className="flex h-5 items-center justify-between">
-          <FieldLabel htmlFor="text">Text</FieldLabel>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <KbdGroup>
-              <Kbd>Ctrl</Kbd>
-              <Kbd>
-                <CornerDownLeftIcon />
-              </Kbd>
-            </KbdGroup>
-            prints
-          </span>
-        </div>
-        <Textarea
-          id="text"
-          // Grows with the text up to what the shortest window fits.
-          className="max-h-48 min-h-28 border-border bg-background text-sm"
-          value={text.text}
-          placeholder="Anything you want on paper"
-          autoFocus
-          onChange={(e) => set("text", e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-      </Field>
+      <SubmitTextarea
+        id="text"
+        label="Text"
+        // Grows with the text up to what the shortest window fits.
+        className="max-h-48 min-h-28 border-border bg-background text-sm"
+        value={text.text}
+        placeholder="Anything you want on paper"
+        onChange={(value) => set("text", value)}
+        onSubmit={onSubmit}
+      />
 
       <Field>
         <FieldLabel render={<span />}>Style</FieldLabel>

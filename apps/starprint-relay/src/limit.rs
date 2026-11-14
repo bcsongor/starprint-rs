@@ -2,6 +2,10 @@
 //! refills at a steady rate, so a burst goes through and a stream is
 //! held to the rate. Faxes arrive as they come, so this is what keeps
 //! one sender from filling a line's mailbox or its paper.
+//!
+//! An IPv6 client is counted by its /64. A network that size is handed
+//! to one subscriber, who could otherwise take a new address for every
+//! request.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -22,6 +26,16 @@ pub struct Limit {
 struct Bucket {
     tokens: f64,
     at: Instant,
+}
+
+/// The address `client`'s bucket is kept under: its /64 for IPv6, and
+/// the IPv4 address itself for one written as IPv6, which would
+/// otherwise share a /64 with every other.
+fn key(client: IpAddr) -> IpAddr {
+    match client.to_canonical() {
+        IpAddr::V6(address) => IpAddr::V6((u128::from(address) & (!0 << 64)).into()),
+        v4 => v4,
+    }
 }
 
 impl Limit {
@@ -46,7 +60,7 @@ impl Limit {
         if buckets.len() >= REMEMBERED {
             buckets.retain(|_, bucket| self.filled(*bucket, now) < self.burst);
         }
-        let bucket = buckets.entry(client).or_insert(Bucket {
+        let bucket = buckets.entry(key(client)).or_insert(Bucket {
             tokens: self.burst,
             at: now,
         });
@@ -81,5 +95,19 @@ mod tests {
         // One token a second comes back.
         limit.take(anna, start + Duration::from_secs(1)).unwrap();
         assert!(limit.take(anna, start + Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn an_ipv6_network_shares_one_bucket() {
+        let limit = Limit::new(1, 1);
+        let take = |client: &str| limit.take(client.parse().unwrap(), Instant::now());
+        take("2001:db8:0:1::1").unwrap();
+        assert!(take("2001:db8:0:1:ffff::2").is_err(), "the same /64");
+        take("2001:db8:0:2::1").unwrap();
+
+        // An IPv4 address written as IPv6 is still that address alone.
+        take("::ffff:192.0.2.1").unwrap();
+        assert!(take("192.0.2.1").is_err());
+        take("::ffff:192.0.2.2").unwrap();
     }
 }

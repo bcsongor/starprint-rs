@@ -14,4 +14,5 @@ Support Center, which carries the current revision.
 
 The Line Mode spec covers `Builder<StarLine>`; the dot impact spec covers
 `Builder<Impact>`, the SP700 in STAR mode rather than its ESC/POS
-emulation. Source comments cite these documents by section.
+emulation. Source comments cite these documents by command name, such
+as `ESC GS a n`.

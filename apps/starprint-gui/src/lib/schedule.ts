@@ -1,6 +1,6 @@
 import { Cron } from "croner";
 import { format } from "date-fns";
-import type { Job, Rule, ScheduleSpec } from "@/lib/api";
+import type { Client, Schedule, ScheduleSpec } from "@/lib/api";
 
 export const PRESETS = {
   weekday: {
@@ -64,42 +64,12 @@ export function formatNext(at: Date): string {
   return format(at, "EEE d MMM, HH:mm");
 }
 
-export const NAMES: Record<Job["kind"], string> = {
-  "task-card": "task card",
-  text: "text",
-  note: "note slip",
-  qr: "QR code",
-  picture: "picture",
-  "test-page": "test page",
-};
-
-const RULES: Record<Rule, string> = {
-  blank: "Blank",
-  dots: "Dotted",
-  lines: "Lined",
-  squares: "Squared",
-};
-
-/** A job in a line, for a schedule's row and its dialog. */
-export function summary(job: Job): string {
-  switch (job.kind) {
-    case "task-card":
-    case "text":
-      return job.text.trim().split("\n")[0];
-    case "note":
-      return `${RULES[job.rule]} note, ${job.rows} rows`;
-    case "qr":
-      return job.data;
-    case "picture":
-      return "Picture";
-    case "test-page":
-      return "Test page";
-  }
-}
-
 /** A schedule for `job` on `printer`, every weekday at nine. A task
  * card is dated the day it prints. */
-export function newSchedule(job: Job, printer: string): ScheduleSpec {
+export function newSchedule(
+  job: ScheduleSpec["job"],
+  printer: string,
+): ScheduleSpec {
   return {
     printer,
     cron: toCron("weekday", "09:00"),
@@ -107,4 +77,34 @@ export function newSchedule(job: Job, printer: string): ScheduleSpec {
     due: job.kind === "task-card" ? "run-day" : undefined,
     job,
   };
+}
+
+/** A schedule the server would not move, and why. */
+export interface Refused {
+  schedule: Schedule;
+  reason: unknown;
+}
+
+/**
+ * Points the schedules `moves` picks at `printer`, one `PUT` each. They
+ * are read first, since the list on screen can be ten seconds old. The
+ * server checks each job against its new printer, so one that does not
+ * suit it stays put and comes back in `refused`.
+ */
+export async function repoint(
+  api: Client,
+  moves: (schedule: Schedule) => boolean,
+  printer: string,
+): Promise<{ asked: number; refused: Refused[] }> {
+  const moving = (await api.schedules()).filter(moves);
+  const refused = await Promise.all(
+    moving.map((schedule) => {
+      const { id, ...spec } = schedule;
+      return api.replaceSchedule(id, { ...spec, printer }).then(
+        (): Refused[] => [],
+        (reason: unknown): Refused[] => [{ schedule, reason }],
+      );
+    }),
+  );
+  return { asked: moving.length, refused: refused.flat() };
 }

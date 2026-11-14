@@ -6,10 +6,11 @@
  * checksum and the key check are what make a number safe.
  *
  * The phone page, `apps/starprint-api/src/phone.html`, has no build
- * step and carries a copy of this rule. Change both together.
+ * step and carries a copy of this rule, and of `fold` for the names in
+ * the fax book. Change both together.
  */
 
-/** Everything after `star1`, which every number starts with. */
+/** What every number starts with; the runs are cut from what follows. */
 const PREFIX = "star1";
 const BODY_LENGTH = 32;
 /** A run covers 2 to 7 characters. */
@@ -30,6 +31,12 @@ export interface Run {
  * checksum. */
 export function isFaxNumber(text: string): boolean {
   return /^\*?star1[02-9ac-hj-np-z]{32}$/i.test(text.replace(/\s/g, ""));
+}
+
+/** A fax-book name as the server compares it: ASCII letters in lower
+ * case and nothing else, so Ä and ä stay two people. */
+export function fold(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 /** A stream of well-mixed 32-bit numbers seeded from `text`: FNV-1a over

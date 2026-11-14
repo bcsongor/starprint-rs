@@ -22,19 +22,19 @@ pub struct FaxHeader {
 
 /// The header as it will print.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Layout {
+pub(crate) struct Layout {
     /// `FAX` and the time, padded to the full width.
-    pub bar: String,
-    pub number: String,
+    pub(crate) bar: String,
+    pub(crate) number: String,
     /// Beside the number when there is room, padded on the left to end
     /// at the right edge. On a line of its own under the number when
     /// not, starting where the number does.
-    pub name: String,
-    pub name_below: bool,
+    pub(crate) name: String,
+    pub(crate) name_below: bool,
 }
 
 impl FaxHeader {
-    pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
+    pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: TextStyle,
     {
@@ -79,7 +79,7 @@ impl FaxHeader {
 
     /// Prints the header on `builder`, leaving every style as it found
     /// it, so the fax that follows prints as it would on its own.
-    pub fn print<P: Protocol>(&self, builder: Builder<P>, paper: Paper) -> Builder<P>
+    pub(crate) fn print<P: Protocol>(&self, builder: Builder<P>, paper: Paper) -> Builder<P>
     where
         Builder<P>: TextStyle,
     {

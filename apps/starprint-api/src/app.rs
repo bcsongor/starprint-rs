@@ -10,7 +10,7 @@ use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse as _, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use starprint_workflows::Preview;
 
@@ -39,7 +39,7 @@ pub fn router(printers: Arc<Printers>) -> Router {
         .route("/v1/printers", get(list_printers))
         .route(
             "/v1/printers/{name}",
-            axum::routing::put(put_printer).delete(delete_printer),
+            put(put_printer).delete(delete_printer),
         )
         .route("/v1/printers/{name}/status", get(printer_status))
         .route(
@@ -54,21 +54,21 @@ pub fn router(printers: Arc<Printers>) -> Router {
         )
         .route("/v1/printers/{name}/raw", post(create_raw_job))
         .route("/v1/schedules", get(list_schedules).post(create_schedule))
+        .route(
+            "/v1/schedules/{id}",
+            put(replace_schedule).delete(delete_schedule),
+        )
         .route("/v1/fax", get(get_fax).put(put_fax))
         .route("/v1/fax/line", post(activate_line).put(replace_line))
         .route("/v1/fax/relays", post(add_relay))
-        .route("/v1/fax/relays/{name}", axum::routing::delete(remove_relay))
+        .route("/v1/fax/relays/{name}", delete(remove_relay))
         .route(
             "/v1/fax/contacts/{number}",
-            axum::routing::put(put_contact).delete(remove_contact),
+            put(put_contact).delete(remove_contact),
         )
         .route(
             "/v1/fax/send",
             post(send_fax).layer(DefaultBodyLimit::max(body::BINARY_LIMIT)),
-        )
-        .route(
-            "/v1/schedules/{id}",
-            axum::routing::put(replace_schedule).delete(delete_schedule),
         )
         .route_service("/mcp", mcp::service(Arc::clone(&printers)))
         .fallback(|| async { Problem::not_found("No such endpoint.") })

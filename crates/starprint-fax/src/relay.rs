@@ -5,8 +5,17 @@
 use serde::{Deserialize, Serialize};
 
 use crate::fax::Fax;
-use crate::line::{Identity, Line, base64_bytes, now, transcript};
+use crate::line::{Identity, Line, base64_bytes, transcript};
 use crate::number::Number;
+
+/// How long a relay holds a fax nobody polls for: thirty days, in
+/// seconds. A line keeps a fax key for as long and a day over, so both
+/// sides read the one figure.
+pub const HOLD_SECONDS: u64 = 30 * 24 * 60 * 60;
+/// The sealed bytes a relay holds for one line before it turns faxes
+/// away. A poll answers with all of them, so a server sizes what it
+/// reads of an answer from this.
+pub const HELD_BYTES: usize = 64 << 20;
 
 /// What `GET /v1/relay` answers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,10 +50,11 @@ pub enum Action {
 }
 
 impl Action {
+    /// The label its transcript is signed under.
     fn label(self) -> &'static str {
         match self {
-            Self::Poll => "poll",
-            Self::Confirm => "confirm",
+            Self::Poll => "starprint fax poll v1",
+            Self::Confirm => "starprint fax confirm v1",
         }
     }
 }
@@ -66,15 +76,21 @@ pub struct Collect {
 
 impl Collect {
     /// A poll of the relay called `relay` for the faxes held for
-    /// `number`.
-    pub fn poll(identity: &Identity, relay: &str, number: Number) -> Self {
-        Self::new(Action::Poll, identity, relay, number, Vec::new())
+    /// `number`, signed at `at`.
+    pub fn poll(identity: &Identity, relay: &str, number: Number, at: u64) -> Self {
+        Self::new(Action::Poll, identity, relay, number, Vec::new(), at)
     }
 
     /// Clears `ids` at the relay called `relay`, once their faxes have
-    /// printed.
-    pub fn confirm(identity: &Identity, relay: &str, number: Number, ids: Vec<String>) -> Self {
-        Self::new(Action::Confirm, identity, relay, number, ids)
+    /// printed. Signed at `at`.
+    pub fn confirm(
+        identity: &Identity,
+        relay: &str,
+        number: Number,
+        ids: Vec<String>,
+        at: u64,
+    ) -> Self {
+        Self::new(Action::Confirm, identity, relay, number, ids, at)
     }
 
     fn new(
@@ -83,8 +99,8 @@ impl Collect {
         relay: &str,
         number: Number,
         ids: Vec<String>,
+        at: u64,
     ) -> Self {
-        let at = now();
         Self {
             signature: identity.sign(&Self::signed(action, relay, number, at, &ids)),
             at,
@@ -95,7 +111,7 @@ impl Collect {
     fn signed(action: Action, relay: &str, number: Number, at: u64, ids: &[String]) -> Vec<u8> {
         let ids = ids.join(",");
         transcript(
-            &format!("starprint fax {} v1", action.label()),
+            action.label(),
             &[
                 relay.as_bytes(),
                 &number.to_string().into_bytes(),
@@ -143,13 +159,23 @@ mod tests {
         }
     }
 
+    /// The labels are protocol, so they are written out here as every
+    /// line made so far signs them.
+    #[test]
+    fn a_request_is_signed_under_its_own_label() {
+        let number = Number::of(b"identity");
+        let signed = |action| Collect::signed(action, "LON", number, 7, &[]);
+        assert!(signed(Action::Poll).starts_with(b"starprint fax poll v1\0"));
+        assert!(signed(Action::Confirm).starts_with(b"starprint fax confirm v1\0"));
+    }
+
     #[test]
     fn only_the_line_collects_and_only_as_it_asked() {
         let (anna, _, anna_record) = test_line();
         let (ben, _, _) = test_line();
         let line = anna_record.check().unwrap();
 
-        let poll = Collect::poll(&anna, "LON", line.number);
+        let poll = Collect::poll(&anna, "LON", line.number, 7);
         assert!(poll.signed_by(Action::Poll, "LON", &line));
         assert!(
             !poll.signed_by(Action::Confirm, "LON", &line),
@@ -159,9 +185,9 @@ mod tests {
             !poll.signed_by(Action::Poll, "NYC", &line),
             "not for that relay"
         );
-        assert!(!Collect::poll(&ben, "LON", line.number).signed_by(Action::Poll, "LON", &line));
+        assert!(!Collect::poll(&ben, "LON", line.number, 7).signed_by(Action::Poll, "LON", &line));
 
-        let mut confirm = Collect::confirm(&anna, "LON", line.number, vec!["a".to_owned()]);
+        let mut confirm = Collect::confirm(&anna, "LON", line.number, vec!["a".to_owned()], 7);
         assert!(confirm.signed_by(Action::Confirm, "LON", &line));
         confirm.ids.push("b".to_owned());
         assert!(

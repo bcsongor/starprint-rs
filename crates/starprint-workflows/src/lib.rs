@@ -27,7 +27,7 @@ pub use fax_header::FaxHeader;
 pub use note::Note;
 pub use picture::Picture;
 pub use preview::{Png, Preview};
-pub use printer::{Head, Paper, Printer, PrinterKind, Speed, TWO_COLOR_DENSITY, check_density};
+pub use printer::{Head, Paper, Printer, PrinterKind, Speed, check_density};
 pub use qr::Qr;
 pub use task_card::TaskCard;
 pub use test_page::TestPage;

@@ -31,6 +31,7 @@ use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 use starprint::graphics::Bitmap;
+use starprint::transport::Pacing;
 use starprint::{Alignment, Cut, PrintMode, RasterQuality};
 
 const ESC: u8 = 0x1B;
@@ -40,10 +41,9 @@ const ENQ: u8 = 0x05;
 /// Bit 5 of the ENQ status: set when the reception buffer is empty.
 const BUFFER_EMPTY: u8 = 0x20;
 
-/// The pacing `TcpTransport` uses, mirrored here because this example
-/// needs to read from the socket as well as write to it.
-const CHUNK: usize = 1400;
-const CHUNK_PAUSE: Duration = Duration::from_millis(20);
+/// The pacing `TcpTransport` uses. This example needs to read from the
+/// socket as well as write to it, so it paces the writes itself.
+const PACING: Pacing = Pacing::STAR_ETHERNET;
 
 /// How often the printer is asked whether it has caught up.
 const POLL: Duration = Duration::from_millis(20);
@@ -125,10 +125,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Writes at the rate the Star Ethernet cards tolerate.
 fn send_paced(printer: &mut TcpStream, bytes: &[u8]) -> std::io::Result<()> {
-    for chunk in bytes.chunks(CHUNK) {
+    for chunk in bytes.chunks(PACING.chunk_size) {
         printer.write_all(chunk)?;
         printer.flush()?;
-        std::thread::sleep(CHUNK_PAUSE);
+        std::thread::sleep(PACING.delay);
     }
     Ok(())
 }

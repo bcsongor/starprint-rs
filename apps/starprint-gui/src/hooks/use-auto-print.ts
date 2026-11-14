@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 import type { TaskCard } from "@/lib/api";
 import { assignedIssues, toCard } from "@/lib/linear";
+import { message } from "@/lib/message";
 import type { Linear } from "@/lib/settings";
 
 const POLL_MS = 10_000;
@@ -52,7 +53,7 @@ export function useAutoPrint(
         // Once per outage, not once per poll.
         if (!failing && !cancelled) {
           toast.error("Linear is not answering", {
-            description: String(error),
+            description: message(error),
           });
         }
         failing = true;
