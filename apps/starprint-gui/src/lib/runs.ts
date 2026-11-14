@@ -33,18 +33,27 @@ function push(runs: Run[], text: string, style: Partial<Run>) {
  * text node's marks are its style. */
 export function toRuns(doc: Node): Run[] {
   const runs: Run[] = [];
+  // A paragraph holds no marks, so a break before any text takes the
+  // style of the text after it, as a job in one style has its breaks.
+  let leading = "";
   doc.forEach((paragraph, _, index) => {
-    // A line break has no style of its own, so it joins whatever run is
-    // before it and text in one style stays one run.
-    if (index > 0) push(runs, "\n", runs.at(-1) ?? {});
-    paragraph.forEach((node) =>
+    // Otherwise a break joins whatever run is before it, and text in
+    // one style stays one run.
+    const last = runs.at(-1);
+    if (index > 0) {
+      if (last) last.text += "\n";
+      else leading += "\n";
+    }
+    paragraph.forEach((node) => {
       push(
         runs,
-        node.text ?? "",
+        leading + (node.text ?? ""),
         Object.fromEntries(node.marks.map((mark) => [mark.type.name, true])),
-      ),
-    );
+      );
+      leading = "";
+    });
   });
+  if (leading) runs.push({ text: leading });
   return runs;
 }
 
