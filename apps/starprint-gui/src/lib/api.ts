@@ -68,28 +68,37 @@ export interface TaskCardLayout {
   lines: string[];
 }
 
-export interface Text {
+/** A stretch of text in one style. A style that is off may be left out. */
+export interface Run {
   text: string;
-  bold: boolean;
-  wide: boolean;
-  tall: boolean;
+  bold?: boolean;
+  /** Double width. */
+  wide?: boolean;
+  /** Double height. */
+  tall?: boolean;
   /** Red on impact, inverse on thermal. */
-  accent: boolean;
+  accent?: boolean;
+}
+
+export type Style = Exclude<keyof Run, "text">;
+
+/** Text whose style can change partway, as runs in order. A line
+ * break is a `\n` in a run. */
+export interface Text {
+  runs: Run[];
 }
 
 export interface TextLayout {
-  /** At normal size, whatever the chosen width. */
+  /** At normal size, so a wide character takes two. */
   columns: number;
+  /** Each line's characters, whatever their styles. */
   lines: string[];
+  /** Each line as its runs. A blank line is one empty run, in the
+   * style its line feed prints in. */
+  runs: Run[][];
 }
 
-export const DEFAULT_TEXT: Text = {
-  text: "",
-  bold: false,
-  wide: false,
-  tall: false,
-  accent: false,
-};
+export const DEFAULT_TEXT: Text = { runs: [] };
 
 export type Rule = "blank" | "dots" | "lines" | "squares";
 
@@ -257,6 +266,59 @@ export interface Schedule extends ScheduleSpec {
   id: string;
 }
 
+/** A text job in the plain shape, a run's fields beside `kind`, which
+ * every server reads. */
+type PlainText = { kind: "text" } & Run;
+
+/** A job as the server writes it, and as the app sends it so that a
+ * server from before runs reads it too: a text job of one run in the
+ * plain shape, and one of several with their characters as `text`
+ * beside `runs`, which such a server prints without the styles. */
+type JobWire =
+  | Exclude<Job, { kind: "text" }>
+  | PlainText
+  | { kind: "text"; runs: Run[]; text: string };
+
+function writeJob(job: Job): JobWire {
+  if (job.kind !== "text") return job;
+  const { runs } = job;
+  if (runs.length <= 1) return { kind: "text", ...(runs[0] ?? { text: "" }) };
+  return { kind: "text", runs, text: runs.map((run) => run.text).join("") };
+}
+
+/** A schedule as the server writes it. */
+type ScheduleWire = Omit<Schedule, "job"> & {
+  job: Schedule["job"] | PlainText;
+};
+
+function writeSchedule({ job, ...spec }: ScheduleSpec) {
+  return { ...spec, job: writeJob(job) };
+}
+
+/** `schedule` with its job as the app keeps it, a text job as runs. */
+function readSchedule({ job, ...schedule }: ScheduleWire): Schedule {
+  if (job.kind !== "text") return { ...schedule, job };
+  if ("runs" in job)
+    return { ...schedule, job: { kind: "text", runs: job.runs } };
+  const { kind, ...run } = job;
+  return { ...schedule, job: { kind, runs: [run] } };
+}
+
+/** A text layout from a server before runs: its lines as strings. */
+type OlderTextPreview = { kind: "text"; columns: number; lines: string[] };
+
+/** `preview` with a text layout's lines as runs. A server from before
+ * runs prints a job of one run in that run's style and the runs of
+ * several without styles, so its lines are drawn that way. */
+function readPreview(preview: Preview | OlderTextPreview, job: Job): Preview {
+  if (preview.kind !== "text" || "runs" in preview) return preview;
+  const style = job.kind === "text" && job.runs.length === 1 ? job.runs[0] : {};
+  return {
+    ...preview,
+    runs: preview.lines.map((text) => [{ ...style, text }]),
+  };
+}
+
 export interface Server {
   url: string;
   token: string;
@@ -307,7 +369,7 @@ export interface Sent {
 
 /** A job, as JSON or, with an image beside it, as a form. */
 function jobBody(job: Job, image: File | null): RequestInit {
-  return requestBody({ job }, image);
+  return requestBody({ job: writeJob(job) }, image);
 }
 
 /** A request that carries a job, with its picture as a form part. */
@@ -372,12 +434,27 @@ export function createClient({ url, token }: Server) {
     print: (name: string, job: Job, image: File | null) =>
       json<PrintReport>("POST", `${printer(name)}/jobs`, jobBody(job, image)),
     preview: (name: string, job: Job, image: File | null) =>
-      json<Preview>("POST", `${printer(name)}/preview`, jobBody(job, image)),
-    schedules: () => json<Schedule[]>("GET", "/v1/schedules"),
+      json<Preview | OlderTextPreview>(
+        "POST",
+        `${printer(name)}/preview`,
+        jobBody(job, image),
+      ).then((preview) => readPreview(preview, job)),
+    schedules: () =>
+      json<ScheduleWire[]>("GET", "/v1/schedules").then((list) =>
+        list.map(readSchedule),
+      ),
     createSchedule: (spec: ScheduleSpec) =>
-      json<Schedule>("POST", "/v1/schedules", jsonBody(spec)),
+      json<ScheduleWire>(
+        "POST",
+        "/v1/schedules",
+        jsonBody(writeSchedule(spec)),
+      ).then(readSchedule),
     replaceSchedule: (id: string, spec: ScheduleSpec) =>
-      json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
+      json<ScheduleWire>(
+        "PUT",
+        `/v1/schedules/${id}`,
+        jsonBody(writeSchedule(spec)),
+      ).then(readSchedule),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
     fax: () => json<FaxLine>("GET", "/v1/fax"),
     putFax: (settings: { printer: string | null }) =>
@@ -396,7 +473,11 @@ export function createClient({ url, token }: Server) {
       json<FaxContact>("PUT", contact(number), jsonBody({ name })),
     deleteContact: (number: string) => send("DELETE", contact(number)),
     sendFax: (to: string, job: Job, image: File | null) =>
-      json<Sent>("POST", "/v1/fax/send", requestBody({ to, job }, image)),
+      json<Sent>(
+        "POST",
+        "/v1/fax/send",
+        requestBody({ to, job: writeJob(job) }, image),
+      ),
   };
 }
 

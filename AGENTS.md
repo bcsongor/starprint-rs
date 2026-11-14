@@ -90,6 +90,18 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   `usesRemote` in `src/lib/settings.ts` is the one place that says so.
   The forms' state is `use-job-form`'s, a job of every kind so each
   tab keeps what was typed, and `job-preview` picks a kind's pane.
+  The text form is a TipTap editor whose marks are the job's styles,
+  so a style applies to the selection, or with none to what is typed
+  next, and each paragraph is a printed line. `src/lib/runs.ts` turns
+  its document into the job's runs and back. The editor draws a style
+  as near as a browser can while editing: double height alone shows
+  twice the size both ways, so the preview stays the exact view. The
+  server writes a text job of one run in the old plain shape, and one
+  of several with their characters as `text` too, so a server from
+  before runs still prints a fax of it. `src/lib/api.ts` writes every
+  job it sends the same way, so the app can use such a server too, and
+  reads schedules and that server's string-only previews back into
+  runs.
   What is said of a job by its kind lives in `src/lib/job.ts`.
   The schedules drawer says whose clock the cron expressions run on.
   Every preview is the server's `Preview` drawn as it comes: a layout

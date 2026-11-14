@@ -195,7 +195,10 @@ printer, so it answers while the printer is off.
 
 Response: the job as it will look on that printer, tagged by `kind`
 like the job. A text job is its layout: `columns` and the `lines` the
-printer's own font will set. A job printed as dots carries `image`, a
+printer's own font will set as strings, and the same lines as `runs`,
+each line its runs as the job spells them. A blank line is one empty
+run in the style its line feed prints in, so a blank line in tall text
+is a tall one. A job printed as dots carries `image`, a
 `data:` URL of a PNG drawn from the bitmap that prints, dot for dot,
 with thermal dots widened as the head widens them. A picture in double
 resolution or on an impact printer is the exception. Those dots are not
@@ -230,10 +233,33 @@ but the ones marked required has a default.
 
 **`text`**
 
+Either one run in one style, its fields beside `kind`, or `runs` for
+text whose style changes partway.
+
 | Field | Type | Notes |
 | --- | --- | --- |
-| `text` | string | Required |
-| `bold`, `wide`, `tall`, `accent` | boolean | `false`. `accent` is red on impact, inverse on thermal |
+| `runs` | array of runs | The text in order, each run in its own style |
+
+A run:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `text` | string | Required. A line break is a `\n` |
+| `bold`, `wide`, `tall`, `accent` | boolean | `false`. `accent` is red on impact, inverse on thermal. A wide character takes two columns |
+
+```json
+{ "kind": "text", "text": "Lunch at one?", "bold": true }
+```
+
+```json
+{ "kind": "text", "runs": [{ "text": "Lunch at " }, { "text": "one", "wide": true, "tall": true }, { "text": "?" }] }
+```
+
+A text job of one run is written back in the first shape, so a schedule
+or a fax still reads on a server from before runs. One of several runs
+is written with `text` beside `runs` as well, holding their characters,
+so such a server prints it without the styles. `text` is ignored when
+`runs` is given. A style that is off is left out.
 
 **`note`**
 
