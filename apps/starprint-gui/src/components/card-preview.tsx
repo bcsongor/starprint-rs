@@ -4,18 +4,46 @@ import type { Profile, TaskCardLayout } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  /** Null until the first layout lands. */
-  layout: TaskCardLayout | null;
+  /** One for each card, in print order; null until the first lands. */
+  layouts: TaskCardLayout[] | null;
   error: string | null;
   printer: Profile;
 }
 
+/** Every card the form prints, one sheet each, in a pane that scrolls. */
+export function CardPreview({ layouts, error, printer }: Props) {
+  const first = layouts?.at(0);
+  const count = layouts?.length ?? 0;
+  const hint =
+    first &&
+    (count > 1
+      ? `${count} cards · ${first.columns} columns`
+      : `${first.columns} columns`);
+
+  return (
+    <PreviewPane
+      hint={hint}
+      printer={printer}
+      error={error}
+      sheets={(layouts ?? [null]).map((layout, index) => (
+        <Card key={index} layout={layout} printer={printer} />
+      ))}
+    />
+  );
+}
+
 /**
- * Draws the card as the printer will lay it out: the priority banner,
- * the reference and the due date on one line, then the task at double
- * width and height.
+ * Draws a card as the printer will lay it out: the priority banner, the
+ * reference and the due date on one line, then the task at double width
+ * and height.
  */
-export function CardPreview({ layout, error, printer }: Props) {
+function Card({
+  layout,
+  printer,
+}: {
+  layout: TaskCardLayout | null;
+  printer: Profile;
+}) {
   const hasHeader = Boolean(
     layout?.priority || layout?.reference || layout?.due,
   );
@@ -23,39 +51,33 @@ export function CardPreview({ layout, error, printer }: Props) {
   const empty = lines.every((line) => line === "");
 
   return (
-    <PreviewPane
-      printer={printer}
-      hint={layout && `${layout.columns} columns`}
-      error={error}
-    >
-      <PrintedText columns={layout?.columns ?? 48}>
-        {hasHeader && (
-          <div className="font-bold">
-            {layout?.priority && (
-              <span
-                className={cn(
-                  printer.kind === "impact"
-                    ? "text-red-600"
-                    : "bg-black text-white",
-                )}
-              >
-                {layout.priority}
-              </span>
-            )}
-            {layout?.reference && (
-              <span className="font-normal">{layout.reference}</span>
-            )}
-            {layout?.due && <span className="font-normal">{layout.due}</span>}
-            {"\n\n"}
-          </div>
-        )}
-        <div
-          className={cn("font-bold", empty && "text-black/30")}
-          style={{ fontSize: "2em", lineHeight: 1.3 }}
-        >
-          {empty ? "Your task" : lines.join("\n")}
+    <PrintedText columns={layout?.columns ?? 48}>
+      {hasHeader && (
+        <div className="font-bold">
+          {layout?.priority && (
+            <span
+              className={cn(
+                printer.kind === "impact"
+                  ? "text-red-600"
+                  : "bg-black text-white",
+              )}
+            >
+              {layout.priority}
+            </span>
+          )}
+          {layout?.reference && (
+            <span className="font-normal">{layout.reference}</span>
+          )}
+          {layout?.due && <span className="font-normal">{layout.due}</span>}
+          {"\n\n"}
         </div>
-      </PrintedText>
-    </PreviewPane>
+      )}
+      <div
+        className={cn("font-bold", empty && "text-black/30")}
+        style={{ fontSize: "2em", lineHeight: 1.3 }}
+      >
+        {empty ? "Your task" : lines.join("\n")}
+      </div>
+    </PrintedText>
   );
 }

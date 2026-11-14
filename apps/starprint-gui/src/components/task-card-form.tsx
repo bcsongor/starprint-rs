@@ -48,9 +48,10 @@ export function TaskCardForm({ card, onChange, onSubmit }: Props) {
         id="task"
         label="Task"
         // 5px padding makes an empty box the date button's 32px height.
-        className="min-h-8 border-border bg-background py-[0.3125rem] text-sm"
+        // Grows with a pasted list up to what the shortest window fits.
+        className="max-h-48 min-h-8 border-border bg-background py-[0.3125rem] text-sm"
         value={card.text}
-        placeholder="What needs doing?"
+        placeholder="What needs doing? A line each for several cards"
         rows={3}
         onChange={(text) => set("text", text)}
         onSubmit={onSubmit}
