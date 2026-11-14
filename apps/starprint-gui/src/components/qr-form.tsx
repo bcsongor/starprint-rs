@@ -2,15 +2,13 @@ import {
   AlignCenterIcon,
   AlignLeftIcon,
   AlignRightIcon,
-  CornerDownLeftIcon,
   type LucideIcon,
 } from "lucide-react";
 import { SliderField } from "@/components/slider-field";
+import { SubmitTextarea } from "@/components/submit-textarea";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_QR_MM,
   MAX_QR_RADIUS,
@@ -42,35 +40,16 @@ export function QrForm({ code, onChange, onSubmit }: Props) {
 
   return (
     <FieldGroup className="gap-4">
-      <Field>
-        <div className="flex h-5 items-center justify-between">
-          <FieldLabel htmlFor="data">Data</FieldLabel>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <KbdGroup>
-              <Kbd>Ctrl</Kbd>
-              <Kbd>
-                <CornerDownLeftIcon />
-              </Kbd>
-            </KbdGroup>
-            prints
-          </span>
-        </div>
-        <Textarea
-          id="data"
-          // A payload is usually one line; the box grows if it is not.
-          className="max-h-28 min-h-16 border-border bg-background text-sm"
-          value={code.data}
-          placeholder="A link, a phone number, WIFI:T:WPA;S:…;P:…;;"
-          autoFocus
-          onChange={(e) => set("data", e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-      </Field>
+      <SubmitTextarea
+        id="data"
+        label="Data"
+        // A payload is usually one line; the box grows if it is not.
+        className="max-h-28 min-h-16 border-border bg-background text-sm"
+        value={code.data}
+        placeholder="A link, a phone number, WIFI:T:WPA;S:…;P:…;;"
+        onChange={(data) => set("data", data)}
+        onSubmit={onSubmit}
+      />
 
       <Field>
         <FieldLabel htmlFor="caption">Caption</FieldLabel>

@@ -1,11 +1,12 @@
 import { PrintedText } from "@/components/printed-text";
-import { PreviewNote, PreviewPane } from "@/components/preview-pane";
-import type { Note, NoteLayout, Profile } from "@/lib/api";
+import { PreviewPane } from "@/components/preview-pane";
+import type { Note, Profile } from "@/lib/api";
+import type { Previews } from "@/lib/job";
 import { PX_PER_MM, roll } from "@/lib/paper";
 
 interface Props {
   note: Note;
-  preview: (NoteLayout & { image: string }) | null;
+  preview: Previews["note"] | null;
   error: string | null;
   printer: Profile;
 }
@@ -16,10 +17,9 @@ export function NotePreview({ note, preview, error, printer }: Props) {
     <PreviewPane
       printer={printer}
       hint={`${note.rows} rows, ${note.rows * note.pitch} mm`}
+      error={error}
     >
-      {error ? (
-        <PreviewNote error>{error}</PreviewNote>
-      ) : preview ? (
+      {preview && (
         <>
           <PrintedText columns={preview.columns}>
             <div>{preview.date}</div>
@@ -33,7 +33,7 @@ export function NotePreview({ note, preview, error, printer }: Props) {
             height={note.rows * note.pitch * PX_PER_MM}
           />
         </>
-      ) : null}
+      )}
     </PreviewPane>
   );
 }

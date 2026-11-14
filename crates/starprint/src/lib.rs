@@ -16,7 +16,7 @@
 //!
 //! The [`graphics`] module has 1-bit rasters and dithering; the `image`
 //! feature adds `graphics::ImagePipeline`, which turns a photo into a
-//! [`BitImage`](graphics::BitImage) for [`Builder::bit_image`] (impact)
+//! [`BitImage`] for [`Builder::bit_image`] (impact)
 //! or [`Builder::raster`] (thermal).
 //!
 //! # Quick start
@@ -63,6 +63,9 @@ pub mod transport;
 pub use code::{Barcode, QrCode, QrErrorCorrection, QrModel, Symbology};
 pub use document::{Builder, Document, Impact, Protocol, StarLine};
 pub use error::{Error, Result};
+// The builder takes these two, so they are at the root with the rest of
+// what it accepts.
+pub use graphics::{BitImage, Bitmap};
 pub use types::{
     Alignment, CodePage, Color, Cut, Drawer, ImpactFont, InternationalCharset, LineSpacing,
     PrintMode, PrintSpeed, RasterQuality, ThermalFont,

@@ -90,7 +90,7 @@ impl Identity {
         self.seed
     }
 
-    pub fn key(&self) -> IdentityKey {
+    pub(crate) fn key(&self) -> IdentityKey {
         IdentityKey {
             ed25519: self.ed25519.verifying_key(),
             ml_dsa: self.ml_dsa.expanded_key().verifying_key(),
@@ -98,7 +98,7 @@ impl Identity {
     }
 
     /// Both signatures over `message`, Ed25519's first.
-    pub fn sign(&self, message: &[u8]) -> Vec<u8> {
+    pub(crate) fn sign(&self, message: &[u8]) -> Vec<u8> {
         let mut signature = self.ed25519.sign(message).to_bytes().to_vec();
         let ml_dsa = self
             .ml_dsa
@@ -133,7 +133,7 @@ impl Identity {
 /// The public half of an [`Identity`]: what a number is the address of
 /// and what checks a line's signatures.
 #[derive(Clone)]
-pub struct IdentityKey {
+pub(crate) struct IdentityKey {
     ed25519: ed25519_dalek::VerifyingKey,
     ml_dsa: ml_dsa::VerifyingKey<MlDsa65>,
 }
@@ -239,12 +239,13 @@ impl LineRecord {
     }
 }
 
-/// A [`LineRecord`] that has been checked, with its keys decoded.
+/// A [`LineRecord`] that has been checked, with its keys decoded. Only
+/// [`LineRecord::check`] makes one, so the keys are the number's.
 #[derive(Clone)]
 pub struct Line {
     pub number: Number,
-    pub identity: IdentityKey,
-    pub fax_key: x_wing::EncapsulationKey,
+    pub(crate) identity: IdentityKey,
+    pub(crate) fax_key: x_wing::EncapsulationKey,
 }
 
 impl std::fmt::Debug for Line {
@@ -264,7 +265,7 @@ pub fn now() -> u64 {
 
 /// The bytes a signature covers: a label naming what is signed, then
 /// each part with its length, so no two different messages read alike.
-pub fn transcript(label: &str, parts: &[&[u8]]) -> Vec<u8> {
+pub(crate) fn transcript(label: &str, parts: &[&[u8]]) -> Vec<u8> {
     let mut bytes = label.as_bytes().to_vec();
     bytes.push(0);
     for part in parts {
@@ -275,19 +276,32 @@ pub fn transcript(label: &str, parts: &[&[u8]]) -> Vec<u8> {
 }
 
 /// Bytes as a base64 string, for keys, signatures and sealed faxes: a
-/// serde `with` module.
+/// serde `with` module. It reads into a `Vec<u8>`, or into an array such
+/// as a 32-byte seed, which refuses any other length.
 pub mod base64_bytes {
     use super::*;
     use serde::{Deserializer, Serializer};
 
-    pub fn serialize<S: Serializer>(bytes: &[u8], out: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<T, S>(bytes: &T, out: S) -> Result<S::Ok, S::Error>
+    where
+        T: AsRef<[u8]> + ?Sized,
+        S: Serializer,
+    {
         out.serialize_str(&STANDARD.encode(bytes))
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(input: D) -> Result<Vec<u8>, D::Error> {
-        STANDARD
+    pub fn deserialize<'de, D, T>(input: D) -> Result<T, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: TryFrom<Vec<u8>>,
+    {
+        let bytes = STANDARD
             .decode(String::deserialize(input)?)
-            .map_err(serde::de::Error::custom)
+            .map_err(serde::de::Error::custom)?;
+        let length = bytes.len();
+        bytes
+            .try_into()
+            .map_err(|_| serde::de::Error::custom(format!("{length} bytes is the wrong length")))
     }
 
     /// The same for an `Option`, absent when `None`.
@@ -348,6 +362,25 @@ mod tests {
             assert!(!identity.key().verify(b"hello", &broken), "{byte}");
         }
         assert!(!Identity::generate().key().verify(b"hello", &signature));
+    }
+
+    /// An array is written as a `Vec` of the same bytes is, so a seed
+    /// kept as either reads as the other.
+    #[test]
+    fn bytes_are_the_same_base64_whatever_holds_them() {
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Seed(#[serde(with = "base64_bytes")] [u8; 32]);
+        #[derive(Serialize, Deserialize)]
+        struct Bytes(#[serde(with = "base64_bytes")] Vec<u8>);
+
+        let json = serde_json::to_string(&Seed([7; 32])).unwrap();
+        assert_eq!(json, r#""BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=""#);
+        assert_eq!(serde_json::to_string(&Bytes(vec![7; 32])).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Seed>(&json).unwrap(), Seed([7; 32]));
+
+        let short = serde_json::to_string(&Bytes(vec![7; 31])).unwrap();
+        let error = serde_json::from_str::<Seed>(&short).unwrap_err();
+        assert!(error.to_string().contains("31 bytes"), "{error}");
     }
 
     #[test]

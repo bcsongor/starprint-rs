@@ -1,7 +1,14 @@
 //! A job as it will look on paper, before it prints: the lines the
 //! printer's own fonts will set, and a PNG of whatever is drawn as
-//! dots. The PNG is drawn from the bitmap that prints, so what is shown
-//! is what comes off the printer.
+//! dots.
+//!
+//! A note's ruling and a QR symbol are drawn from the bitmap that
+//! prints, so what is shown is what comes off the printer. So is a
+//! picture on a thermal head at normal resolution. In double resolution
+//! and on the SP700 the dots that print are not square, so a picture's
+//! preview is the same image through the same pipeline, dithered again
+//! at the screen's square pitch. Its tone is the print's and its dots
+//! are not.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -16,7 +23,7 @@ use crate::note::NoteStyle;
 use crate::qr::QrStyle;
 use crate::task_card::CardStyle;
 use crate::test_page::{self, Section};
-use crate::{Job, Printer, PrinterKind, note, qr, task_card, text};
+use crate::{Job, Printer, PrinterKind, note, picture, qr, task_card, text};
 
 /// Dot diameters as percentages of pitch, measured on a TSP700II at
 /// slow speed and density +3. Double resolution halves the row pitch.
@@ -56,22 +63,22 @@ pub struct Png(Vec<u8>);
 impl Png {
     /// `bitmap` as it prints, with thermal dots widened to the size the
     /// head blooms them to.
-    pub fn from_bitmap(bitmap: &Bitmap, kind: PrinterKind) -> Result<Self, String> {
+    pub(crate) fn from_bitmap(bitmap: &Bitmap, kind: PrinterKind) -> Result<Self, String> {
         Self::from_grayscale(&grayscale(bitmap), kind, false)
     }
 
     /// A picture's preview, widened for the resolution it prints at.
-    pub fn from_grayscale(
+    pub(crate) fn from_grayscale(
         image: &Grayscale,
         kind: PrinterKind,
         double: bool,
     ) -> Result<Self, String> {
-        let shown = match (kind, double) {
-            (PrinterKind::Thermal, false) => dot_gain(image, THERMAL_DOT_SIZE),
-            (PrinterKind::Thermal, true) => dot_gain(image, THERMAL_DOUBLE_DOT_SIZE),
-            (PrinterKind::Impact, _) => image.clone(),
-        };
-        png(&shown).map(Self)
+        match (kind, double) {
+            (PrinterKind::Thermal, false) => png(&dot_gain(image, THERMAL_DOT_SIZE)),
+            (PrinterKind::Thermal, true) => png(&dot_gain(image, THERMAL_DOUBLE_DOT_SIZE)),
+            (PrinterKind::Impact, _) => png(image),
+        }
+        .map(Self)
     }
 
     /// The bytes as base64, for a client that takes an image that way
@@ -128,7 +135,7 @@ where
             },
         },
         Job::Picture(picture) => {
-            let image = image.ok_or("No picture supplied.")?;
+            let image = image.ok_or(picture::NO_PICTURE)?;
             let picture = printer.picture(picture);
             Preview::Picture {
                 image: Png::from_grayscale(

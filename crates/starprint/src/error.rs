@@ -12,7 +12,8 @@ pub enum Error {
     Io(io::Error),
     /// A payload or image breaks a constraint described in `reason`.
     InvalidData { reason: String },
-    /// A payload or image exceeds what the command or head can take.
+    /// A payload or image exceeds what the command or head can take:
+    /// bytes for a payload, dots across for an image.
     DataTooLong { max: usize, actual: usize },
 }
 
@@ -22,10 +23,7 @@ impl fmt::Display for Error {
             Self::Io(err) => write!(f, "transport I/O error: {err}"),
             Self::InvalidData { reason } => write!(f, "invalid data: {reason}"),
             Self::DataTooLong { max, actual } => {
-                write!(
-                    f,
-                    "data too long: {actual} bytes exceeds the maximum of {max}"
-                )
+                write!(f, "data too long: {actual} exceeds the maximum of {max}")
             }
         }
     }

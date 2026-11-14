@@ -17,7 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PrinterKind, Profile } from "@/lib/api";
+import {
+  THERMAL_DEFAULTS,
+  type PrinterKind,
+  type Profile,
+} from "@/lib/api";
 
 const KINDS: { value: PrinterKind; label: string; models: string }[] = [
   {
@@ -34,7 +38,8 @@ interface Props {
   /** The other profiles' names, which this one cannot take. */
   taken: string[];
   onClose: () => void;
-  onSave: (profile: Profile) => void;
+  /** Resolves once the profile is saved, and rejects if it was not. */
+  onSave: (profile: Profile) => Promise<void>;
 }
 
 /** Edits a copy of the profile; nothing is applied until Save. */
@@ -68,9 +73,10 @@ function ProfileForm({
   profile: Profile;
   taken: string[];
   onCancel: () => void;
-  onSave: (profile: Profile) => void;
+  onSave: (profile: Profile) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(profile);
+  const [saving, setSaving] = useState(false);
   // Kept as typed so the field can be cleared while editing.
   const [port, setPort] = useState(String(profile.port));
   const set = (changes: Partial<Pick<Profile, "name" | "host" | "notes">>) =>
@@ -81,7 +87,7 @@ function ProfileForm({
     const shared = { name, host, port, cut, notes };
     setDraft(
       kind === "thermal"
-        ? { ...shared, kind, paper: 80, density: 3, speed: "slow" }
+        ? { ...shared, ...THERMAL_DEFAULTS }
         : { ...shared, kind },
     );
   };
@@ -94,6 +100,23 @@ function ProfileForm({
     /^\d+$/.test(port) && portNumber >= 1 && portNumber <= 65535;
   const valid =
     name !== "" && !collides && draft.host.trim() !== "" && portValid;
+  const save = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      await onSave({
+        ...draft,
+        name,
+        host: draft.host.trim(),
+        port: portNumber,
+        notes: draft.notes.trim(),
+      });
+    } catch {
+      // Reported by the caller; the draft stays to correct.
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <DialogContent className="gap-3 sm:max-w-md">
@@ -186,18 +209,7 @@ function ProfileForm({
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          disabled={!valid}
-          onClick={() =>
-            onSave({
-              ...draft,
-              name,
-              host: draft.host.trim(),
-              port: portNumber,
-              notes: draft.notes.trim(),
-            })
-          }
-        >
+        <Button disabled={!valid || saving} onClick={save}>
           Save
         </Button>
       </DialogFooter>

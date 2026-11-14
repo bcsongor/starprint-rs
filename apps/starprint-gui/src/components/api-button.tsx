@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { CommitInput } from "@/components/commit-input";
 import { ConnectionDot, DOTTED } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
+import { Toggle } from "@/components/toggle";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,17 +14,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { statusLabel, type Status } from "@/hooks/use-server";
 import type { Server } from "@/lib/api";
+import { copy } from "@/lib/clipboard";
 import { LOOPBACK, listAddresses, type Address } from "@/lib/embedded";
-import type { Settings } from "@/lib/settings";
+import { desktopConfig, httpConfig } from "@/lib/mcp-config";
+import { usesRemote, type Settings } from "@/lib/settings";
 
 interface Props {
   /** The server the app prints through, and whether it answers. */
@@ -47,9 +48,10 @@ export function ApiButton({
   reachable,
   version,
   embedded,
-  settings: { lan, listen, remote, useRemote },
+  settings,
   onSettings,
 }: Props) {
+  const { lan, listen, remote, useRemote } = settings;
   const [open, setOpen] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [app, setApp] = useState<string | null>(null);
@@ -58,11 +60,12 @@ export function ApiButton({
     getVersion().then(setApp).catch(console.error);
   }, []);
 
-  // Read each time the details open, so a network joined since shows.
-  useEffect(() => {
-    if (!open) return;
-    listAddresses().then(setAddresses).catch(console.error);
-  }, [open]);
+  /** Reads the addresses each time the details open, so a network
+   * joined since shows. */
+  const toggle = (open: boolean) => {
+    setOpen(open);
+    if (open) listAddresses().then(setAddresses).catch(console.error);
+  };
 
   // The stored address may belong to a network this machine has left;
   // keep it listed so the select can still show it. Loopback is the
@@ -102,7 +105,7 @@ export function ApiButton({
   // a dot there would say nothing. It shows once there is something to
   // report: this server is open to the LAN, or the app prints through
   // another machine's, which may not answer.
-  const dotted = useRemote || onLan;
+  const dotted = usesRemote(settings) || onLan;
 
   const older =
     app !== null &&
@@ -110,7 +113,7 @@ export function ApiButton({
     version.localeCompare(app, undefined, { numeric: true }) < 0;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={toggle}>
       <PopoverTrigger
         render={
           <Button
@@ -134,7 +137,12 @@ export function ApiButton({
         className="w-auto min-w-md gap-0 overflow-hidden p-0 [&_input]:bg-background [&_[data-slot=select-trigger]]:bg-background [&_[data-slot=select-value]]:font-mono"
       >
         <div className="flex flex-col gap-2 border-b bg-muted p-2.5">
-          <Toggle id="api-lan" checked={lan} onCheckedChange={setLan}>
+          <Toggle
+            id="api-lan"
+            className="h-8 w-auto"
+            checked={lan}
+            onCheckedChange={setLan}
+          >
             Also listen on the LAN
           </Toggle>
           <Row label="Listen">
@@ -213,6 +221,7 @@ export function ApiButton({
         <div className="flex flex-col gap-2 border-t bg-muted p-2.5">
           <Toggle
             id="api-remote"
+            className="h-8 w-auto"
             checked={useRemote}
             onCheckedChange={(useRemote) => onSettings({ useRemote })}
           >
@@ -250,30 +259,6 @@ export function ApiButton({
   );
 }
 
-function Toggle({
-  id,
-  checked,
-  onCheckedChange,
-  children,
-}: {
-  id: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Field orientation="horizontal" className="h-8 w-auto">
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
-      <FieldLabel
-        htmlFor={id}
-        className="text-sm tracking-normal normal-case text-foreground"
-      >
-        {children}
-      </FieldLabel>
-    </Field>
-  );
-}
-
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex h-8 items-center gap-2">
@@ -283,57 +268,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <div className="flex min-w-0 flex-1 items-center gap-1">{children}</div>
     </div>
   );
-}
-
-/**
- * A client's whole config with this server in it, under the
- * `mcpServers` key most clients use, so it pastes into an empty file
- * as it is.
- */
-function mcpConfig(starprint: object): string {
-  return JSON.stringify({ mcpServers: { starprint } }, null, 2);
-}
-
-/** For a client that speaks HTTP itself, with the token to send. */
-function httpConfig({ url, token }: Server): string {
-  return mcpConfig({
-    type: "http",
-    url: `${url}/mcp`,
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-/**
- * For Claude Desktop, whose config only runs local commands, so
- * `mcp-remote` bridges it to `/mcp`. Desktop on Windows splits an
- * argument at a space, so the header has none and `mcp-remote` fills
- * the token in from the environment. `--allow-http` lets it reach an
- * address that is not loopback.
- */
-function desktopConfig({ url, token }: Server): string {
-  return mcpConfig({
-    command: "npx",
-    args: [
-      "-y",
-      "mcp-remote",
-      `${url}/mcp`,
-      "--allow-http",
-      "--transport",
-      "http-only",
-      "--header",
-      "Authorization:${AUTH_HEADER}",
-    ],
-    env: { AUTH_HEADER: `Bearer ${token}` },
-  });
-}
-
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success("Copied");
-  } catch (error) {
-    toast.error("Could not copy", { description: String(error) });
-  }
 }
 
 function Value({ children }: { children: string }) {

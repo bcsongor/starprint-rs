@@ -96,7 +96,7 @@ pub struct Qr {
 }
 
 /// Where the code sits and what it measures, for the preview. The dots
-/// themselves come from [`Qr::bitmap`].
+/// themselves are the image beside it in the [`Preview`](crate::Preview).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
@@ -143,27 +143,21 @@ const MAX_SIZE_MM: u8 = 80;
 const MAX_RADIUS: u8 = 100;
 
 /// What differs between the heads when drawing a symbol.
-pub trait QrStyle: TextStyle + Sized {
+pub(crate) trait QrStyle: TextStyle {
     /// The SP700's dots are only near enough to square at double
     /// density, so that is what a symbol is drawn for. Thermal heads
     /// have no horizontal double density and ignore this.
     const DENSITY: Density;
 
-    /// The head and roll as geometry.
-    fn profile(paper: Paper) -> &'static DeviceProfile;
-
-    /// A raster on one head and a bit image on the other.
-    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String>;
+    /// A raster on one head and a bit image on the other. `symbol` is
+    /// one `scale` sized, so it fits the head.
+    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Self;
 }
 
 impl QrStyle for Builder<StarLine> {
     const DENSITY: Density = Density::Single;
 
-    fn profile(paper: Paper) -> &'static DeviceProfile {
-        paper.profile()
-    }
-
-    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Result<Self, String> {
+    fn draw(self, symbol: Bitmap, paper: Paper, align: Align) -> Self {
         // Raster rows start at their own left margin, ignoring ESC GS a
         // (Star Line Mode 3-73, 3-81). Blank dots position the symbol.
         let spare = Self::profile(paper)
@@ -177,20 +171,16 @@ impl QrStyle for Builder<StarLine> {
         let placed = Bitmap::from_fn(symbol.width() + left, symbol.height(), |x, y| {
             x >= left && symbol.get(x - left, y)
         });
-        Ok(self.raster(placed, RasterQuality::High))
+        self.raster(placed, RasterQuality::High)
     }
 }
 
 impl QrStyle for Builder<Impact> {
     const DENSITY: Density = Density::Double;
 
-    fn profile(_paper: Paper) -> &'static DeviceProfile {
-        &DeviceProfile::SP700
-    }
-
-    fn draw(self, symbol: Bitmap, _paper: Paper, _align: Align) -> Result<Self, String> {
-        let image = BitImage::new(symbol, Density::Double).map_err(|e| e.to_string())?;
-        Ok(self.bit_image(&image))
+    fn draw(self, symbol: Bitmap, _paper: Paper, _align: Align) -> Self {
+        let image = BitImage::new(symbol, Self::DENSITY).expect("scaled to fit the SP700 head");
+        self.bit_image(&image)
     }
 }
 
@@ -369,12 +359,12 @@ impl Qr {
 
     /// The symbol as it will print, for a preview drawn from the dots
     /// themselves rather than from a rule of its own.
-    pub fn bitmap<P: Protocol>(&self, paper: Paper) -> Result<Bitmap, String>
+    pub(crate) fn bitmap<P: Protocol>(&self, paper: Paper) -> Result<Bitmap, String>
     where
         Builder<P>: QrStyle,
     {
         self.symbol(
-            <Builder<P> as QrStyle>::profile(paper),
+            <Builder<P> as TextStyle>::profile(paper),
             <Builder<P> as QrStyle>::DENSITY,
         )
     }
@@ -394,11 +384,11 @@ impl Qr {
 
     /// The caption and what the block measures on paper, for the
     /// preview to place the symbol by.
-    pub fn layout<P: Protocol>(&self, paper: Paper) -> Result<Layout, String>
+    pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Result<Layout, String>
     where
         Builder<P>: QrStyle,
     {
-        let profile = <Builder<P> as QrStyle>::profile(paper);
+        let profile = <Builder<P> as TextStyle>::profile(paper);
         let density = <Builder<P> as QrStyle>::DENSITY;
         let (symbol, across, down) = self.encode(profile, density)?;
         let modules = symbol.size() as u32 + 2 * QUIET_MODULES;
@@ -414,7 +404,7 @@ impl Qr {
     }
 
     /// Without `cut` the symbol only feeds clear of the head.
-    pub fn document<P: Protocol>(
+    pub(crate) fn document<P: Protocol>(
         &self,
         builder: Builder<P>,
         paper: Paper,
@@ -429,7 +419,7 @@ impl Qr {
         for line in self.caption_lines::<P>(paper) {
             doc = doc.line(&line);
         }
-        let doc = doc.draw(symbol, paper, self.align)?;
+        let doc = doc.draw(symbol, paper, self.align);
         Ok(finish_graphic(doc, cut))
     }
 }
@@ -788,7 +778,7 @@ mod tests {
     #[test]
     fn thermal_raster_alignment_matches_the_print_area() {
         for paper in [Paper::Mm80, Paper::Mm112] {
-            let profile = <Builder<StarLine> as QrStyle>::profile(paper);
+            let profile = <Builder<StarLine> as TextStyle>::profile(paper);
             let width = profile.max_width(Density::Single);
             for align in [Align::Left, Align::Center, Align::Right] {
                 let code = Qr { align, ..qr("x") };

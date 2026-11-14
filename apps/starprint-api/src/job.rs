@@ -41,6 +41,17 @@ impl From<Job> for JobRequest {
     }
 }
 
+/// The `400` for a picture job that came without its picture. Only a
+/// form carries one, so the message says to send that.
+pub(crate) fn check_image(job: &Job, image: Option<&Bytes>) -> Result<(), Problem> {
+    if job.needs_image() && image.is_none() {
+        return Err(Problem::bad_request(
+            "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
+        ));
+    }
+    Ok(())
+}
+
 impl JobRequest {
     /// Builds this job for `profile` and writes it in that printer's
     /// turn.
@@ -105,11 +116,7 @@ impl JobRequest {
         image: Option<Bytes>,
         build: impl FnOnce(&Printer, &Job, Option<&DynamicImage>) -> Result<T, String> + Send + 'static,
     ) -> Result<T, Problem> {
-        if self.job.needs_image() && image.is_none() {
-            return Err(Problem::bad_request(
-                "A picture job needs an `image` part, so it must be sent as multipart/form-data.",
-            ));
-        }
+        check_image(&self.job, image.as_ref())?;
         let printer = self.printer(profile)?;
         let job = self.job;
         tokio::task::spawn_blocking(move || {

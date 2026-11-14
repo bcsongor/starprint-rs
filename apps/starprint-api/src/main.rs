@@ -1,4 +1,5 @@
-//! The command line: a data directory, one server until Ctrl-C.
+//! The command line: a data directory, one server until it is told to
+//! stop.
 
 mod args;
 
@@ -52,7 +53,27 @@ fn run() -> Result<(), String> {
                 server.local_addr(),
                 data.token()
             );
-            let _ = tokio::signal::ctrl_c().await;
+            stop_signal().await;
             server.shutdown().await
         })
+}
+
+/// Ctrl-C, or the `SIGTERM` a service manager sends, so a server
+/// stopped by systemd drains its requests too.
+async fn stop_signal() {
+    let interrupt = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        if let Ok(mut terminate) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                () = interrupt => {}
+                _ = terminate.recv() => {}
+            }
+            return;
+        }
+    }
+    interrupt.await;
 }

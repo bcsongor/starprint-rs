@@ -8,6 +8,7 @@ interface Props {
   text: Text;
   /** Null until the first layout lands. */
   layout: TextLayout | null;
+  error: string | null;
   printer: Profile;
 }
 
@@ -15,14 +16,18 @@ interface Props {
  * Width and height are independent on these printers, so the font size
  * carries the height and a horizontal scale makes up the width.
  */
-export function TextPreview({ text, layout, printer }: Props) {
+export function TextPreview({ text, layout, error, printer }: Props) {
   const lines = layout?.lines ?? [];
   const empty = lines.every((line) => line === "");
   const height = text.tall ? 2 : 1;
   const width = text.wide ? 2 : 1;
 
   return (
-    <PreviewPane printer={printer} hint={layout && `${layout.columns} columns`}>
+    <PreviewPane
+      printer={printer}
+      hint={layout && `${layout.columns} columns`}
+      error={error}
+    >
       <PrintedText columns={layout?.columns ?? 48}>
         <div
           // A full-width box under `scaleX` would paint past the paper.

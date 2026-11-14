@@ -1,6 +1,6 @@
 //! Prints a photo on a Star Line Mode thermal printer via raster mode.
 //!
-//! Usage: cargo run --example thermal_image --features image -- <printer-host> <image-path> [double] [slow] [density=N] [brightness=F] [contrast=F]
+//! Usage: cargo run --example thermal_image --features image -- <printer-host> <image-path> [double] [slow] [rotate] [density=N] [brightness=F] [contrast=F] [gamma=F] [equalize=0|1]
 //!
 //! `double` selects the double-resolution print mode of the TSP700II /
 //! TSP800II (16 dot rows per mm) and prepares the image accordingly;

@@ -171,8 +171,11 @@ impl Bitmap {
     }
 }
 
-/// A [`Bitmap`] that fits the head at its [`Density`], so
-/// [`bit_image`](crate::Builder::bit_image) cannot fail.
+/// A [`Bitmap`] checked against a head's width at its [`Density`]. One
+/// from [`new`](Self::new) fits the SP700, so
+/// [`bit_image`](crate::Builder::bit_image) cannot fail on it. One from
+/// [`with_profile`](Self::with_profile) fits whichever head it named,
+/// and a thermal one is for [`raster`](crate::Builder::raster).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitImage {
     pub(crate) bitmap: Bitmap,

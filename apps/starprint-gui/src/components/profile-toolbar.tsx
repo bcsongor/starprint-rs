@@ -19,7 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { statusLabel, type Status } from "@/hooks/use-server";
-import { byName, type Profile, type ProfileSpec } from "@/lib/api";
+import {
+  THERMAL_DEFAULTS,
+  type Profile,
+  type ProfileSpec,
+} from "@/lib/api";
 
 /** A name that does not collide with the existing profiles. */
 function uniqueName(base: string, profiles: Profile[]): string {
@@ -35,12 +39,9 @@ function uniqueName(base: string, profiles: Profile[]): string {
 const FRESH: ProfileSpec = {
   host: "",
   port: 9100,
-  kind: "thermal",
   cut: true,
   notes: "",
-  paper: 80,
-  density: 3,
-  speed: "slow",
+  ...THERMAL_DEFAULTS,
 };
 
 interface Props {
@@ -49,8 +50,9 @@ interface Props {
   profile: Profile | undefined;
   status: (name: string) => Status;
   onSelect: (name: string) => void;
-  /** Creates or replaces `profile`, then removes `replacing` if it was renamed. */
-  onSave: (profile: Profile, replacing: string | null) => void;
+  /** Creates or replaces `profile`, then removes `replacing` if it was
+   * renamed. Rejects, having said why, if the server would not. */
+  onSave: (profile: Profile, replacing: string | null) => Promise<void>;
   onDelete: (name: string) => void;
 }
 
@@ -68,7 +70,6 @@ export function ProfileToolbar({
     profile: Profile;
     replacing: string | null;
   } | null>(null);
-  const listed = byName(profiles);
 
   return (
     <Field className="min-w-0 flex-1">
@@ -106,7 +107,7 @@ export function ProfileToolbar({
             align="start"
             className="w-max max-w-(--available-width) min-w-(--anchor-width)"
           >
-            {listed.map((p) => (
+            {profiles.map((p) => (
               <SelectItem key={p.name} value={p.name}>
                 <span className={DOTTED}>
                   <ConnectionDot
@@ -144,16 +145,12 @@ export function ProfileToolbar({
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!profile}
-              onClick={() =>
-                profile &&
-                onSave(
-                  {
-                    ...profile,
-                    name: uniqueName(`${profile.name} copy`, profiles),
-                  },
-                  null,
-                )
-              }
+              onClick={() => {
+                if (!profile) return;
+                const name = uniqueName(`${profile.name} copy`, profiles);
+                // A refusal is reported by the caller; nothing here waits.
+                onSave({ ...profile, name }, null).catch(() => {});
+              }}
             >
               Duplicate
             </DropdownMenuItem>
@@ -188,10 +185,11 @@ export function ProfileToolbar({
             .map((p) => p.name)
             .filter((name) => name !== editing?.replacing)}
           onClose={() => setEditing(null)}
-          onSave={(next) => {
+          // The dialog stays up, draft and all, if the save is refused.
+          onSave={async (next) => {
             const replacing = editing?.replacing ?? null;
+            await onSave(next, replacing === next.name ? null : replacing);
             setEditing(null);
-            onSave(next, replacing === next.name ? null : replacing);
           }}
         />
       </div>

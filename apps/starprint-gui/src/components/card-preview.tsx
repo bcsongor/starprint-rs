@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 interface Props {
   /** Null until the first layout lands. */
   layout: TaskCardLayout | null;
+  error: string | null;
   printer: Profile;
 }
 
@@ -14,7 +15,7 @@ interface Props {
  * the reference and the due date on one line, then the task at double
  * width and height.
  */
-export function CardPreview({ layout, printer }: Props) {
+export function CardPreview({ layout, error, printer }: Props) {
   const hasHeader = Boolean(
     layout?.priority || layout?.reference || layout?.due,
   );
@@ -22,7 +23,11 @@ export function CardPreview({ layout, printer }: Props) {
   const empty = lines.every((line) => line === "");
 
   return (
-    <PreviewPane printer={printer} hint={layout && `${layout.columns} columns`}>
+    <PreviewPane
+      printer={printer}
+      hint={layout && `${layout.columns} columns`}
+      error={error}
+    >
       <PrintedText columns={layout?.columns ?? 48}>
         {hasHeader && (
           <div className="font-bold">

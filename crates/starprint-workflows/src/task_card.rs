@@ -47,7 +47,7 @@ pub struct Layout {
 
 /// Thermal prints the banner inverse, so it gets a space each side for
 /// margin; impact prints it in red and wants none.
-pub trait CardStyle: TextStyle {
+pub(crate) trait CardStyle: TextStyle {
     const PRIORITY_TEXT: &'static str;
 }
 
@@ -82,7 +82,7 @@ fn due_text(due: Option<&str>) -> Option<String> {
 }
 
 impl TaskCard {
-    pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
+    pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: CardStyle,
     {
@@ -120,7 +120,12 @@ impl TaskCard {
     }
 
     /// Without `cut` the card only feeds clear of the head.
-    pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
+    pub(crate) fn document<P: Protocol>(
+        &self,
+        builder: Builder<P>,
+        paper: Paper,
+        cut: bool,
+    ) -> Document
     where
         Builder<P>: CardStyle,
     {

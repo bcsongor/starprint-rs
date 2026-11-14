@@ -249,8 +249,9 @@ fn generate_token(path: &Path) -> Result<String, String> {
 
 /// Writes the whole file through a sibling and a rename, so a crash
 /// mid-write leaves the old file rather than half of the new one. The
-/// token is a secret, so on Unix the file is the owner's alone; the
-/// other two get the same treatment for want of a reason not to.
+/// token and the fax line's seed are secrets, so on Unix the file is the
+/// owner's alone. The profiles and schedules get the same treatment for
+/// want of a reason not to.
 fn replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let name = path
         .file_name()

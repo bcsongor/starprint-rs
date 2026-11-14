@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { CopyIcon, QrCodeIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { toast } from "sonner";
 import { ConnectionDot } from "@/components/connection-dot";
 import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { FaxNumber } from "@/components/fax-number";
-import { byName, type FaxLine, type FaxRelay, type Profile } from "@/lib/api";
+import type { FaxLine, FaxRelay, Profile } from "@/lib/api";
+import { copy } from "@/lib/clipboard";
 
 /** Stands for "no printer chosen", which prints on the first profile. No
  * profile's name has a slash in it. */
@@ -77,7 +77,7 @@ export function FaxDrawer({
               value={fax.printer ?? FIRST}
               options={[
                 { value: FIRST, label: "First printer" },
-                ...byName(profiles).map((p) => ({
+                ...profiles.map((p) => ({
                   value: p.name,
                   label: p.name,
                 })),
@@ -116,14 +116,6 @@ function Line({
 }) {
   if (fax.number) {
     const number = fax.number;
-    const copy = async () => {
-      try {
-        await navigator.clipboard.writeText(number);
-        toast.success("Copied");
-      } catch (error) {
-        toast.error("Could not copy", { description: String(error) });
-      }
-    };
     // The actions sit beside the label, so the number has the full
     // width and fits on one line.
     return (
@@ -137,7 +129,7 @@ function Line({
             size="icon-sm"
             aria-label="Copy"
             title="Copy"
-            onClick={copy}
+            onClick={() => copy(number)}
           >
             <CopyIcon />
           </Button>

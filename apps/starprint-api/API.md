@@ -83,6 +83,9 @@ starprint-api [--data <dir>] [--listen <addr>] [--token <value>]
 | `--listen <addr>` | `127.0.0.1:9110` | Address and port to bind |
 | `--token <value>` | The one on file, or a new one | Sets the token and writes it to the data directory |
 
+Ctrl-C or `SIGTERM` stops it once the requests in flight have finished,
+so a job being written to a printer is not cut off.
+
 ## Printers
 
 A profile names a printer and holds its settings. Jobs are addressed to
@@ -194,7 +197,10 @@ Response: the job as it will look on that printer, tagged by `kind`
 like the job. A text job is its layout: `columns` and the `lines` the
 printer's own font will set. A job printed as dots carries `image`, a
 `data:` URL of a PNG drawn from the bitmap that prints, dot for dot,
-with thermal dots widened as the head widens them.
+with thermal dots widened as the head widens them. A picture in double
+resolution or on an impact printer is the exception. Those dots are not
+square, so its preview is the same picture dithered again at a square
+pitch, with the print's tone and not its dots.
 
 ```json
 { "kind": "task-card", "columns": 48, "lines": ["Renew passport"], "priority": null, "reference": null, "due": "                                     15 SEP 2026" }

@@ -1,15 +1,11 @@
 import { PrintedText } from "@/components/printed-text";
-import { PreviewNote, PreviewPane } from "@/components/preview-pane";
-import {
-  QUIET_MODULES,
-  type Align,
-  type Profile,
-  type QrLayout,
-} from "@/lib/api";
+import { PreviewPane } from "@/components/preview-pane";
+import { QUIET_MODULES, type Align, type Profile } from "@/lib/api";
+import type { Previews } from "@/lib/job";
 import { PX_PER_MM } from "@/lib/paper";
 
 interface Props {
-  preview: (QrLayout & { image: string }) | null;
+  preview: Previews["qr"] | null;
   error: string | null;
   printer: Profile;
 }
@@ -32,10 +28,8 @@ export function QrPreview({ preview, error, printer }: Props) {
     `${preview.modules - 2 * QUIET_MODULES} modules, ${Math.round(preview.widthMm)} mm`;
 
   return (
-    <PreviewPane printer={printer} hint={hint}>
-      {error ? (
-        <PreviewNote error>{error}</PreviewNote>
-      ) : preview ? (
+    <PreviewPane printer={printer} hint={hint} error={error}>
+      {preview && (
         <>
           {preview.caption.length > 0 && (
             <PrintedText columns={preview.columns}>
@@ -59,7 +53,7 @@ export function QrPreview({ preview, error, printer }: Props) {
             />
           </div>
         </>
-      ) : null}
+      )}
     </PreviewPane>
   );
 }

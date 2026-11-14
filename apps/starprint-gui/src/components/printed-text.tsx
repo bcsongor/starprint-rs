@@ -9,6 +9,16 @@ interface Props {
   children: ReactNode;
 }
 
+/** Scales `inner`, the strip, to `outer`, the print region, and gives
+ * the region the height the scaled strip takes. */
+function fit(outer: HTMLElement, inner: HTMLElement) {
+  // offsetWidth ignores the sheet's own scale; a bounding rect would not.
+  const scale = outer.clientWidth / inner.offsetWidth;
+  inner.style.transform = `scale(${scale})`;
+  // The parent sheet measures this height in its own layout effect.
+  outer.style.height = `${inner.offsetHeight * scale}px`;
+}
+
 /**
  * Lays the strip out at `columns` characters and scales it to the print
  * region, whatever the font's metrics. Sizes inside are relative, so
@@ -18,24 +28,22 @@ export function PrintedText({ columns, children }: Props) {
   const region = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
 
+  // Before paint on every render, since any may change what the strip
+  // holds.
+  useLayoutEffect(() => {
+    if (region.current && strip.current) fit(region.current, strip.current);
+  });
+
+  // And between renders, when the region or the strip changes size.
   useLayoutEffect(() => {
     const outer = region.current;
     const inner = strip.current;
     if (!outer || !inner) return;
-
-    const fit = () => {
-      // offsetWidth ignores the sheet's own scale; a bounding rect would not.
-      const next = outer.clientWidth / inner.offsetWidth;
-      inner.style.transform = `scale(${next})`;
-      // The parent sheet measures this height in its own layout effect.
-      outer.style.height = `${inner.offsetHeight * next}px`;
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
+    const observer = new ResizeObserver(() => fit(outer, inner));
     observer.observe(outer);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, [columns, children]);
+  }, []);
 
   return (
     <div ref={region} className="relative w-full">

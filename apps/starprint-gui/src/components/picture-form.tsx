@@ -2,9 +2,9 @@ import { useRef } from "react";
 import { FolderOpenIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { OptionSelect, type Option } from "@/components/option-select";
 import { SliderField } from "@/components/slider-field";
+import { Toggle } from "@/components/toggle";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
 import { DEFAULT_PICTURE, type Dither, type Picture } from "@/lib/api";
 
 const DITHERS: Option<Dither>[] = [
@@ -105,8 +105,8 @@ export function PictureForm({
           />
         </Field>
 
-        <Field
-          orientation="horizontal"
+        <Toggle
+          id="double"
           className="h-8 w-auto"
           data-disabled={twoColor}
           title={
@@ -114,20 +114,12 @@ export function PictureForm({
               ? "Double resolution is unavailable at density +4."
               : undefined
           }
+          checked={picture.double && !twoColor}
+          disabled={twoColor}
+          onCheckedChange={(checked) => set("double", checked)}
         >
-          <Switch
-            id="double"
-            checked={picture.double && !twoColor}
-            disabled={twoColor}
-            onCheckedChange={(checked) => set("double", checked)}
-          />
-          <FieldLabel
-            htmlFor="double"
-            className="text-sm tracking-normal normal-case text-foreground"
-          >
-            {thermal ? "Double resolution" : "Double density"}
-          </FieldLabel>
-        </Field>
+          {thermal ? "Double resolution" : "Double density"}
+        </Toggle>
 
         <Button
           variant="ghost"

@@ -9,7 +9,8 @@ cargo run --release -p starprint-relay -- --name LONRELAY01
 ```
 
 Put it on a public host behind a TLS proxy, with `--behind-proxy`, and
-servers add it by its `https://` address.
+servers add it by its `https://` address. It finishes the requests under
+way and stops on Ctrl-C or SIGTERM.
 
 ```
 starprint-relay --name <NAME> [--listen <addr>] [--db <file>] [--behind-proxy]
@@ -30,7 +31,8 @@ confirm them, with a request that names this relay.
 
 Every fax arrives and prints, so the relay limits each client address
 instead: a burst of 10 faxes, then 30 an hour, and a burst of 5 new
-lines, then 10 an hour, since each is a new identity to fax from.
+lines, then 10 an hour, since each is a new identity to fax from. An
+IPv6 client is counted by its /64, the network one subscriber is given.
 A poll answers with everything held for its line, so polls are limited
 too: a burst of 30, then 1,800 an hour, which is five lines polling
 every ten seconds. Confirms and a line republishing itself are not
@@ -53,9 +55,10 @@ recipient and size:
 | `GET` | `/v1/relay` | `{ "name", "version" }` |
 | `GET` | `/v1/lines/{number}` | The line record for a number, written without its star: `star1en2su3z68yscvky0n3j3l2qwny4dkq7s` |
 | `PUT` | `/v1/lines/{number}` | Store a line record. `400` if it does not check, `409` if a newer one is held, `507` if the relay holds as many lines as it can |
-| `POST` | `/v1/lines/{number}/faxes` | Hold a sealed fax for the line. `202` with its `id`, `507` if too much is waiting |
+| `POST` | `/v1/lines/{number}/faxes` | Hold a sealed fax for the line. `202` with `{ "id" }`, `507` if too much is waiting |
 | `POST` | `/v1/lines/{number}/poll` | The faxes held for the line, for a request signed by it |
-| `POST` | `/v1/lines/{number}/confirm` | Delete faxes that printed, by `id`, for a request signed by the line |
+| `POST` | `/v1/lines/{number}/confirm` | Delete faxes that printed, by `id`, for a request signed by the line. `400` for more than 100 ids |
 
 Refusals are `application/problem+json`, like the API's. A record or
-request is limited to 1 MiB, a fax to 32 MiB.
+request is limited to 1 MiB, a fax to 32 MiB, and a larger body is a
+`413`.

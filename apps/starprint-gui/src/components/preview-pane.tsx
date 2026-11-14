@@ -7,11 +7,14 @@ import { cn } from "@/lib/utils";
 interface Props {
   hint?: string | null;
   printer?: Profile;
+  /** Why the server could not preview the job, drawn in its place. */
+  error?: string | null;
   children: ReactNode;
 }
 
 /** The preview heading and, for printable content, its sheet of paper. */
-export function PreviewPane({ hint, printer, children }: Props) {
+export function PreviewPane({ hint, printer, error, children }: Props) {
+  const content = error ? <PreviewNote error>{error}</PreviewNote> : children;
   return (
     <section
       className={cn(
@@ -28,7 +31,7 @@ export function PreviewPane({ hint, printer, children }: Props) {
           </span>
         )}
       </Label>
-      {printer ? <PaperSheet printer={printer}>{children}</PaperSheet> : children}
+      {printer ? <PaperSheet printer={printer}>{content}</PaperSheet> : content}
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { Toggle } from "@/components/toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,8 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { whoami } from "@/lib/linear";
+import { message } from "@/lib/message";
 import type { Linear } from "@/lib/settings";
 
 interface Props {
@@ -47,21 +48,14 @@ export function LinearBar({ linear, onChange }: Props) {
       {linear?.user ? (
         <>
           <LinearLogo className="size-4 text-muted-foreground" />
-          <Field orientation="horizontal" className="w-auto">
-            <Switch
-              id="auto-print"
-              checked={linear.autoPrint}
-              onCheckedChange={(autoPrint) =>
-                onChange({ ...linear, autoPrint })
-              }
-            />
-            <FieldLabel
-              htmlFor="auto-print"
-              className="text-sm tracking-normal normal-case text-foreground"
-            >
-              Auto-print my new issues
-            </FieldLabel>
-          </Field>
+          <Toggle
+            id="auto-print"
+            className="w-auto"
+            checked={linear.autoPrint}
+            onCheckedChange={(autoPrint) => onChange({ ...linear, autoPrint })}
+          >
+            Auto-print my new issues
+          </Toggle>
           <Button
             variant="outline"
             className="ml-auto"
@@ -120,7 +114,7 @@ function ConnectForm({
       toast.success(`Connected to Linear as ${user}`);
       onConnect(key, user);
     } catch (error) {
-      setError(String(error));
+      setError(message(error));
     } finally {
       setChecking(false);
     }

@@ -509,6 +509,7 @@
   function recipient() {
     const to = $("to").value.trim();
     // The server folds ASCII only; names such as Ä and ä can belong to different people.
+    // The desktop app's `fold`, in `src/lib/fax-number.ts`, is this one.
     const fold = (name) => name.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
     const contact = line?.contacts.find((c) => fold(c.name) === fold(to));
     return contact?.number ?? (isFaxNumber(to) ? compact(to) : null);

@@ -18,12 +18,12 @@
 mod limit;
 mod store;
 
-use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State};
+use axum::body::Bytes;
+use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequest as _, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -31,19 +31,19 @@ use axum::{Json, Router};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use starprint_fax::{
-    Action, Collect, Fax, Held, HeldFaxes, Line, LineRecord, Number, RelayInfo, now,
+    Action, Collect, Fax, HELD_BYTES, Held, HeldFaxes, Line, LineRecord, Number, RelayInfo, now,
 };
 
 use crate::limit::Limit;
-use crate::store::Store;
+use crate::store::{Put, Store};
 
 /// Records and requests are text; anything larger is a client gone wrong.
 const JSON_LIMIT: usize = 1 << 20;
 /// A sealed fax with a picture in it, encoded twice over.
 const FAX_LIMIT: usize = 32 << 20;
-/// What a relay holds for one line before it turns faxes away.
+/// The faxes a relay holds for one line before it turns more away, and
+/// [`HELD_BYTES`] is as much as they may come to.
 const HELD_FAXES: usize = 100;
-const HELD_BYTES: usize = 64 << 20;
 /// What a relay holds for every line together, so that new lines, each
 /// with an allowance of its own, cannot fill the disk. The file is about
 /// a third larger, since faxes are kept as base64.
@@ -57,19 +57,16 @@ const NEW_LINES: (u32, u32) = (5, 10);
 /// for its line, so it is the costly request. A line polls every ten
 /// seconds, which makes this five lines' worth behind one address.
 const POLLS: (u32, u32) = (30, 1800);
-/// Lines a relay holds in all. Each stays in memory and in the file for
-/// good, so this is what stops new identities filling them.
+/// Lines a relay holds in all. Each stays in the file for good, so this
+/// is what stops new identities filling it.
 const LINES: usize = 10_000;
-/// A fax nobody polls for is deleted after thirty days.
-const HOLD_SECONDS: u64 = 30 * 24 * 60 * 60;
 /// How far a poll's clock may be from the relay's.
 const CLOCK_SKEW: u64 = 5 * 60;
+
 struct Relay {
     name: String,
     clients: Clients,
-    /// Every line in the store, with its keys decoded.
-    lines: RwLock<HashMap<Number, (LineRecord, Line)>>,
-    store: Store,
+    store: Arc<Store>,
     faxes: Limit,
     new_lines: Limit,
     polls: Limit,
@@ -116,6 +113,52 @@ impl Relay {
             Clients::Direct => direct(),
         }
     }
+
+    /// Runs `work` on the store off the runtime's workers, since SQLite
+    /// blocks. A `500` for a store that failed, which is the relay's own
+    /// fault.
+    async fn with_store<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&Store) -> rusqlite::Result<T> + Send + 'static,
+    ) -> Result<T, Problem> {
+        let store = Arc::clone(&self.store);
+        tokio::task::spawn_blocking(move || work(&store))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|result| result.map_err(|e| e.to_string()))
+            .map_err(|e| {
+                log(format!("the store failed: {e}"));
+                Problem::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "The relay could not store that.",
+                )
+            })
+    }
+
+    /// The record held for `number`, or the `404` for a line this relay
+    /// does not have.
+    async fn record(&self, number: Number) -> Result<LineRecord, Problem> {
+        self.with_store(move |store| store.line(number))
+            .await?
+            .ok_or_else(|| Problem::not_found(format!("No line {number} on this relay.")))
+    }
+
+    /// The same, with its keys decoded.
+    async fn line(&self, number: Number) -> Result<Line, Problem> {
+        keys(&self.record(number).await?)
+    }
+}
+
+/// A held record's keys. It checked when the relay took it, so one that
+/// no longer does is the relay's own fault.
+fn keys(record: &LineRecord) -> Result<Line, Problem> {
+    record.check().map_err(|e| {
+        log(format!("the record held for {} failed: {e}", record.number));
+        Problem::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "The relay could not read that line.",
+        )
+    })
 }
 
 /// A token from `limit` for `client`, or the `429` saying when to try
@@ -136,45 +179,22 @@ fn take(limit: &Limit, client: Option<IpAddr>, what: &str) -> Result<(), Problem
         })
 }
 
-impl Relay {
-    fn line(&self, number: Number) -> Result<Line, Problem> {
-        self.lines
-            .read()
-            .unwrap()
-            .get(&number)
-            .map(|(_, line)| line.clone())
-            .ok_or_else(|| Problem::not_found(format!("No line {number} on this relay.")))
-    }
-}
-
 /// The relay's routes, answering to `name`, telling clients apart as
 /// `clients` says, and keeping everything in the SQLite file at `db`.
 /// Serve it with connection details, so it knows its clients.
 pub fn router(name: String, clients: Clients, db: &std::path::Path) -> Result<Router, String> {
     let store = Store::open(db)?;
-    let records = store
-        .lines()
-        .map_err(|e| format!("{} could not be read: {e}", db.display()))?;
-    let lines: HashMap<_, _> = records
-        .into_iter()
-        .filter_map(|record| {
-            let line = record.check().ok()?;
-            Some((record.number, (record, line)))
-        })
-        .collect();
-    let waiting = store
-        .expire_and_count(now().saturating_sub(HOLD_SECONDS))
+    let (lines, waiting) = store
+        .expire_and_count(now())
         .map_err(|e| format!("{} could not be read: {e}", db.display()))?;
     log(format!(
-        "{} lines and {waiting} faxes waiting in {}",
-        lines.len(),
+        "{lines} lines and {waiting} faxes waiting in {}",
         db.display()
     ));
     let relay = Arc::new(Relay {
         name,
         clients,
-        lines: RwLock::new(lines),
-        store,
+        store: Arc::new(store),
         faxes: Limit::new(FAXES.0, FAXES.1),
         new_lines: Limit::new(NEW_LINES.0, NEW_LINES.1),
         polls: Limit::new(POLLS.0, POLLS.1),
@@ -189,6 +209,14 @@ pub fn router(name: String, clients: Clients, db: &std::path::Path) -> Result<Ro
         .route("/v1/lines/{number}/poll", post(poll))
         .route("/v1/lines/{number}/confirm", post(confirm))
         .fallback(|| async { Problem::not_found("No such endpoint.") })
+        .method_not_allowed_fallback(|| async {
+            Problem::new(
+                StatusCode::METHOD_NOT_ALLOWED,
+                "This endpoint does not take that method.",
+            )
+        })
+        // What `json` reads a body up to, the fax route's own aside.
+        .layer(DefaultBodyLimit::max(JSON_LIMIT))
         .with_state(relay))
 }
 
@@ -216,14 +244,7 @@ async fn get_line(
     State(relay): State<Arc<Relay>>,
     Path(text): Path<String>,
 ) -> Result<Json<LineRecord>, Problem> {
-    let number = number(&text)?;
-    relay
-        .lines
-        .read()
-        .unwrap()
-        .get(&number)
-        .map(|(record, _)| Json(record.clone()))
-        .ok_or_else(|| Problem::not_found(format!("No line {number} on this relay.")))
+    relay.record(number(&text)?).await.map(Json)
 }
 
 /// Keeps a record that checks, unless a newer one is already held. A
@@ -235,40 +256,52 @@ async fn put_line(
 ) -> Result<StatusCode, Problem> {
     let number = number(&text)?;
     let client = relay.client(&request);
-    let record: LineRecord = json(request, JSON_LIMIT).await?;
+    let record: LineRecord = json(request).await?;
     if record.number != number {
         return Err(Problem::bad_request(format!(
             "The record is for {}, not {number}.",
             record.number
         )));
     }
-    let line = record
+    record
         .check()
         .map_err(|e| Problem::bad_request(format!("The record does not check: {e}.")))?;
-    let mut lines = relay.lines.write().unwrap();
-    match lines.get(&number) {
-        Some((held, _)) if held.updated > record.updated => {
+    // Only a line the relay has not seen costs a token, so a line can
+    // republish itself as often as its record changes.
+    if relay
+        .with_store(move |store| store.line(number))
+        .await?
+        .is_none()
+    {
+        take(&relay.new_lines, client, "new lines")?;
+    }
+    match relay
+        .with_store(move |store| store.put_line(&record, LINES))
+        .await?
+    {
+        Put::Published => log(format!("line {number} published")),
+        Put::Updated => log(format!("line {number} updated")),
+        Put::Unchanged => {}
+        Put::Older => {
             return Err(Problem::new(
                 StatusCode::CONFLICT,
                 format!("A newer record for {number} is held."),
             ));
         }
-        Some((held, _)) if *held == record => return Ok(StatusCode::NO_CONTENT),
-        Some(_) => log(format!("line {number} updated")),
-        None => {
-            if lines.len() >= LINES {
-                return Err(Problem::new(
-                    StatusCode::INSUFFICIENT_STORAGE,
-                    "This relay holds as many lines as it can.",
-                ));
-            }
-            take(&relay.new_lines, client, "new lines")?;
-            log(format!("line {number} published"));
+        Put::Full => {
+            return Err(Problem::new(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "This relay holds as many lines as it can.",
+            ));
         }
     }
-    stored(relay.store.put_line(&record))?;
-    lines.insert(number, (record, line));
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// What `POST …/faxes` answers: the id the fax is held under.
+#[derive(Debug, Serialize)]
+struct Taken {
+    id: String,
 }
 
 /// Holds a fax signed by a line published here, for a line published
@@ -277,47 +310,48 @@ async fn hold_fax(
     State(relay): State<Arc<Relay>>,
     Path(text): Path<String>,
     request: Request,
-) -> Result<(StatusCode, Json<Held>), Problem> {
+) -> Result<(StatusCode, Json<Taken>), Problem> {
     let number = number(&text)?;
     // Before the body, so a flood costs the relay no more than a refusal.
     take(&relay.faxes, relay.client(&request), "faxes")?;
-    let fax: Fax = json(request, FAX_LIMIT).await?;
+    let fax: Fax = json(request).await?;
     if fax.to != number {
         return Err(Problem::bad_request(format!(
             "The fax is for {}, not {number}.",
             fax.to
         )));
     }
-    relay.line(number)?;
-    let sender = relay.line(fax.from).map_err(|_| {
-        Problem::bad_request(format!(
-            "Publish {} on this relay before faxing from it.",
-            fax.from
-        ))
-    })?;
-    if !fax.signed_by(&sender) {
+    relay.record(number).await?;
+    let from = fax.from;
+    let sender = relay
+        .with_store(move |store| store.line(from))
+        .await?
+        .ok_or_else(|| {
+            Problem::bad_request(format!(
+                "Publish {from} on this relay before faxing from it."
+            ))
+        })?;
+    if !fax.signed_by(&keys(&sender)?) {
         return Err(Problem::new(
             StatusCode::UNAUTHORIZED,
-            format!("The fax is not signed by {}.", fax.from),
+            format!("The fax is not signed by {from}."),
         ));
     }
+    let id = uuid::Uuid::new_v4().to_string();
     let held = Held {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: id.clone(),
         fax,
     };
     let size = held.fax.sealed.len() + held.fax.encapsulated.len() + held.fax.signature.len();
-    let now = now();
-    let taken = stored(relay.store.hold(
-        &held,
-        size,
-        now,
-        now.saturating_sub(HOLD_SECONDS),
-        |waiting| {
-            waiting.faxes >= HELD_FAXES
-                || waiting.bytes + size > HELD_BYTES
-                || waiting.stored + size as u64 > STORED_BYTES
-        },
-    ))?;
+    let taken = relay
+        .with_store(move |store| {
+            store.hold(&held, size, now(), |waiting| {
+                waiting.faxes >= HELD_FAXES
+                    || waiting.bytes + size > HELD_BYTES
+                    || waiting.stored + size as u64 > STORED_BYTES
+            })
+        })
+        .await?;
     if !taken {
         return Err(Problem::new(
             StatusCode::INSUFFICIENT_STORAGE,
@@ -325,12 +359,11 @@ async fn hold_fax(
         ));
     }
     log(format!(
-        "fax {} from {} to {number}, {:.1} KB",
-        short(&held.id),
-        held.fax.from,
+        "fax {} from {from} to {number}, {:.1} KB",
+        short(&id),
         size as f64 / 1024.0
     ));
-    Ok((StatusCode::ACCEPTED, Json(held)))
+    Ok((StatusCode::ACCEPTED, Json(Taken { id })))
 }
 
 /// Enough of an id to tell faxes apart in the log.
@@ -345,13 +378,16 @@ async fn poll(
 ) -> Result<Json<HeldFaxes>, Problem> {
     let number = number(&text)?;
     take(&relay.polls, relay.client(&request), "polls")?;
-    let collect: Collect = json(request, JSON_LIMIT).await?;
-    check(&collect, Action::Poll, &relay.name, &relay.line(number)?)?;
-    let faxes = stored(
-        relay
-            .store
-            .waiting_for(number, now().saturating_sub(HOLD_SECONDS)),
+    let collect: Collect = json(request).await?;
+    check(
+        &collect,
+        Action::Poll,
+        &relay.name,
+        &relay.line(number).await?,
     )?;
+    let faxes = relay
+        .with_store(move |store| store.waiting_for(number, now()))
+        .await?;
     Ok(Json(HeldFaxes { faxes }))
 }
 
@@ -361,9 +397,23 @@ async fn confirm(
     request: Request,
 ) -> Result<StatusCode, Problem> {
     let number = number(&text)?;
-    let collect: Collect = json(request, JSON_LIMIT).await?;
-    check(&collect, Action::Confirm, &relay.name, &relay.line(number)?)?;
-    for (id, sender) in stored(relay.store.deliver(number, &collect.ids))? {
+    let collect: Collect = json(request).await?;
+    // Each id is a query, and a line never has more faxes waiting.
+    if collect.ids.len() > HELD_FAXES {
+        return Err(Problem::bad_request(format!(
+            "A confirm takes up to {HELD_FAXES} ids."
+        )));
+    }
+    check(
+        &collect,
+        Action::Confirm,
+        &relay.name,
+        &relay.line(number).await?,
+    )?;
+    let delivered = relay
+        .with_store(move |store| store.deliver(number, &collect.ids))
+        .await?;
+    for (id, sender) in delivered {
         log(format!(
             "fax {} from {sender} delivered to {number}",
             short(&id)
@@ -389,26 +439,18 @@ fn check(collect: &Collect, action: Action, relay: &str, line: &Line) -> Result<
     Ok(())
 }
 
-/// A `500` for a store that failed, which is the relay's own fault.
-fn stored<T>(result: rusqlite::Result<T>) -> Result<T, Problem> {
-    result.map_err(|e| {
-        log(format!("the store failed: {e}"));
-        Problem::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "The relay could not store that.",
-        )
-    })
-}
-
-/// A JSON body up to `limit` bytes, read as a `T`.
-async fn json<T: DeserializeOwned>(request: Request, limit: usize) -> Result<T, Problem> {
-    let bytes = axum::body::to_bytes(request.into_body(), limit)
+/// A JSON body read as a `T`, up to the `DefaultBodyLimit` its route is
+/// under. A `413` past that, and a `400` for a body that did not arrive
+/// whole or is not a `T`.
+async fn json<T: DeserializeOwned>(request: Request) -> Result<T, Problem> {
+    let bytes = Bytes::from_request(request, &())
         .await
-        .map_err(|e| {
-            Problem::new(
+        .map_err(|e| match e.status() {
+            StatusCode::PAYLOAD_TOO_LARGE => Problem::new(
                 StatusCode::PAYLOAD_TOO_LARGE,
-                format!("The body is larger than {limit} bytes: {e}."),
-            )
+                "The body is larger than this endpoint takes.",
+            ),
+            _ => Problem::bad_request(format!("The body did not arrive whole: {e}.")),
         })?;
     serde_json::from_slice(&bytes)
         .map_err(|e| Problem::bad_request(format!("The body could not be read as JSON: {e}.")))
@@ -421,11 +463,16 @@ struct Problem {
     #[serde(rename = "type")]
     kind: &'static str,
     title: &'static str,
-    status: u16,
+    #[serde(serialize_with = "as_u16")]
+    status: StatusCode,
     detail: String,
     /// Seconds, for a `429`.
     #[serde(skip)]
     retry_after: Option<u64>,
+}
+
+fn as_u16<S: serde::Serializer>(status: &StatusCode, out: S) -> Result<S::Ok, S::Error> {
+    out.serialize_u16(status.as_u16())
 }
 
 impl Problem {
@@ -433,7 +480,7 @@ impl Problem {
         Self {
             kind: "about:blank",
             title: status.canonical_reason().unwrap_or("Error"),
-            status: status.as_u16(),
+            status,
             detail: detail.into(),
             retry_after: None,
         }
@@ -455,10 +502,9 @@ impl Problem {
 
 impl IntoResponse for Problem {
     fn into_response(self) -> Response {
-        let status = StatusCode::from_u16(self.status).expect("made from a StatusCode");
         let body = serde_json::to_vec(&self).expect("problem details serialise");
         let mut response = (
-            status,
+            self.status,
             [(header::CONTENT_TYPE, "application/problem+json")],
             body,
         )
@@ -558,8 +604,9 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST, "Anna is not here yet");
         assert!(body["detail"].as_str().unwrap().contains("Publish"));
         call(&router, Method::PUT, &path(a, ""), json(&anna_record)).await;
-        let (status, _) = call(&router, Method::POST, &path(b, "/faxes"), json(&fax)).await;
+        let (status, taken) = call(&router, Method::POST, &path(b, "/faxes"), json(&fax)).await;
         assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(taken.as_object().unwrap().len(), 1, "the id and no more");
 
         let (status, body) = call(&router, Method::GET, &path(b, ""), None).await;
         assert_eq!(status, StatusCode::OK);
@@ -572,7 +619,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&anna, "LONRELAY01", b)),
+            json(&Collect::poll(&anna, "LONRELAY01", b, now())),
         )
         .await;
         assert_eq!(
@@ -584,7 +631,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&ben, "NYCRELAY01", b)),
+            json(&Collect::poll(&ben, "NYCRELAY01", b, now())),
         )
         .await;
         assert_eq!(
@@ -596,19 +643,20 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&ben, "LONRELAY01", b)),
+            json(&Collect::poll(&ben, "LONRELAY01", b, now())),
         )
         .await;
         let held: HeldFaxes = serde_json::from_value(body).unwrap();
         assert_eq!(held.faxes.len(), 1);
         assert_eq!(held.faxes[0].fax, fax);
+        assert_eq!(held.faxes[0].id, taken["id"]);
 
         let ids = vec![held.faxes[0].id.clone()];
         let (status, _) = call(
             &router,
             Method::POST,
             &path(b, "/confirm"),
-            json(&Collect::confirm(&ben, "LONRELAY01", b, ids)),
+            json(&Collect::confirm(&ben, "LONRELAY01", b, ids, now())),
         )
         .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
@@ -616,7 +664,7 @@ mod tests {
             &router,
             Method::POST,
             &path(b, "/poll"),
-            json(&Collect::poll(&ben, "LONRELAY01", b)),
+            json(&Collect::poll(&ben, "LONRELAY01", b, now())),
         )
         .await;
         assert_eq!(body["faxes"], serde_json::json!([]));
@@ -645,12 +693,12 @@ mod tests {
             serde_json::from_value::<LineRecord>(body).unwrap(),
             ben_record
         );
-        let poll = || json(&Collect::poll(&ben, "LONRELAY01", b));
+        let poll = || json(&Collect::poll(&ben, "LONRELAY01", b, now()));
         let (_, body) = call(&after, Method::POST, &path(b, "/poll"), poll()).await;
         let held: HeldFaxes = serde_json::from_value(body).unwrap();
         assert_eq!(held.faxes.len(), 1, "still waiting");
         let ids = vec![held.faxes[0].id.clone()];
-        let confirm = json(&Collect::confirm(&ben, "LONRELAY01", b, ids));
+        let confirm = json(&Collect::confirm(&ben, "LONRELAY01", b, ids, now()));
         call(&after, Method::POST, &path(b, "/confirm"), confirm).await;
         let (_, body) = call(&after, Method::POST, &path(b, "/poll"), poll()).await;
         assert_eq!(body["faxes"], serde_json::json!([]), "confirmed");
@@ -712,6 +760,44 @@ mod tests {
             poll().await.unwrap().status(),
             StatusCode::TOO_MANY_REQUESTS
         );
+    }
+
+    #[tokio::test]
+    async fn a_request_signed_at_another_time_is_refused() {
+        let router = test_router("LONRELAY01");
+        let (anna, record) = test_line();
+        let a = record.number;
+        call(&router, Method::PUT, &path(a, ""), json(&record)).await;
+        for at in [now() - CLOCK_SKEW - 60, now() + CLOCK_SKEW + 60] {
+            let poll = json(&Collect::poll(&anna, "LONRELAY01", a, at));
+            let (status, body) = call(&router, Method::POST, &path(a, "/poll"), poll).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+            assert!(body["detail"].as_str().unwrap().contains("`at`"), "{body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_request_gone_wrong_is_refused_as_a_problem() {
+        let router = test_router("LONRELAY01");
+        let (anna, record) = test_line();
+        let a = record.number;
+        call(&router, Method::PUT, &path(a, ""), json(&record)).await;
+
+        let (status, body) = call(&router, Method::DELETE, &path(a, ""), None).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(body["status"], 405);
+
+        // A fax may be larger than anything else a relay reads.
+        let large = || Some(Value::String("x".repeat(3 * JSON_LIMIT)));
+        let (status, _) = call(&router, Method::POST, &path(a, "/poll"), large()).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        let (status, _) = call(&router, Method::POST, &path(a, "/faxes"), large()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "read, and not a fax");
+
+        let ids = vec![String::new(); HELD_FAXES + 1];
+        let confirm = json(&Collect::confirm(&anna, "LONRELAY01", a, ids, now()));
+        let (status, body) = call(&router, Method::POST, &path(a, "/confirm"), confirm).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     }
 
     #[tokio::test]

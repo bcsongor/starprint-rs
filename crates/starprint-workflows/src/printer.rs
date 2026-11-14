@@ -84,7 +84,7 @@ impl From<Speed> for PrintSpeed {
 
 /// Selects two-colour mode for darker black on plain paper.
 /// Double-resolution sections use +3 instead.
-pub const TWO_COLOR_DENSITY: i8 = 4;
+pub(crate) const TWO_COLOR_DENSITY: i8 = 4;
 
 /// The printer's density scale plus our two-colour setting.
 const DENSITY_RANGE: std::ops::RangeInclusive<i8> = -3..=TWO_COLOR_DENSITY;
@@ -103,7 +103,8 @@ pub fn check_density(density: i8) -> Result<(), String> {
     ))
 }
 
-/// A printer profile. `density`, `speed` and `paper` are thermal only.
+/// A printer profile. What only a thermal printer has is in its
+/// [`Head`].
 #[derive(Debug, Clone)]
 pub struct Printer {
     pub host: String,
@@ -260,7 +261,7 @@ impl Printer {
                     Job::Qr(code) => code.document(head, paper, cut)?,
                     Job::TestPage(page) => test_page::thermal(head, page, paper, cut, mode),
                     Job::Picture(pic) => {
-                        let image = image.ok_or("No picture supplied.")?;
+                        let image = image.ok_or(picture::NO_PICTURE)?;
                         picture::thermal(head, &self.picture(pic), paper, cut, image)?
                     }
                 };
@@ -288,7 +289,7 @@ impl Printer {
                     Job::Qr(code) => code.document(head, paper, cut),
                     Job::TestPage(_) => Ok(test_page::impact(head, cut)),
                     Job::Picture(pic) => {
-                        let image = image.ok_or("No picture supplied.")?;
+                        let image = image.ok_or(picture::NO_PICTURE)?;
                         picture::impact(head, pic, cut, image)
                     }
                 }

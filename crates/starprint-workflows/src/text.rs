@@ -4,14 +4,23 @@ use std::{iter, mem};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use starprint::graphics::DeviceProfile;
 use starprint::{Builder, Color, Cut, Document, Impact, Protocol, StarLine};
 
 use crate::Paper;
 
-/// What differs between the two builders when laying out characters.
-pub trait TextStyle: Sized {
+/// The SP700's carriage is fixed, so its 7×9 font always sets this many
+/// characters to a line.
+pub(crate) const IMPACT_COLUMNS: usize = 42;
+
+/// What differs between the two builders: the head's geometry and the
+/// styles its characters take.
+pub(crate) trait TextStyle: Sized {
     /// At normal size.
     fn columns(paper: Paper) -> usize;
+
+    /// The head and roll as geometry, for whatever a job draws as dots.
+    fn profile(paper: Paper) -> &'static DeviceProfile;
 
     fn set_wide(self, on: bool) -> Self;
     fn set_tall(self, on: bool) -> Self;
@@ -25,6 +34,10 @@ pub trait TextStyle: Sized {
 impl TextStyle for Builder<StarLine> {
     fn columns(paper: Paper) -> usize {
         paper.columns()
+    }
+
+    fn profile(paper: Paper) -> &'static DeviceProfile {
+        paper.profile()
     }
 
     fn set_wide(self, on: bool) -> Self {
@@ -43,9 +56,12 @@ impl TextStyle for Builder<StarLine> {
 }
 
 impl TextStyle for Builder<Impact> {
-    /// The SP700's carriage is fixed.
     fn columns(_paper: Paper) -> usize {
-        42
+        IMPACT_COLUMNS
+    }
+
+    fn profile(_paper: Paper) -> &'static DeviceProfile {
+        &DeviceProfile::SP700
     }
 
     fn set_wide(self, on: bool) -> Self {
@@ -124,7 +140,7 @@ pub struct Layout {
 }
 
 impl Text {
-    pub fn layout<P: Protocol>(&self, paper: Paper) -> Layout
+    pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: TextStyle,
     {
@@ -137,7 +153,12 @@ impl Text {
 
     /// Without `cut` nothing feeds the paper, so the next job starts on
     /// the line under this one.
-    pub fn document<P: Protocol>(&self, builder: Builder<P>, paper: Paper, cut: bool) -> Document
+    pub(crate) fn document<P: Protocol>(
+        &self,
+        builder: Builder<P>,
+        paper: Paper,
+        cut: bool,
+    ) -> Document
     where
         Builder<P>: TextStyle,
     {

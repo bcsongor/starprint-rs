@@ -1,5 +1,5 @@
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
+import { Toggle } from "@/components/toggle";
+import { FieldGroup } from "@/components/ui/field";
 import type { PrinterKind, TestPage } from "@/lib/api";
 
 interface Props {
@@ -17,20 +17,15 @@ export function TestPageForm({ page, kind, onChange }: Props) {
       {/* Same row height as the Task label, so the tabs do not shift. */}
       <div className="h-5" />
 
-      <Field orientation="horizontal" data-disabled={!thermal}>
-        <Switch
-          id="double-resolution"
-          checked={page.doubleResolution}
-          disabled={!thermal}
-          onCheckedChange={(checked) => onChange({ doubleResolution: checked })}
-        />
-        <FieldLabel
-          htmlFor="double-resolution"
-          className="text-sm tracking-normal normal-case text-foreground"
-        >
-          Repeat the grey ramp in double resolution
-        </FieldLabel>
-      </Field>
+      <Toggle
+        id="double-resolution"
+        data-disabled={!thermal}
+        checked={page.doubleResolution}
+        disabled={!thermal}
+        onCheckedChange={(checked) => onChange({ doubleResolution: checked })}
+      >
+        Repeat the grey ramp in double resolution
+      </Toggle>
     </FieldGroup>
   );
 }
