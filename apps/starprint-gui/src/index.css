@@ -88,11 +88,41 @@
        and the hex dump opt back in with `select-text`. */
     @apply select-none;
     }
-  input, textarea {
+  input, textarea, [contenteditable="true"] {
     @apply select-text;
     }
   html {
     @apply font-sans antialiased;
     font-feature-settings: "tnum";
+    }
+}
+/* The text job's editor draws each style as it prints. Line breaks and
+   spaces are the user's, as on paper. */
+@layer components {
+  .printed-editor .tiptap {
+    white-space: pre-wrap;
+    }
+  .printed-editor strong {
+    @apply font-bold;
+    }
+  /* A wide character takes two columns: its own and as much again. */
+  .printed-editor [data-wide] {
+    letter-spacing: 1ch;
+    }
+  /* Twice the size takes the two columns already. */
+  .printed-editor [data-tall] {
+    font-size: 2em;
+    line-height: 1.3;
+    letter-spacing: 0;
+    }
+  .printed-editor[data-kind="impact"] [data-accent] {
+    @apply text-red-600;
+    }
+  .printed-editor[data-kind="thermal"] [data-accent] {
+    @apply bg-foreground text-background;
+    }
+  .printed-editor p.is-editor-empty:first-child::before {
+    @apply pointer-events-none float-left h-0 text-muted-foreground;
+    content: attr(data-placeholder);
     }
 }

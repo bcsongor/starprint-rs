@@ -21,8 +21,8 @@ const PANES: Panes = {
   "task-card": ({ preview, error, printer }) => (
     <CardPreview layout={preview} error={error} printer={printer} />
   ),
-  text: ({ job, preview, error, printer }) => (
-    <TextPreview text={job} layout={preview} error={error} printer={printer} />
+  text: ({ preview, error, printer }) => (
+    <TextPreview layout={preview} error={error} printer={printer} />
   ),
   note: ({ job, preview, error, printer }) => (
     <NotePreview note={job} preview={preview} error={error} printer={printer} />

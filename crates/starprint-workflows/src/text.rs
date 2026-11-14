@@ -1,6 +1,7 @@
 //! Plain text in the styles the head offers, wrapped to the paper.
 
-use std::{iter, mem};
+use std::mem;
+use std::ops::Not;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -79,67 +80,252 @@ impl TextStyle for Builder<Impact> {
     const ACCENT_FILLS: bool = false;
 }
 
+/// The styles a character prints in. Every one is off by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Style {
+    bold: bool,
+    wide: bool,
+    tall: bool,
+    accent: bool,
+}
+
+impl Style {
+    /// How many columns of the paper a character takes.
+    fn width(self) -> usize {
+        if self.wide { 2 } else { 1 }
+    }
+
+    /// Switches `doc` from `self` to `to`. What goes off goes first, in
+    /// the reverse of the order things come on, so the styles nest.
+    fn switch<P: Protocol>(self, to: Self, mut doc: Builder<P>) -> Builder<P>
+    where
+        Builder<P>: TextStyle,
+    {
+        if self.accent && !to.accent {
+            doc = doc.set_accent(false);
+        }
+        if self.tall && !to.tall {
+            doc = doc.set_tall(false);
+        }
+        if self.wide && !to.wide {
+            doc = doc.set_wide(false);
+        }
+        if self.bold && !to.bold {
+            doc = doc.bold(false);
+        }
+        if to.bold && !self.bold {
+            doc = doc.bold(true);
+        }
+        if to.wide && !self.wide {
+            doc = doc.set_wide(true);
+        }
+        if to.tall && !self.tall {
+            doc = doc.set_tall(true);
+        }
+        if to.accent && !self.accent {
+            doc = doc.set_accent(true);
+        }
+        doc
+    }
+}
+
+/// A character and the style it prints in.
+type Cell = (char, Style);
+
 /// Keeps the line breaks and the spaces the user typed, so text can be
 /// lined up by hand and blank lines feed paper. A gap that would run its
 /// word past the edge is dropped, and so are trailing spaces.
 pub(crate) fn wrap_by_words(text: &str, max_len: usize) -> Vec<String> {
-    let mut lines = Vec::new();
+    wrap(&[Run::plain(text)], max_len)
+        .into_iter()
+        .map(|line| line.into_iter().map(|run| run.text).collect())
+        .collect()
+}
 
+/// [`wrap_by_words`] for styled text, where a wide character takes two
+/// of the `columns`. Each line is its runs, merged where the style does
+/// not change.
+fn wrap(runs: &[Run], columns: usize) -> Vec<Vec<Run>> {
+    let cells: Vec<Cell> = runs
+        .iter()
+        .flat_map(|run| run.text.chars().map(move |c| (c, run.style())))
+        .collect();
     // Not `lines()`, which would swallow a final blank line.
-    for raw_line in text.split('\n') {
-        let mut current = String::new();
-        // Counted, not kept: a tab has no CP437 character, so it prints as a space.
-        let mut gap = 0;
-        for word in raw_line.trim_end().split(char::is_whitespace) {
-            if word.is_empty() {
-                gap += 1;
-                continue;
-            }
-            if current.chars().count() + gap + word.chars().count() <= max_len {
-                current.extend(iter::repeat_n(' ', gap));
-            } else if !current.is_empty() {
-                lines.push(mem::take(&mut current));
-            }
-            current.push_str(word);
-            gap = 1;
+    cells
+        .split(|&(c, _)| c == '\n')
+        .flat_map(|line| wrap_line(line, columns))
+        .map(|line| join(&line))
+        .collect()
+}
+
+fn width(cells: &[Cell]) -> usize {
+    cells.iter().map(|(_, style)| style.width()).sum()
+}
+
+fn wrap_line(line: &[Cell], columns: usize) -> Vec<Vec<Cell>> {
+    let end = line
+        .iter()
+        .rposition(|(c, _)| !c.is_whitespace())
+        .map_or(0, |last| last + 1);
+    let mut rest = &line[..end];
+    let mut lines = Vec::new();
+    let mut current = Vec::new();
+    // Trailing whitespace is gone, so every gap has a word after it.
+    while !rest.is_empty() {
+        let (gap, after) = rest.split_at(
+            rest.iter()
+                .position(|(c, _)| !c.is_whitespace())
+                .unwrap_or(rest.len()),
+        );
+        let (word, after) = after.split_at(
+            after
+                .iter()
+                .position(|(c, _)| c.is_whitespace())
+                .unwrap_or(after.len()),
+        );
+        rest = after;
+        if width(&current) + width(gap) + width(word) <= columns {
+            // A tab has no CP437 character, so it prints as a space.
+            current.extend(gap.iter().map(|&(_, style)| (' ', style)));
+        } else if !current.is_empty() {
+            lines.push(mem::take(&mut current));
         }
-        lines.push(current);
+        current.extend_from_slice(word);
     }
+    lines.push(current);
     lines
 }
 
-/// `text` is the only part a caller must supply; the styles default to
-/// off. Deriving [`Default`] does not make `text` optional, since the
-/// defaults are per field.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
+/// `cells` as runs, one for each change of style.
+fn join(cells: &[Cell]) -> Vec<Run> {
+    cells
+        .chunk_by(|(_, a), (_, b)| a == b)
+        .map(|chunk| Run::new(chunk.iter().map(|&(c, _)| c).collect(), chunk[0].1))
+        .collect()
+}
+
+/// A stretch of text in one style.
+// A style that is off is left out of the JSON, which keeps a fax of
+// many runs inside its limit.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-#[schemars(inline)]
-pub struct Text {
+pub struct Run {
     /// Wraps to the paper, and keeps typed spaces and blank lines.
     pub text: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Not::not")]
     pub bold: bool,
     /// Double width.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Not::not")]
     pub wide: bool,
     /// Double height.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Not::not")]
     pub tall: bool,
     /// Red on impact, inverse on thermal.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Not::not")]
     pub accent: bool,
+}
+
+impl Run {
+    /// `text` with every style off.
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            ..Self::default()
+        }
+    }
+
+    fn new(text: String, style: Style) -> Self {
+        let Style {
+            bold,
+            wide,
+            tall,
+            accent,
+        } = style;
+        Self {
+            text,
+            bold,
+            wide,
+            tall,
+            accent,
+        }
+    }
+
+    fn style(&self) -> Style {
+        Style {
+            bold: self.bold,
+            wide: self.wide,
+            tall: self.tall,
+            accent: self.accent,
+        }
+    }
+}
+
+/// Text in one style, or runs for text whose style changes partway.
+// Read in either shape of `Wire` and written as the plain one when one
+// run will do, which servers from before runs still read. Only text
+// whose style changes partway needs a newer server at the far end of a
+// fax.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(from = "Wire", into = "Wire")]
+#[schemars(inline)]
+pub struct Text {
+    pub runs: Vec<Run>,
+}
+
+/// The two shapes a text job's JSON takes.
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+enum Wire {
+    /// Text whose style changes partway, as runs in order, each in its
+    /// own style. A line break is a `\n` inside a run.
+    Runs { runs: Vec<Run> },
+    /// The whole text in one style.
+    Plain(Run),
+}
+
+impl From<Wire> for Text {
+    fn from(wire: Wire) -> Self {
+        match wire {
+            Wire::Runs { runs } => Self { runs },
+            Wire::Plain(run) => Self { runs: vec![run] },
+        }
+    }
+}
+
+impl From<Text> for Wire {
+    fn from(text: Text) -> Self {
+        let mut runs = text.runs;
+        match runs.len() {
+            0 => Self::Plain(Run::default()),
+            1 => Self::Plain(runs.remove(0)),
+            _ => Self::Runs { runs },
+        }
+    }
 }
 
 /// The text as it will print, for the preview.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
-    /// At normal size, whatever the chosen width.
+    /// At normal size, so a wide character takes two.
     pub columns: usize,
-    pub lines: Vec<String>,
+    /// Each line as its runs. A blank line has none.
+    pub lines: Vec<Vec<Run>>,
 }
 
 impl Text {
+    /// `text` in one style, with every style off.
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            runs: vec![Run::plain(text)],
+        }
+    }
+
+    /// Whether nothing would print but blank paper.
+    pub fn is_blank(&self) -> bool {
+        self.runs.iter().all(|run| run.text.trim().is_empty())
+    }
+
     pub(crate) fn layout<P: Protocol>(&self, paper: Paper) -> Layout
     where
         Builder<P>: TextStyle,
@@ -147,7 +333,7 @@ impl Text {
         let columns = <Builder<P> as TextStyle>::columns(paper);
         Layout {
             columns,
-            lines: wrap_by_words(&self.text, if self.wide { columns / 2 } else { columns }),
+            lines: wrap(&self.runs, columns),
         }
     }
 
@@ -162,40 +348,24 @@ impl Text {
     where
         Builder<P>: TextStyle,
     {
-        let layout = self.layout::<P>(paper);
         let mut doc = builder;
-        if self.bold {
-            doc = doc.bold(true);
-        }
-        if self.wide {
-            doc = doc.set_wide(true);
-        }
-        if self.tall {
-            doc = doc.set_tall(true);
-        }
-        if self.accent {
-            doc = doc.set_accent(true);
-        }
-
-        doc = doc.text(&layout.lines.join("\n"));
-
-        // Nothing carries over to the next job.
-        if self.accent {
-            doc = doc.set_accent(false);
-        }
-        if self.tall {
-            doc = doc.set_tall(false);
-        }
-        if self.wide {
-            doc = doc.set_wide(false);
-        }
-        if self.bold {
-            doc = doc.bold(false);
+        let mut style = Style::default();
+        for (index, line) in self.layout::<P>(paper).lines.iter().enumerate() {
+            // In the style the last line ended in, as a job in one style
+            // has always fed its lines.
+            if index > 0 {
+                doc = doc.raw(b"\n");
+            }
+            for run in line {
+                doc = style.switch(run.style(), doc).text(&run.text);
+                style = run.style();
+            }
         }
 
-        // After the styles are put back, so the feed is one normal line.
-        // The cut feeds to the cutter itself; anything more is blank paper.
-        let doc = doc.raw(b"\n");
+        // Nothing carries over to the next job, and the feed after the
+        // text is one normal line. The cut feeds to the cutter itself;
+        // anything more is blank paper.
+        let doc = style.switch(Style::default(), doc).raw(b"\n");
         if cut {
             doc.cut(Cut::FeedThenPartial).build()
         } else {
@@ -209,13 +379,27 @@ mod tests {
     use super::*;
 
     fn plain(text: &str) -> Text {
-        Text {
-            text: text.to_owned(),
-            bold: false,
-            wide: false,
-            tall: false,
-            accent: false,
-        }
+        Text::plain(text)
+    }
+
+    fn styled(text: &str, style: Style) -> Run {
+        Run::new(text.to_owned(), style)
+    }
+
+    const WIDE: Style = Style {
+        bold: false,
+        wide: true,
+        tall: false,
+        accent: false,
+    };
+
+    /// The lines as they read, whatever their styles.
+    fn strings(layout: &Layout) -> Vec<String> {
+        layout
+            .lines
+            .iter()
+            .map(|line| line.iter().map(|run| run.text.as_str()).collect())
+            .collect()
     }
 
     #[test]
@@ -225,7 +409,7 @@ mod tests {
         let narrow = text.layout::<StarLine>(Paper::Mm80);
         assert_eq!(narrow.columns, 48);
         assert_eq!(
-            narrow.lines,
+            strings(&narrow),
             [
                 "one two three four five six seven eight nine ten",
                 "eleven twelve"
@@ -240,13 +424,13 @@ mod tests {
     #[test]
     fn double_width_halves_the_line() {
         let mut text = plain("one two three four five six seven eight nine ten eleven twelve");
-        text.wide = true;
+        text.runs[0].wide = true;
         let layout = text.layout::<StarLine>(Paper::Mm80);
         assert_eq!(layout.columns, 48, "still the paper's columns");
+        let lines = strings(&layout);
         assert!(
-            layout.lines.iter().all(|line| line.chars().count() <= 24),
-            "wrapped at 24: {:?}",
-            layout.lines
+            lines.iter().all(|line| line.chars().count() <= 24),
+            "wrapped at 24: {lines:?}"
         );
     }
 
@@ -259,11 +443,13 @@ mod tests {
     #[test]
     fn styles_are_set_and_put_back_around_the_text() {
         let text = Text {
-            text: "Hi".to_owned(),
-            bold: true,
-            wide: true,
-            tall: true,
-            accent: true,
+            runs: vec![Run {
+                text: "Hi".to_owned(),
+                bold: true,
+                wide: true,
+                tall: true,
+                accent: true,
+            }],
         };
         let bytes = text
             .document(starprint::impact(), Paper::Mm80, true)
@@ -313,7 +499,7 @@ mod tests {
         );
 
         let mut second = plain("world");
-        second.bold = true;
+        second.runs[0].bold = true;
         let bytes = second.document(starprint::starline(), Paper::Mm80, true);
         let bytes = bytes.as_bytes();
         assert!(bytes.windows(5).any(|w| w == b"world"));
@@ -326,7 +512,7 @@ mod tests {
         assert_eq!(wrap_by_words("", 40), [""]);
         assert_eq!(wrap_by_words("one\r\n\ntwo", 40), ["one", "", "two"]);
         assert_eq!(
-            plain("\none\n\n").layout::<StarLine>(Paper::Mm80).lines,
+            strings(&plain("\none\n\n").layout::<StarLine>(Paper::Mm80)),
             ["", "one", "", ""],
             "blank lines at either end feed paper"
         );
@@ -348,8 +534,104 @@ mod tests {
             "no wider than the paper"
         );
         assert_eq!(
-            plain("  indented").layout::<StarLine>(Paper::Mm80).lines,
+            strings(&plain("  indented").layout::<StarLine>(Paper::Mm80)),
             ["  indented"]
+        );
+    }
+
+    #[test]
+    fn a_wide_word_takes_two_columns_a_character() {
+        let text = Text {
+            runs: vec![Run::plain("abcd "), styled("efg", WIDE), Run::plain(" h")],
+        };
+        let lines = wrap(&text.runs, 10);
+        assert_eq!(
+            lines,
+            [
+                vec![Run::plain("abcd")],
+                vec![styled("efg", WIDE), Run::plain(" h")],
+            ],
+            "4 + 1 + 6 is past 10, and 6 + 1 + 1 fits"
+        );
+    }
+
+    #[test]
+    fn a_word_keeps_the_styles_of_its_characters() {
+        let bold = Style {
+            bold: true,
+            ..Style::default()
+        };
+        let text = Text {
+            runs: vec![
+                Run::plain("un"),
+                styled("bold", bold),
+                Run::plain("ed\nnext"),
+            ],
+        };
+        assert_eq!(
+            text.layout::<StarLine>(Paper::Mm80).lines,
+            [
+                vec![Run::plain("un"), styled("bold", bold), Run::plain("ed")],
+                vec![Run::plain("next")],
+            ]
+        );
+    }
+
+    #[test]
+    fn only_the_styles_that_change_are_sent() {
+        let red = Style {
+            accent: true,
+            ..Style::default()
+        };
+        let text = Text {
+            runs: vec![Run::plain("a"), styled("b", red), Run::plain("c")],
+        };
+        let doc = text.document(starprint::impact(), Paper::Mm80, false);
+        // "a", ESC 4 red, "b", ESC 5 black, "c", the feed.
+        assert!(
+            doc.as_bytes()
+                .ends_with(&[b'a', 0x1b, b'4', b'b', 0x1b, b'5', b'c', b'\n']),
+            "{:02x?}",
+            doc.as_bytes()
+        );
+    }
+
+    #[test]
+    fn styles_left_on_at_a_line_break_are_put_back_after_the_text() {
+        let text = Text {
+            runs: vec![Run::plain("a "), styled("b\nc", WIDE)],
+        };
+        let doc = text.document(starprint::starline(), Paper::Mm80, false);
+        assert!(
+            doc.as_bytes().ends_with(b"a \x1bW\x01b\nc\x1bW\x00\n"),
+            "{:02x?}",
+            doc.as_bytes()
+        );
+    }
+
+    /// Schedules, faxes and API clients from before runs send this shape.
+    #[test]
+    fn the_plain_shape_is_one_run_both_ways() {
+        let text: Text = serde_json::from_str(r#"{"text":"Hi","bold":true}"#).unwrap();
+        assert_eq!(
+            text.runs,
+            [Run {
+                bold: true,
+                ..Run::plain("Hi")
+            }]
+        );
+        assert_eq!(
+            serde_json::to_value(&text).unwrap(),
+            serde_json::json!({"text":"Hi","bold":true}),
+            "styles that are off are left out"
+        );
+
+        let runs = serde_json::json!({"runs":[{"text":"a"},{"text":"b","wide":true}]});
+        let text: Text = serde_json::from_value(runs).unwrap();
+        assert_eq!(text.runs, [Run::plain("a"), styled("b", WIDE)]);
+        assert_eq!(
+            serde_json::to_value(&text).unwrap()["runs"][1]["wide"],
+            true
         );
     }
 }

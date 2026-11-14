@@ -68,28 +68,34 @@ export interface TaskCardLayout {
   lines: string[];
 }
 
-export interface Text {
+/** A stretch of text in one style. A style that is off may be left out. */
+export interface Run {
   text: string;
-  bold: boolean;
-  wide: boolean;
-  tall: boolean;
+  bold?: boolean;
+  /** Double width. */
+  wide?: boolean;
+  /** Double height. */
+  tall?: boolean;
   /** Red on impact, inverse on thermal. */
-  accent: boolean;
+  accent?: boolean;
+}
+
+export type Style = Exclude<keyof Run, "text">;
+
+/** Text whose style can change partway, as runs in order. A line
+ * break is a `\n` in a run. */
+export interface Text {
+  runs: Run[];
 }
 
 export interface TextLayout {
-  /** At normal size, whatever the chosen width. */
+  /** At normal size, so a wide character takes two. */
   columns: number;
-  lines: string[];
+  /** Each line as its runs. A blank line has none. */
+  lines: Run[][];
 }
 
-export const DEFAULT_TEXT: Text = {
-  text: "",
-  bold: false,
-  wide: false,
-  tall: false,
-  accent: false,
-};
+export const DEFAULT_TEXT: Text = { runs: [] };
 
 export type Rule = "blank" | "dots" | "lines" | "squares";
 
@@ -257,6 +263,19 @@ export interface Schedule extends ScheduleSpec {
   id: string;
 }
 
+/** A schedule as the server writes it: a text job of one run comes in
+ * the plain shape, the run's fields beside `kind`. */
+type ScheduleWire = Omit<Schedule, "job"> & {
+  job: Schedule["job"] | ({ kind: "text" } & Run);
+};
+
+/** `schedule` with its job as the app keeps it, a text job as runs. */
+function readSchedule({ job, ...schedule }: ScheduleWire): Schedule {
+  if (job.kind !== "text" || "runs" in job) return { ...schedule, job };
+  const { kind, ...run } = job;
+  return { ...schedule, job: { kind, runs: [run] } };
+}
+
 export interface Server {
   url: string;
   token: string;
@@ -373,11 +392,18 @@ export function createClient({ url, token }: Server) {
       json<PrintReport>("POST", `${printer(name)}/jobs`, jobBody(job, image)),
     preview: (name: string, job: Job, image: File | null) =>
       json<Preview>("POST", `${printer(name)}/preview`, jobBody(job, image)),
-    schedules: () => json<Schedule[]>("GET", "/v1/schedules"),
+    schedules: () =>
+      json<ScheduleWire[]>("GET", "/v1/schedules").then((list) =>
+        list.map(readSchedule),
+      ),
     createSchedule: (spec: ScheduleSpec) =>
-      json<Schedule>("POST", "/v1/schedules", jsonBody(spec)),
+      json<ScheduleWire>("POST", "/v1/schedules", jsonBody(spec)).then(
+        readSchedule,
+      ),
     replaceSchedule: (id: string, spec: ScheduleSpec) =>
-      json<Schedule>("PUT", `/v1/schedules/${id}`, jsonBody(spec)),
+      json<ScheduleWire>("PUT", `/v1/schedules/${id}`, jsonBody(spec)).then(
+        readSchedule,
+      ),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
     fax: () => json<FaxLine>("GET", "/v1/fax"),
     putFax: (settings: { printer: string | null }) =>

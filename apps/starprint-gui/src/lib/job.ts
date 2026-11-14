@@ -1,4 +1,4 @@
-import type { Job, Preview, Rule } from "@/lib/api";
+import type { Job, Preview, Rule, Text } from "@/lib/api";
 
 export type Kind = Job["kind"];
 
@@ -27,12 +27,18 @@ const RULES: Record<Rule, string> = {
   squares: "Squared",
 };
 
+/** The characters of `text`, whatever their styles. */
+export function plain(text: Text): string {
+  return text.runs.map((run) => run.text).join("");
+}
+
 /** A job in a line, for a schedule's row and its dialog. */
 export function summary(job: Job): string {
   switch (job.kind) {
     case "task-card":
-    case "text":
       return job.text.trim().split("\n")[0];
+    case "text":
+      return plain(job).trim().split("\n")[0];
     case "note":
       return `${RULES[job.rule]} note, ${job.rows} rows`;
     case "qr":
@@ -48,8 +54,9 @@ export function summary(job: Job): string {
 export function isReady(job: Job, image: File | null): boolean {
   switch (job.kind) {
     case "task-card":
-    case "text":
       return job.text.trim().length > 0;
+    case "text":
+      return plain(job).trim().length > 0;
     case "qr":
       return job.data.trim().length > 0;
     case "picture":

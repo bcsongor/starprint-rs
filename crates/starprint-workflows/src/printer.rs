@@ -220,7 +220,7 @@ impl Printer {
             Job::TaskCard(card) if card.text.trim().is_empty() => {
                 return Err("The task text is empty.".to_owned());
             }
-            Job::Text(text) if text.text.trim().is_empty() => {
+            Job::Text(text) if text.is_blank() => {
                 return Err("The text is empty.".to_owned());
             }
             Job::Qr(code) if code.data.trim().is_empty() => {
@@ -322,10 +322,7 @@ mod tests {
                 text: "Task".to_owned(),
                 ..TaskCard::default()
             }),
-            Job::Text(Text {
-                text: "Text".to_owned(),
-                ..Text::default()
-            }),
+            Job::Text(Text::plain("Text")),
             Job::Note(Note {
                 rule: Rule::Lines,
                 rows: 4,
@@ -379,10 +376,7 @@ mod tests {
     #[test]
     fn an_impact_printer_ignores_the_roll_and_the_thermal_settings() {
         let printer = Printer::impact("printer.invalid".to_owned(), 9100);
-        let job = Job::Text(Text {
-            text: "Hi".to_owned(),
-            ..Text::default()
-        });
+        let job = Job::Text(Text::plain("Hi"));
         let bytes = printer.document(&job, None).unwrap();
         let bytes = bytes.as_bytes();
         assert!(
@@ -393,10 +387,7 @@ mod tests {
 
     #[test]
     fn the_density_above_the_scale_is_two_colour_mode_for_the_job() {
-        let job = Job::Text(Text {
-            text: "Hi".to_owned(),
-            ..Text::default()
-        });
+        let job = Job::Text(Text::plain("Hi"));
         let mut printer = thermal();
         printer.head = Head::Thermal {
             paper: Paper::Mm80,
