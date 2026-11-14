@@ -13,8 +13,8 @@ import { fold, isFaxNumber } from "@/lib/fax-number";
 
 interface Props {
   fax: FaxLine | null;
-  /** Whether the form holds a job worth sending. */
-  ready: boolean;
+  /** Why the form's job cannot be faxed, or null when it can. */
+  refusal: string | null;
   /** Resolves once the relay has taken the fax, and rejects if it did not. */
   onSend: (to: string) => Promise<void>;
   /** Opens the fax drawer, for a line that is not set up yet. */
@@ -35,7 +35,7 @@ function named(contacts: FaxContact[], to: string): FaxContact | undefined {
  * used. */
 export function FaxButton({
   fax,
-  ready,
+  refusal,
   onSend,
   onSetUp,
   onSaveContact,
@@ -56,7 +56,7 @@ export function FaxButton({
   const recent = (fax?.recent ?? []).filter((r) => r.number.includes(typed));
 
   const send = async () => {
-    if (!complete || !ready || sending) return;
+    if (!complete || refusal || sending) return;
     setSending(true);
     try {
       // By number, since the server matches a name its own way.
@@ -97,8 +97,8 @@ export function FaxButton({
               />
               <Button
                 type="submit"
-                disabled={!complete || !ready || sending}
-                title={ready ? undefined : "Nothing to fax yet."}
+                disabled={!complete || refusal !== null || sending}
+                title={refusal ?? undefined}
               >
                 {sending ? "Sending…" : "Send"}
               </Button>

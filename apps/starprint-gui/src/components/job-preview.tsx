@@ -5,21 +5,32 @@ import { PicturePreview } from "@/components/picture-preview";
 import { QrPreview } from "@/components/qr-preview";
 import { TestPagePreview } from "@/components/test-page-preview";
 import { TextPreview } from "@/components/text-preview";
-import { usePreview, type Previewed } from "@/hooks/use-preview";
+import { usePreviews, type Previewed } from "@/hooks/use-preview";
 import type { Client, Profile } from "@/lib/api";
-import { isPreviewable, type Jobs, type Kind } from "@/lib/job";
+import {
+  isPreviewable,
+  printed,
+  type Jobs,
+  type Kind,
+  type Previews,
+} from "@/lib/job";
 
 /** Each kind's pane, given the job in the form and the server's
- * preview of it. */
+ * previews of what it prints: one, or a task card's for each card. */
 type Panes = {
   [K in Kind]: (
-    shown: Previewed<K> & { job: Jobs[K]; printer: Profile },
+    shown: Previewed<K> & {
+      /** The first of `previews`, for a kind that prints one job. */
+      preview: Previews[K] | null;
+      job: Jobs[K];
+      printer: Profile;
+    },
   ) => ReactNode;
 };
 
 const PANES: Panes = {
-  "task-card": ({ preview, error, printer }) => (
-    <CardPreview layout={preview} error={error} printer={printer} />
+  "task-card": ({ previews, error, printer }) => (
+    <CardPreview layouts={previews} error={error} printer={printer} />
   ),
   text: ({ preview, error, printer }) => (
     <TextPreview layout={preview} error={error} printer={printer} />
@@ -60,12 +71,13 @@ export function JobPreview<K extends Kind>({
   job,
   image,
 }: Props<K>) {
-  const previewed = usePreview(
+  const previewed = usePreviews(
     api,
     printer,
     kind,
-    isPreviewable(job, image) ? job : null,
+    isPreviewable(job, image) ? printed(job) : null,
     image,
   );
-  return PANES[kind]({ ...previewed, job, printer });
+  const preview = previewed.previews?.at(0) ?? null;
+  return PANES[kind]({ ...previewed, preview, job, printer });
 }

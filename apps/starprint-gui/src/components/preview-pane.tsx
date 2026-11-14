@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { PaperSheet } from "@/components/paper-sheet";
+import { PaperSheet, PaperStack } from "@/components/paper-sheet";
 import { Label } from "@/components/ui/label";
 import type { Profile } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -9,12 +9,17 @@ interface Props {
   printer?: Profile;
   /** Why the server could not preview the job, drawn in its place. */
   error?: string | null;
-  children: ReactNode;
+  children?: ReactNode;
+  /** Sheets one under another in a pane that scrolls, in place of
+   * `children` on one sheet, for a form that prints several. */
+  sheets?: ReactNode[];
 }
 
-/** The preview heading and, for printable content, its sheet of paper. */
-export function PreviewPane({ hint, printer, error, children }: Props) {
-  const content = error ? <PreviewNote error>{error}</PreviewNote> : children;
+/** The preview heading and, for printable content, its sheet of paper
+ * or a stack of them. */
+export function PreviewPane({ hint, printer, error, children, sheets }: Props) {
+  const note = error ? <PreviewNote error>{error}</PreviewNote> : null;
+  const content = note ?? children;
   return (
     <section
       className={cn(
@@ -31,7 +36,13 @@ export function PreviewPane({ hint, printer, error, children }: Props) {
           </span>
         )}
       </Label>
-      {printer ? <PaperSheet printer={printer}>{content}</PaperSheet> : content}
+      {!printer ? (
+        content
+      ) : sheets ? (
+        <PaperStack printer={printer}>{note ? [note] : sheets}</PaperStack>
+      ) : (
+        <PaperSheet printer={printer}>{content}</PaperSheet>
+      )}
     </section>
   );
 }

@@ -103,6 +103,13 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   reads schedules and that server's string-only previews back into
   runs.
   What is said of a job by its kind lives in `src/lib/job.ts`.
+  A task card of two or more lines prints a card for each line,
+  sharing the rest of the form, and `printed` there says which jobs a
+  form prints. The preview asks the server for each and draws them as
+  sheets in a pane that scrolls (`PaperStack`), and Print sends them in
+  order. This is the app's rule, chosen over a job of its own: a
+  `task-card` job is still one card everywhere else, so Schedule and
+  Fax take one card at a time.
   The schedules drawer says whose clock the cron expressions run on.
   Every preview is the server's `Preview` drawn as it comes: a layout
   in the printer's font, an `<img>` of the `data:` PNG. A preview that

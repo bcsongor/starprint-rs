@@ -1,4 +1,4 @@
-import type { Job, Preview, Rule, Text } from "@/lib/api";
+import type { Job, Preview, Rule, TaskCard, Text } from "@/lib/api";
 
 export type Kind = Job["kind"];
 
@@ -26,6 +26,29 @@ const RULES: Record<Rule, string> = {
   lines: "Lined",
   squares: "Squared",
 };
+
+/**
+ * The cards a task card form prints: one for each line when it holds
+ * two or more, sharing the rest of the form, and otherwise the card as
+ * typed. Blank lines are skipped, so a pasted list may have gaps.
+ */
+function cards<C extends TaskCard>(card: C): C[] {
+  const lines = card.text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  return lines.length < 2 ? [card] : lines.map((text) => ({ ...card, text }));
+}
+
+function isTaskCard<J extends Job>(job: J): job is J & Jobs["task-card"] {
+  return job.kind === "task-card";
+}
+
+/** The jobs the form's `job` prints, in order: a task card's cards,
+ * and otherwise the job itself. */
+export function printed<J extends Job>(job: J): J[] {
+  return isTaskCard(job) ? cards(job) : [job];
+}
 
 /** The characters of `text`, whatever their styles. */
 export function plain(text: Text): string {

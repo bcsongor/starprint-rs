@@ -10,43 +10,46 @@ const DEBOUNCE_MS = 30;
 let chain: Promise<void> = Promise.resolve();
 
 export interface Previewed<K extends Kind> {
-  preview: Previews[K] | null;
+  /** One for each job, in order. */
+  previews: Previews[K][] | null;
   error: string | null;
 }
 
 /** The server's last answer, and the kind of job it was about. */
 interface Answer {
   kind: Kind;
-  preview: Preview | null;
+  previews: Preview[] | null;
   error: string | null;
 }
 
-function isOf<K extends Kind>(
-  preview: Preview,
+/** All or none, so a stray answer cannot drop a card and shift the
+ * rest. */
+function allOf<K extends Kind>(
+  previews: Preview[],
   kind: K,
-): preview is Previews[K] {
-  return preview.kind === kind;
+): previews is Previews[K][] {
+  return previews.every((preview) => preview.kind === kind);
 }
 
 /**
- * What the server says `job`, of `kind`, will look like on `printer`.
- * Empty when there is no job to show; an answer that a change has
- * outdated is dropped. The previous preview stays up while its
- * replacement loads, unless it was of a job of another kind.
+ * What the server says `jobs`, of `kind`, will look like on `printer`,
+ * one preview each. Empty when there is nothing to show; an answer that
+ * a change has outdated is dropped. The previous previews stay up while
+ * their replacements load, unless they were of jobs of another kind.
  */
-export function usePreview<K extends Kind>(
+export function usePreviews<K extends Kind>(
   api: Client,
   printer: Profile,
   kind: K,
-  job: Jobs[K] | null,
+  jobs: Jobs[K][] | null,
   image: File | null,
 ): Previewed<K> {
   const [answer, setAnswer] = useState<Answer | null>(null);
   // Both are rebuilt each render, the profile by every poll; compare by
-  // value. The profile's settings shape the preview as the job does.
-  const key = JSON.stringify([printer, job]);
+  // value. The profile's settings shape the preview as the jobs do.
+  const key = JSON.stringify([printer, jobs]);
   useEffect(() => {
-    if (!job) {
+    if (!jobs) {
       setAnswer(null);
       return;
     }
@@ -55,11 +58,17 @@ export function usePreview<K extends Kind>(
       chain = chain.then(async () => {
         if (cancelled) return;
         try {
-          const preview = await api.preview(printer.name, job, image);
-          if (!cancelled) setAnswer({ kind, preview, error: null });
+          // One by one, so an outdated batch stops at the next job
+          // rather than holding up the requests behind it.
+          const previews: Preview[] = [];
+          for (const job of jobs) {
+            if (cancelled) return;
+            previews.push(await api.preview(printer.name, job, image));
+          }
+          if (!cancelled) setAnswer({ kind, previews, error: null });
         } catch (error) {
           if (!cancelled) {
-            setAnswer({ kind, preview: null, error: message(error) });
+            setAnswer({ kind, previews: null, error: message(error) });
           }
         }
       });
@@ -68,11 +77,14 @@ export function usePreview<K extends Kind>(
       cancelled = true;
       clearTimeout(timer);
     };
-    // `printer` and `job` by value; nothing else is read.
+    // `printer` and `jobs` by value; nothing else is read.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [api, key, image]);
 
-  if (answer?.kind !== kind) return { preview: null, error: null };
-  const { preview, error } = answer;
-  return { preview: preview && isOf(preview, kind) ? preview : null, error };
+  if (answer?.kind !== kind) return { previews: null, error: null };
+  const { previews, error } = answer;
+  return {
+    previews: previews && allOf(previews, kind) ? previews : null,
+    error,
+  };
 }

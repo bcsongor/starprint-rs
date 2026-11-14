@@ -33,7 +33,7 @@ import {
   type Profile,
   type Server,
 } from "@/lib/api";
-import { NAMES, isKind, summary, type Kind } from "@/lib/job";
+import { NAMES, isKind, printed, summary, type Kind } from "@/lib/job";
 import { message } from "@/lib/message";
 import { newSchedule, repoint, type Refused } from "@/lib/schedule";
 import { usesRemote, type Settings } from "@/lib/settings";
@@ -105,6 +105,22 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const twoColor =
     profile?.kind === "thermal" && profile.density === TWO_COLOR_DENSITY;
   const canPrint = ready && profile !== undefined && printing === 0;
+  // A task card of several lines prints a card for each, and a
+  // schedule or a fax holds one job.
+  const batch = printed(job);
+  const several = batch.length > 1;
+  const what = several ? `${batch.length} task cards` : NAMES[workflow];
+  const scheduleRefusal =
+    job.kind === "picture"
+      ? "Pictures cannot be scheduled."
+      : several
+        ? "Schedule one card at a time."
+        : null;
+  const faxRefusal = !ready
+    ? "Nothing to fax yet."
+    : several
+      ? "Fax one card at a time."
+      : null;
 
   /** A change to the server, and then what it left, read at once. */
   const thenRefresh = (change: () => Promise<unknown>) => async () => {
@@ -142,8 +158,9 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   const changeProfile = (next: Profile) =>
     saveProfile(next, null).catch(() => {});
 
-  /** Sends one job to the active profile and reports it; `what` names it. */
-  const send = async (job: Job, image: File | null, what: string) => {
+  /** Sends `jobs` to the active profile one after another, stopping at
+   * the first that fails, and reports them; `what` names them. */
+  const send = async (jobs: Job[], image: File | null, what: string) => {
     if (!profile) {
       // Only a card from Linear gets this far without a printer.
       toast.error(`Could not print ${what}`, {
@@ -152,13 +169,21 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
       return;
     }
     setPrinting((n) => n + 1);
+    let sent = 0;
+    let bytes = 0;
     try {
-      const report = await api.print(profile.name, job, image);
+      for (const job of jobs) {
+        bytes += (await api.print(profile.name, job, image)).bytesSent;
+        sent += 1;
+      }
       toast.success(`Printed ${what} on ${profile.name}`, {
-        description: `${report.bytesSent} bytes sent.`,
+        description: `${bytes} bytes sent.`,
       });
     } catch (error) {
-      toast.error(`Could not print ${what}`, { description: message(error) });
+      const done = sent > 0 ? `${sent} of ${jobs.length} printed. ` : "";
+      toast.error(`Could not print ${what}`, {
+        description: done + message(error),
+      });
     } finally {
       setPrinting((n) => n - 1);
     }
@@ -166,13 +191,12 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
 
   const print = async () => {
     if (!canPrint) return;
-    await send(job, image, NAMES[workflow]);
+    await send(batch, image, what);
   };
 
   /** Faxes the job in the form; rejects, after saying why, if it did
    * not go. */
   const sendFax = (to: string) => {
-    const what = NAMES[workflow];
     return tryTo(`Could not fax ${what}`, async () => {
       const sent = await api.sendFax(to, job, image);
       toast.success(`Faxed ${what}${sent.name ? ` to ${sent.name}` : ""}`, {
@@ -186,7 +210,7 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
   };
 
   useAutoPrint(settings.linear, (card) =>
-    send({ kind: "task-card", ...card }, null, card.reference ?? "task card"),
+    send([{ kind: "task-card", ...card }], null, card.reference ?? "task card"),
   );
 
   const saveSchedule = ({ id, ...spec }: Draft) =>
@@ -358,13 +382,9 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               <Button
                 variant="outline"
                 disabled={
-                  !ready || !schedules || !profile || job.kind === "picture"
+                  !ready || !schedules || !profile || scheduleRefusal !== null
                 }
-                title={
-                  job.kind === "picture"
-                    ? "Pictures cannot be scheduled."
-                    : undefined
-                }
+                title={scheduleRefusal ?? undefined}
                 onClick={() => {
                   if (profile && job.kind !== "picture") {
                     setDraft(newSchedule(job, profile.name));
@@ -376,7 +396,7 @@ export function Workspace({ server, embedded, settings, onSettings }: Props) {
               </Button>
               <FaxButton
                 fax={fax}
-                ready={ready}
+                refusal={faxRefusal}
                 onSend={sendFax}
                 onSetUp={() => setFaxDrawer(true)}
                 onSaveContact={(number, name) =>
