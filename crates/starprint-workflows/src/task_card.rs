@@ -1,5 +1,6 @@
-//! A bold, quad-size task with an optional "HIGH PRIORITY" banner, a
-//! reference and a due date above it.
+//! A bold, quad-size task under a header line holding an optional
+//! "HIGH PRIORITY" banner, a reference and a due date. The header prints
+//! blank when all three are absent, so every card is the same height.
 
 use chrono::{Datelike, NaiveDate};
 use schemars::JsonSchema;
@@ -136,15 +137,13 @@ impl TaskCard {
             layout.reference.as_deref().unwrap_or(""),
             layout.due.as_deref().unwrap_or("")
         );
-        if layout.priority.is_some() || !rest.is_empty() {
-            if let Some(priority) = &layout.priority {
-                card = card.set_accent(true).text(priority).set_accent(false);
-            }
-            if !rest.is_empty() {
-                card = card.bold(false).text(&rest).bold(true);
-            }
-            card = card.raw(b"\n").feed(1);
+        if let Some(priority) = &layout.priority {
+            card = card.set_accent(true).text(priority).set_accent(false);
         }
+        if !rest.is_empty() {
+            card = card.bold(false).text(&rest).bold(true);
+        }
+        card = card.raw(b"\n").feed(1);
 
         let card = card
             .set_wide(true)
@@ -175,9 +174,9 @@ mod tests {
     }
 
     #[test]
-    fn basic_impact_card_matches_gui_fixture() {
+    fn a_bare_card_keeps_a_blank_header_line() {
         let expected = bytes(
-            "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 64 03",
+            "1b 40 1b 1d 74 01 1b 45 0a 1b 61 01 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 64 03",
         );
         let actual =
             card("Test task", false, None).document(starprint::impact(), Paper::Mm80, true);
@@ -187,7 +186,7 @@ mod tests {
     #[test]
     fn card_without_cut_only_feeds() {
         let expected = bytes(
-            "1b 40 1b 1d 74 01 1b 45 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 61 03",
+            "1b 40 1b 1d 74 01 1b 45 0a 1b 61 01 1b 57 01 1b 68 01 54 65 73 74 20 74 61 73 6b 1b 61 02 1b 61 03",
         );
         let actual =
             card("Test task", false, None).document(starprint::impact(), Paper::Mm80, false);
