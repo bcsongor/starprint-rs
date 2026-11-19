@@ -173,6 +173,8 @@ mod tests {
         }
     }
 
+    /// Deliberately differs from the Python GUI, which drops the header
+    /// line and prints a bare card shorter.
     #[test]
     fn a_bare_card_keeps_a_blank_header_line() {
         let expected = bytes(
