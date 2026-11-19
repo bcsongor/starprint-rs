@@ -554,12 +554,10 @@
     }
     const strip = el("div", "strip");
     strip.style.width = `${preview.columns}ch`;
-    if (preview.priority || preview.reference || preview.due) {
-      const head = el("div", "head");
-      if (preview.priority) head.append(el("span", printer().kind === "impact" ? "red" : "inverse", preview.priority));
-      head.append(preview.reference ?? "", preview.due ?? "", "\n\n");
-      strip.append(head);
-    }
+    const head = el("div", "head");
+    if (preview.priority) head.append(el("span", printer().kind === "impact" ? "red" : "inverse", preview.priority));
+    head.append(preview.reference ?? "", preview.due ?? "", "\n\n");
+    strip.append(head);
     const empty = preview.lines.every((line) => line === "");
     strip.append(el("div", empty ? "lines empty" : "lines", empty ? "Your task" : preview.lines.join("\n")));
     const region = el("div", "region");
