@@ -213,6 +213,8 @@ pitch, with the print's tone and not its dots.
 { "kind": "qr", "columns": 48, "caption": [], "align": "center", "modules": 33, "widthMm": 53.625, "heightMm": 53.625, "image": "data:image/png;base64,iVBORw0K..." }
 ```
 
+A task card's `priority`, `reference` and `due` share its header line,
+which prints blank when all three are `null`, so draw it either way.
 `note` has its layout and an `image`, `picture` an `image` alone, and
 `test-page` its `sections`, each a `title` and what a fault looks like
 in `check`. Empty text previews as an empty layout rather than a `400`.

@@ -1,6 +1,6 @@
 //! A bold, quad-size task under a header line holding an optional
 //! "HIGH PRIORITY" banner, a reference and a due date. The header prints
-//! blank when all three are absent, so every card is the same height.
+//! blank when all three are absent, so a card is as tall without them.
 
 use chrono::{Datelike, NaiveDate};
 use schemars::JsonSchema;

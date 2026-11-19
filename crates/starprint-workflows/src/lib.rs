@@ -64,7 +64,8 @@ pub(crate) fn finish_graphic<P: Protocol>(doc: Builder<P>, cut: bool) -> Documen
 #[schemars(inline)]
 pub enum Job {
     /// A task in large bold type, under a header with an optional
-    /// priority banner, reference and due date.
+    /// priority banner, reference and due date. The header prints as a
+    /// blank line without them.
     TaskCard(TaskCard),
     /// Anything freeform, in the printer's own font.
     Text(Text),
