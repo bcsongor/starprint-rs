@@ -84,8 +84,10 @@ export function useServer(api: Client) {
       }
     } catch (error) {
       if (mine !== begun.current) return;
-      // A server that is not answering has nothing to show.
+      // A server that is not answering has nothing to show, and a job
+      // still waiting on it will not hear back.
       answer(() => ({ ...UNREAD, reachable: "offline" }));
+      api.abandon();
       throw error;
     }
   }, [api]);

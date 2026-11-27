@@ -396,13 +396,25 @@ function detail(body: unknown): string | undefined {
   return typeof body.detail === "string" ? body.detail : undefined;
 }
 
+/** How long a read may take. Under the ten-second poll, so one settles
+ * before the next begins. */
+const READ_MS = 5_000;
+
 export function createClient({ url, token }: Server) {
+  // What a write waits on instead of a timeout, since printing or faxing
+  // can take a while. Aborted once a read finds the server not answering.
+  let gone = new AbortController();
+
   /** The response, or the problem's `detail` thrown. */
   const send = async (method: string, path: string, init: RequestInit = {}) => {
+    const signal = init.signal ?? gone.signal;
     const response = await fetch(url + path, {
       ...init,
       method,
+      signal,
       headers: { ...init.headers, Authorization: `Bearer ${token}` },
+    }).catch((error: unknown) => {
+      throw signal.aborted ? new Error(`${url} is not answering.`) : error;
     });
     if (!response.ok) {
       // A proxy, or an address that is not this server's, answers with
@@ -416,31 +428,39 @@ export function createClient({ url, token }: Server) {
   };
   const json = <T>(method: string, path: string, init?: RequestInit) =>
     send(method, path, init).then((response) => response.json() as Promise<T>);
+  /** A read the app polls or redraws from. */
+  const read = <T>(method: string, path: string, init?: RequestInit) =>
+    json<T>(method, path, { ...init, signal: AbortSignal.timeout(READ_MS) });
   const printer = (name: string) => `/v1/printers/${encodeURIComponent(name)}`;
   /** A number in a path goes without its star. */
   const contact = (number: string) =>
     `/v1/fax/contacts/${encodeURIComponent(number.trim().replace(/^\*/, ""))}`;
 
   return {
+    /** Fails every write still waiting, once the server stops answering. */
+    abandon: () => {
+      gone.abort();
+      gone = new AbortController();
+    },
     printers: () =>
-      json<{ version: string; printers: Profile[] }>("GET", "/v1/printers"),
+      read<{ version: string; printers: Profile[] }>("GET", "/v1/printers"),
     putPrinter: (name: string, spec: ProfileSpec) =>
       json<Profile>("PUT", printer(name), jsonBody(spec)),
     deletePrinter: (name: string) => send("DELETE", printer(name)),
     status: (name: string) =>
-      json<{ online: boolean }>("GET", `${printer(name)}/status`).then(
+      read<{ online: boolean }>("GET", `${printer(name)}/status`).then(
         (status) => status.online,
       ),
     print: (name: string, job: Job, image: File | null) =>
       json<PrintReport>("POST", `${printer(name)}/jobs`, jobBody(job, image)),
     preview: (name: string, job: Job, image: File | null) =>
-      json<Preview | OlderTextPreview>(
+      read<Preview | OlderTextPreview>(
         "POST",
         `${printer(name)}/preview`,
         jobBody(job, image),
       ).then((preview) => readPreview(preview, job)),
     schedules: () =>
-      json<ScheduleWire[]>("GET", "/v1/schedules").then((list) =>
+      read<ScheduleWire[]>("GET", "/v1/schedules").then((list) =>
         list.map(readSchedule),
       ),
     createSchedule: (spec: ScheduleSpec) =>
@@ -456,7 +476,7 @@ export function createClient({ url, token }: Server) {
         jsonBody(writeSchedule(spec)),
       ).then(readSchedule),
     deleteSchedule: (id: string) => send("DELETE", `/v1/schedules/${id}`),
-    fax: () => json<FaxLine>("GET", "/v1/fax"),
+    fax: () => read<FaxLine>("GET", "/v1/fax"),
     putFax: (settings: { printer: string | null }) =>
       json<FaxLine>("PUT", "/v1/fax", jsonBody(settings)),
     activateFax: () => json<FaxLine>("POST", "/v1/fax/line"),
