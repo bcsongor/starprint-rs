@@ -401,8 +401,9 @@ function detail(body: unknown): string | undefined {
 const READ_MS = 5_000;
 
 export function createClient({ url, token }: Server) {
-  // What a write waits on instead of a timeout, since printing or faxing
-  // can take a while. Aborted once a read finds the server not answering.
+  // What a write or a preview waits on instead of a timeout, since
+  // printing, faxing or uploading a picture can take a while. Aborted once
+  // a read finds the server not answering, or the client is replaced.
   let gone = new AbortController();
 
   /** The response, or the problem's `detail` thrown. */
@@ -414,7 +415,13 @@ export function createClient({ url, token }: Server) {
       signal,
       headers: { ...init.headers, Authorization: `Bearer ${token}` },
     }).catch((error: unknown) => {
-      throw signal.aborted ? new Error(`${url} is not answering.`) : error;
+      if (!signal.aborted) throw error;
+      // An abandoned write may still have reached the server.
+      throw new Error(
+        signal === init.signal
+          ? `${url} is not answering.`
+          : `Stopped waiting for ${url}.`,
+      );
     });
     if (!response.ok) {
       // A proxy, or an address that is not this server's, answers with
@@ -437,7 +444,7 @@ export function createClient({ url, token }: Server) {
     `/v1/fax/contacts/${encodeURIComponent(number.trim().replace(/^\*/, ""))}`;
 
   return {
-    /** Fails every write still waiting, once the server stops answering. */
+    /** Fails every write and preview still waiting. */
     abandon: () => {
       gone.abort();
       gone = new AbortController();
@@ -454,7 +461,7 @@ export function createClient({ url, token }: Server) {
     print: (name: string, job: Job, image: File | null) =>
       json<PrintReport>("POST", `${printer(name)}/jobs`, jobBody(job, image)),
     preview: (name: string, job: Job, image: File | null) =>
-      read<Preview | OlderTextPreview>(
+      json<Preview | OlderTextPreview>(
         "POST",
         `${printer(name)}/preview`,
         jobBody(job, image),
