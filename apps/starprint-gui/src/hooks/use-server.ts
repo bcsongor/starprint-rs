@@ -80,12 +80,20 @@ export function useServer(api: Client) {
               statuses: { ...statuses, [name]: online ? "online" : "offline" },
             })),
           )
-          .catch(console.error);
+          .catch((error: unknown) => {
+            // It may be waiting behind a job; that says nothing either way.
+            answer(({ statuses }) => ({
+              statuses: { ...statuses, [name]: "checking" },
+            }));
+            console.error(error);
+          });
       }
     } catch (error) {
       if (mine !== begun.current) return;
-      // A server that is not answering has nothing to show.
+      // A server that is not answering has nothing to show, and a job
+      // still waiting on it will not hear back.
       answer(() => ({ ...UNREAD, reachable: "offline" }));
+      api.abandon();
       throw error;
     }
   }, [api]);
@@ -94,8 +102,12 @@ export function useServer(api: Client) {
     const tick = () => refresh().catch(console.error);
     tick();
     const timer = setInterval(tick, POLL_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
+    return () => {
+      clearInterval(timer);
+      // Nothing reads this client again, so nothing would find it gone.
+      api.abandon();
+    };
+  }, [api, refresh]);
 
   return {
     reachable: read.reachable,

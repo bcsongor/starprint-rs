@@ -59,7 +59,15 @@ A Cargo workspace. `crates/starprint` is the library and default member,
   fax line and statuses are read again every ten seconds by
   `use-server`, so a change another program makes over the API shows
   up. A read that a later one has overtaken is dropped, so a poll
-  still out cannot undo a change made in the app. The server answers the
+  still out cannot undo a change made in the app. A read gives up after
+  five seconds, so it settles before the next poll. Otherwise a server
+  that drops packets, and does not refuse them, would keep each one
+  waiting on the OS, and every failure would be overtaken. A write or a
+  preview has no timeout, since a print can wait its turn and a picture
+  can take a while to upload. It is abandoned once a read finds the
+  server not answering, or the app moves to another server. A status
+  that times out is unknown, since the probe may be waiting behind a
+  job. The server answers the
   webview's CORS preflight for that. A picture is a `File` from a file
   input, sent as the multipart form. The settings store keeps only the
   Linear key, the LAN switch and address, another server's URL and
